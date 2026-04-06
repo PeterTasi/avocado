@@ -141,10 +141,10 @@ export default function App() {
       };
     }
 
-    const timerId = window.setTimeout(onIdle, 350);
+    const timerId = setTimeout(onIdle, 350);
     return () => {
       canceled = true;
-      window.clearTimeout(timerId);
+      clearTimeout(timerId);
     };
   }, []);
 

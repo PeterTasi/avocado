@@ -1,4 +1,4 @@
-import { clamp, safeNumber } from "../utils/helpers";
+import { clamp } from "../utils/helpers";
 
 interface Props {
   value?: number;

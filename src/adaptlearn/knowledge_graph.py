@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from collections import Counter
 from pathlib import Path
 
 from .models import Concept, ConceptEdge
 
 logger = logging.getLogger("adaptlearn.knowledge_graph")
+
+# Namespace for deterministic UUID5 concept IDs
+_CONCEPT_NAMESPACE = uuid.UUID("5ba4bcdd-986f-4f4b-a5d6-6d2b3e2d4a1f")
 
 # ── Configurable noise terms ───────────────────────────────────────
 # Load from external JSON if available, otherwise use built-in defaults.
@@ -199,7 +203,7 @@ def _records_to_concepts(records: list[dict], max_concepts: int) -> list[Concept
         if not base_id:
             base_id = f"concept-{len(concepts) + 1}"
 
-        concept_id = _unique_id(base_id, used_ids)
+        concept_id = _concept_id(name, chapter)
         concepts.append(
             Concept(
                 id=concept_id,
@@ -234,8 +238,7 @@ def _heuristic_extract_concepts(text: str, max_concepts: int) -> list[Concept]:
     for index, term in enumerate(top_terms):
         display_term = _format_concept_name(term)
         chapter = f"Chapter {(index // 6) + 1}"
-        base_id = _slugify(display_term) or f"concept-{index + 1}"
-        concept_id = _unique_id(base_id, used_ids)
+        concept_id = _concept_id(display_term, chapter)
         concepts.append(
             Concept(
                 id=concept_id,
@@ -463,6 +466,19 @@ def _normalize_name(value: str) -> str:
         return " ".join(alnum_tokens)
     cjk_tokens = re.findall(r"[\u4e00-\u9fff]+", value)
     return "".join(cjk_tokens)
+
+def _concept_id(name: str, chapter: str) -> str:
+    """Deterministic, collision-free concept ID using UUID5(chapter + name).
+
+    Unlike slug + counter, this guarantees:
+    - Same concept name in the same chapter always gets the same ID.
+    - "Matrix Multiplication" and "MatrixMultiplication" in the same chapter
+      produce different IDs because their full names differ.
+    - Cross-chapter duplicates (same name, different chapters) get different IDs.
+    """
+    raw = f"{chapter.strip().lower()}:{name.strip().lower()}"
+    return "c-" + uuid.uuid5(_CONCEPT_NAMESPACE, raw).hex[:16]
+
 
 def _slugify(value: str) -> str:
     value = value.lower().strip()

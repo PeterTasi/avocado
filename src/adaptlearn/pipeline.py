@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime
 
@@ -380,7 +381,12 @@ def _escape_label(value: str) -> str:
 
 
 def _normalize_name(value: str) -> str:
-    return "".join(ch.lower() for ch in value if ch.isalnum())
+    """Normalise a concept name for dedup-matching (preserves token separation)."""
+    tokens = re.findall(r"[a-z0-9]+", value.lower())
+    if tokens:
+        return " ".join(tokens)
+    # CJK fallback
+    return "".join(re.findall(r"[\u4e00-\u9fff]+", value))
 
 
 def _merge_concept_sets(extracted: list[Concept], seeded: list[Concept]) -> list[Concept]:
@@ -472,6 +478,22 @@ def _build_edges_from_concepts(concepts: list[Concept]) -> list[ConceptEdge]:
 
 
 def _estimate_pass_probability(attempts: list[Attempt]) -> float:
+    """Estimate exam-pass probability from past attempt history.
+
+    Formula: P = 0.32 + 0.46·avg_score + 0.16·accuracy + 0.06·experience_bonus
+
+    Coefficients are **empirical placeholders** and have not been validated
+    against real cohort data.  They should be recalibrated with logistic
+    regression once longitudinal data is available.
+
+    - 0.32  baseline prior for a student with no history
+    - 0.46  average score weight — strongest recent-performance signal
+    - 0.16  binary accuracy weight — rewards consistency over raw score
+    - 0.06  experience bonus — log-saturates at 30 attempts to prevent
+            over-confidence from sheer volume
+
+    Returns: float in [0.25, 0.95].
+    """
     if not attempts:
         return 0.55
 

@@ -11,9 +11,12 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cachetools import TTLCache
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("adaptlearn.api")
@@ -54,6 +57,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AdaptLearn Web API", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Rate limiting (🟡 Fix #14)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cache: TTLCache[str, Any] = TTLCache(maxsize=128, ttl=30)
 _cache_large: TTLCache[str, Any] = TTLCache(maxsize=32, ttl=60)
@@ -160,14 +168,17 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/api/config/api-key")
-def configure_api_key(payload: ApiKeyRequest) -> dict[str, Any]:
+@limiter.limit("20/minute")
+def configure_api_key(request: Request, payload: ApiKeyRequest) -> dict[str, Any]:
     service = _get_service(payload.api_key)
     invalidate_cache("health", "concept", "mastery", "tonight", "graph", "review", "questions")
     return {"llm_enabled": service.llm_enabled}
 
 
 @app.post("/api/material/ingest")
+@limiter.limit("5/minute")
 async def ingest_material(
+    request: Request,
     file: UploadFile = File(...),
     course_name: str = Form("General Course"),
     template_mode: str = Form("generic"),
@@ -234,7 +245,8 @@ def chapter_mastery() -> dict[str, Any]:
 
 
 @app.post("/api/diagnostics/generate")
-def generate_diagnostics(payload: GenerateRequest) -> dict[str, Any]:
+@limiter.limit("10/minute")
+def generate_diagnostics(request: Request, payload: GenerateRequest) -> dict[str, Any]:
     questions = _get_service().generate_diagnostics(question_count=payload.question_count)
     invalidate_cache("questions")
     return {"items": [_serialize_question(question) for question in questions]}
@@ -248,7 +260,8 @@ def list_questions(limit: int = 100) -> dict[str, Any]:
 
 
 @app.post("/api/questions/{question_id}/grade")
-def grade_question(question_id: str, payload: GradeRequest) -> dict[str, Any]:
+@limiter.limit("30/minute")
+def grade_question(request: Request, question_id: str, payload: GradeRequest) -> dict[str, Any]:
     answer = payload.answer.strip()
     if not answer:
         raise HTTPException(status_code=400, detail="作答內容不可空白。")
@@ -262,7 +275,8 @@ def grade_question(question_id: str, payload: GradeRequest) -> dict[str, Any]:
 
 
 @app.post("/api/review/recalculate")
-def recalculate_review_plan() -> dict[str, Any]:
+@limiter.limit("10/minute")
+def recalculate_review_plan(request: Request) -> dict[str, Any]:
     items = _get_service().build_and_save_review_plan()
     invalidate_cache("tonight", "review")
     return {"items": [_serialize_review_item(item) for item in items]}

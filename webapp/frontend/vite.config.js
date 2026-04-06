@@ -18,6 +18,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          vendor: ["react", "react-dom"],
           charts: ["recharts"],
           icons: ["lucide-react"],
           query: ["@tanstack/react-query"],
@@ -27,7 +28,7 @@ export default defineConfig({
         assetFileNames: "assets/[name]-[hash].[ext]",
       },
     },
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 250,
     sourcemap: false,
     minify: "esbuild",
   },

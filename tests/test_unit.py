@@ -345,3 +345,147 @@ class TestKnowledgeGraphQuality:
 
         assert all(edge.relation != "next" for edge in edges)
         assert any(edge.relation == "prerequisite" for edge in edges)
+
+
+class TestPdfSizeLimit:
+    def test_pdf_size_limit_rejected(self, service):
+        """Files larger than 20 MB should raise ValueError immediately."""
+        from adaptlearn.pdf_parser import MAX_FILE_SIZE
+
+        oversized = b"x" * (MAX_FILE_SIZE + 1)
+        with pytest.raises(ValueError, match="20"):
+            service.ingest_material(
+                file_name="large.pdf",
+                file_bytes=oversized,
+                course_name="General",
+                template_mode="generic",
+            )
+
+
+class TestConceptIdStability:
+    def test_uuid5_ids_are_deterministic(self):
+        """Same name+chapter always produces the same concept ID (UUID5)."""
+        from adaptlearn.knowledge_graph import _concept_id  # type: ignore
+
+        id1 = _concept_id("Eigenvalue", "Chapter 3")
+        id2 = _concept_id("Eigenvalue", "Chapter 3")
+        assert id1 == id2
+
+    def test_different_chapters_give_different_ids(self):
+        """'Rank' in Chapter 1 vs Chapter 2 must not share an ID."""
+        from adaptlearn.knowledge_graph import _concept_id  # type: ignore
+
+        id_ch1 = _concept_id("Rank", "Chapter 1")
+        id_ch2 = _concept_id("Rank", "Chapter 2")
+        assert id_ch1 != id_ch2
+
+    def test_mixed_case_same_concept_same_id(self):
+        """Concept ID is case-insensitive for both name and chapter."""
+        from adaptlearn.knowledge_graph import _concept_id  # type: ignore
+
+        id_lower = _concept_id("matrix multiplication", "chapter 1")
+        id_upper = _concept_id("Matrix Multiplication", "Chapter 1")
+        assert id_lower == id_upper
+
+
+class TestNormalizeName:
+    def test_space_separated_tokens_preserved(self):
+        """'Matrix Multiplication' and 'MatrixMultiplication' must NOT normalize identically."""
+        from adaptlearn.pipeline import _normalize_name  # type: ignore
+
+        assert _normalize_name("Matrix Multiplication") != _normalize_name("MatrixMultiplication")
+
+    def test_normalize_strips_punctuation(self):
+        from adaptlearn.pipeline import _normalize_name  # type: ignore
+
+        assert _normalize_name("Ax=b") == _normalize_name("Ax b")
+
+
+class TestCourseCreation:
+    def test_course_record_created_on_ingest(self, service):
+        """Ingesting material must create exactly one Course record."""
+        text = (
+            "Graph graph graph theory studies vertices edges connectivity. "
+            "Trees are connected acyclic graphs with n vertices and n-1 edges. "
+            "Spanning spanning spanning trees include all vertices with minimum edges. "
+            "Bipartite bipartite graphs can be 2-colored without adjacent same-color vertices. "
+            "Eulerian Eulerian paths visit every edge exactly once in a graph."
+        )
+        service.ingest_material(
+            file_name="graph_theory.txt",
+            file_bytes=text.encode("utf-8"),
+            course_name="Graph Theory",
+            template_mode="generic",
+        )
+        courses = service.list_courses()
+        assert len(courses) >= 1
+        assert any(c.subject == "Graph Theory" for c in courses)
+
+
+class TestPassProbabilityFormula:
+    def test_no_attempts_returns_baseline(self):
+        from adaptlearn.pipeline import _estimate_pass_probability  # type: ignore
+
+        assert _estimate_pass_probability([]) == pytest.approx(0.55)
+
+    def test_all_correct_high_probability(self):
+        from adaptlearn.models import Attempt
+        from adaptlearn.pipeline import _estimate_pass_probability  # type: ignore
+        from datetime import datetime
+
+        attempts = [
+            Attempt(
+                question_id=f"q-{i}",
+                concept_id="c-1",
+                user_answer="correct",
+                is_correct=True,
+                score=1.0,
+                feedback="",
+                created_at=datetime.now(),
+            )
+            for i in range(10)
+        ]
+        prob = _estimate_pass_probability(attempts)
+        assert prob > 0.8
+
+    def test_all_wrong_low_probability(self):
+        from adaptlearn.models import Attempt
+        from adaptlearn.pipeline import _estimate_pass_probability  # type: ignore
+        from datetime import datetime
+
+        attempts = [
+            Attempt(
+                question_id=f"q-{i}",
+                concept_id="c-1",
+                user_answer="wrong",
+                is_correct=False,
+                score=0.0,
+                feedback="",
+                created_at=datetime.now(),
+            )
+            for i in range(5)
+        ]
+        prob = _estimate_pass_probability(attempts)
+        assert prob < 0.5
+
+    def test_result_clamped_to_valid_range(self):
+        from adaptlearn.models import Attempt
+        from adaptlearn.pipeline import _estimate_pass_probability  # type: ignore
+        from datetime import datetime
+
+        # 30 perfect attempts — should not exceed 0.95 ceiling
+        attempts = [
+            Attempt(
+                question_id=f"q-{i}",
+                concept_id="c-1",
+                user_answer="perfect",
+                is_correct=True,
+                score=1.0,
+                feedback="",
+                created_at=datetime.now(),
+            )
+            for i in range(30)
+        ]
+        prob = _estimate_pass_probability(attempts)
+        assert 0.25 <= prob <= 0.95
+

@@ -19,3 +19,7 @@ webapp/frontend/dist/
 .mypy_cache/
 .ruff_cache/
 gemini_arch_pack.zip
+.idea/
+*.swp
+*.swo
+*~

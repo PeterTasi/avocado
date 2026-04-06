@@ -5,12 +5,22 @@ from datetime import datetime
 
 
 @dataclass(slots=True)
+class Course:
+    id: str
+    user_id: str = "default"
+    subject: str = ""
+    filename: str = ""
+    uploaded_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass(slots=True)
 class Concept:
     id: str
     name: str
     chapter: str
     description: str
     prerequisites: list[str] = field(default_factory=list)
+    course_id: str = ""
 
 
 @dataclass(slots=True)
@@ -18,6 +28,14 @@ class ConceptEdge:
     source_id: str
     target_id: str
     relation: str = "related"
+
+
+@dataclass(slots=True)
+class CrossCourseEdge:
+    from_concept_id: str
+    to_concept_id: str
+    similarity: float = 0.0
+    link_type: str = "semantic"
 
 
 @dataclass(slots=True)
@@ -50,3 +68,14 @@ class ReviewItem:
     next_review_at: datetime
     suggested_slot: str
     reason: str
+
+
+@dataclass(slots=True)
+class ClassNodeStats:
+    course_id: str
+    concept_id: str
+    error_rate: float = 0.0
+    avg_attempts: float = 0.0
+    stuck_count: int = 0
+    sample_count: int = 0
+    updated_at: datetime = field(default_factory=datetime.now)

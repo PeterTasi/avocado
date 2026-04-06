@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from collections import defaultdict
 from datetime import datetime
 
+from .class_heatmap import compute_class_heatmap, get_weak_concepts
 from .config import Settings
+from .cross_course_linker import find_cross_course_links
 from .database import StudyRepository
 from .domain_templates import get_seed_concepts
 from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
-from .models import Attempt, Concept, ConceptEdge, Question, ReviewItem
+from .models import Attempt, Concept, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
 from .pdf_parser import extract_text
 from .quiz_engine import build_questions_for_concepts
 from .review_scheduler import build_review_plan
 from .vector_store import ConceptVectorStore
+
+logger = logging.getLogger("adaptlearn.pipeline")
 
 
 class AdaptLearnService:
@@ -25,6 +31,12 @@ class AdaptLearnService:
 
         self.gemini = GeminiClient(api_key=key, model=settings.gemini_model)
         self.vector_store = ConceptVectorStore(settings.chroma_path)
+
+    def close(self) -> None:
+        """Release all resources (DB connections, vector store singletons)."""
+        self.repo.close()
+        self.vector_store.close()
+        logger.info("AdaptLearnService resources released")
 
     @property
     def llm_enabled(self) -> bool:
@@ -45,7 +57,6 @@ class AdaptLearnService:
 
         if low_text_mode:
             if used_seed_template:
-                # If the uploaded file has little selectable text, use the selected template as fallback.
                 concepts = list(seed_concepts)
                 edges = _build_edges_from_concepts(concepts)
                 ingest_mode = "template-fallback"
@@ -71,15 +82,42 @@ class AdaptLearnService:
                 "若是掃描/圖片筆記，請先做 OCR，或改用明確模板。"
             )
 
+        # Create course record
+        course_id = hashlib.sha256(f"{course_name}:{file_name}".encode()).hexdigest()[:12]
+        course = Course(
+            id=course_id,
+            user_id="default",
+            subject=course_name,
+            filename=file_name,
+            uploaded_at=datetime.now(),
+        )
+        self.repo.save_course(course)
+
+        # Assign course_id to all concepts
+        for concept in concepts:
+            concept.course_id = course_id
+
         # Replace previous corpus-derived state so a new upload reflects only the current material.
         self.repo.reset_learning_state(include_attempts=True)
         self.repo.upsert_concepts(concepts)
         self.repo.replace_edges(edges)
-        self.vector_store.upsert_concepts(concepts, replace_existing=True)
+        self.vector_store.upsert_concepts(concepts, replace_existing=False, course_id=course_id)
+
+        # Module D: discover cross-course links
+        cross_edges = find_cross_course_links(
+            new_concepts=concepts,
+            course_id=course_id,
+            vector_store=self.vector_store,
+            repo=self.repo,
+        )
+        logger.info("Ingested course=%s concepts=%d edges=%d cross=%d",
+                     course_id, len(concepts), len(edges), len(cross_edges))
 
         return {
+            "course_id": course_id,
             "concept_count": len(concepts),
             "edge_count": len(edges),
+            "cross_course_links": len(cross_edges),
             "material_chars": text_chars,
             "low_text_mode": low_text_mode,
             "used_seed_template": used_seed_template,
@@ -256,6 +294,7 @@ class AdaptLearnService:
     def get_graphviz(self) -> str:
         concepts = self.repo.list_concepts()
         edges = self.repo.list_edges()
+        cross_edges = self.repo.list_cross_course_edges()
         if not concepts:
             return "digraph ConceptGraph { empty [label=\"No concepts yet\"]; }"
 
@@ -268,8 +307,41 @@ class AdaptLearnService:
             relation = _escape_label(edge.relation)
             lines.append(f'"{edge.source_id}" -> "{edge.target_id}" [label="{relation}"];')
 
+        # Cross-course edges rendered as dashed lines
+        for ce in cross_edges[:100]:
+            label = _escape_label(f"{ce.link_type} ({ce.similarity:.2f})")
+            lines.append(
+                f'"{ce.from_concept_id}" -> "{ce.to_concept_id}" '
+                f'[label="{label}", style=dashed, color=blue];'
+            )
+
         lines.append("}")
         return "\n".join(lines)
+
+    def get_class_heatmap(self, course_id: str) -> list[dict]:
+        """Return class-level understanding heatmap for a course."""
+        stats = compute_class_heatmap(course_id=course_id, repo=self.repo)
+        concept_map = {c.id: c.name for c in self.repo.list_concepts()}
+        return [
+            {
+                "concept_id": s.concept_id,
+                "concept_name": concept_map.get(s.concept_id, s.concept_id),
+                "error_rate": s.error_rate,
+                "sample_count": s.sample_count,
+                "status": "red" if s.error_rate >= 0.6 else ("yellow" if s.error_rate >= 0.3 else "green"),
+            }
+            for s in stats
+        ]
+
+    def get_class_weak_concepts(self, course_id: str, top_n: int = 3) -> list[dict]:
+        """Return teacher recommendations for weakest concepts."""
+        return get_weak_concepts(course_id=course_id, repo=self.repo, top_n=top_n)
+
+    def list_courses(self) -> list[Course]:
+        return self.repo.list_courses()
+
+    def list_cross_course_edges(self) -> list[CrossCourseEdge]:
+        return self.repo.list_cross_course_edges()
 
     def get_metrics(self) -> dict[str, float]:
         metrics = self.repo.get_metrics()

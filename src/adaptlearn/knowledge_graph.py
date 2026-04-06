@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+import json
+import logging
 import re
 from collections import Counter
+from pathlib import Path
 
 from .models import Concept, ConceptEdge
 
-STOPWORDS = {
+logger = logging.getLogger("adaptlearn.knowledge_graph")
+
+# ── Configurable noise terms ───────────────────────────────────────
+# Load from external JSON if available, otherwise use built-in defaults.
+_CONFIG_DIR = Path(__file__).resolve().parent
+
+def _load_json_set(filename: str, fallback: set[str]) -> set[str]:
+    path = _CONFIG_DIR / filename
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return set(data)
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Failed to load %s, using defaults", path)
+    return fallback
+
+STOPWORDS = _load_json_set("stopwords.json", {
     "the",
     "and",
     "for",
@@ -38,9 +58,9 @@ STOPWORDS = {
     "includes",
     "using",
     "use",
-}
+})
 
-NOISE_TERMS = {
+NOISE_TERMS = _load_json_set("noise_terms.json", {
     "week",
     "weeks",
     "wk",
@@ -107,7 +127,7 @@ NOISE_TERMS = {
     "考試",
     "評分",
     "進度",
-}
+})
 
 _WEEK_PATTERN = re.compile(r"(?i)^(?:week|wk)\s*\d+\b|第\s*\d+\s*週|\bweek\s*\d+\b")
 _LOGISTICS_HINT_PATTERN = re.compile(
@@ -115,7 +135,12 @@ _LOGISTICS_HINT_PATTERN = re.compile(
     r"|課程介紹|公告|作業|考試|評分|繳交|週次"
 )
 _CJK_PHRASE_PATTERN = re.compile(r"[\u4e00-\u9fff]{2,10}")
-_SHORT_CANONICAL_TERMS = {"svd", "bfs", "dfs", "pca", "fft", "rref", "pdf", "cdf"}
+_SHORT_CANONICAL_TERMS = _load_json_set("canonical_terms.json", {
+    "svd", "bfs", "dfs", "pca", "fft", "rref", "pdf", "cdf",
+    "gan", "rnn", "lstm", "cnn", "vae", "gru", "mlp", "nlp",
+    "svm", "knn", "rl", "ai", "ml", "dl", "cv", "llm", "rag",
+    "ode", "pde", "mle", "map", "em", "hmm", "gmm", "ica",
+})
 
 
 def build_knowledge_graph(

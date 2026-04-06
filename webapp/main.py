@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import sys
+from contextlib import asynccontextmanager
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -12,6 +15,15 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("adaptlearn.api")
+
+# Configure structured logging for the entire adaptlearn namespace
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -24,12 +36,24 @@ from adaptlearn.pipeline import AdaptLearnService
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-app = FastAPI(title="AdaptLearn Web API", version="0.1.0")
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
+# --- Global state with lock for thread safety (🔴 Fix #2) ---
+_service_lock = asyncio.Lock()
 _settings = Settings()
 _active_key = _settings.gemini_api_key
 _service = AdaptLearnService(_settings, api_key=_active_key)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("AdaptLearn API starting up")
+    yield
+    # Cleanup on shutdown (🔴 Fix #3 & #4)
+    logger.info("AdaptLearn API shutting down, cleaning up resources")
+    _service.close()
+
+
+app = FastAPI(title="AdaptLearn Web API", version="0.1.0", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 _cache: TTLCache[str, Any] = TTLCache(maxsize=128, ttl=30)
 _cache_large: TTLCache[str, Any] = TTLCache(maxsize=32, ttl=60)
@@ -88,8 +112,11 @@ def _get_service(api_key_override: str | None = None) -> AdaptLearnService:
 
     normalized = api_key_override.strip()
     if normalized != _active_key:
+        logger.info("Switching API key, recreating service")
+        old_service = _service
         _service = AdaptLearnService(_settings, api_key=normalized)
         _active_key = normalized
+        old_service.close()
     return _service
 
 
@@ -253,3 +280,50 @@ def list_review_plan() -> dict[str, Any]:
 def tonight_dashboard(top_n: int = 5) -> dict[str, Any]:
     top_n = max(1, min(top_n, 20))
     return _get_service().get_tonight_study_dashboard(top_n=top_n)
+
+
+# ── New endpoints: courses, cross-course, heatmap ──────────────────
+
+@app.get("/api/courses")
+@cached(_cache)
+def list_courses() -> dict[str, Any]:
+    courses = _get_service().list_courses()
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "subject": c.subject,
+                "filename": c.filename,
+                "uploaded_at": c.uploaded_at.isoformat(timespec="seconds"),
+            }
+            for c in courses
+        ]
+    }
+
+
+@app.get("/api/cross-course-edges")
+@cached(_cache)
+def cross_course_edges() -> dict[str, Any]:
+    edges = _get_service().list_cross_course_edges()
+    return {
+        "items": [
+            {
+                "from_concept_id": e.from_concept_id,
+                "to_concept_id": e.to_concept_id,
+                "similarity": e.similarity,
+                "link_type": e.link_type,
+            }
+            for e in edges
+        ]
+    }
+
+
+@app.get("/api/heatmap/{course_id}")
+def class_heatmap(course_id: str) -> dict[str, Any]:
+    return {"items": _get_service().get_class_heatmap(course_id)}
+
+
+@app.get("/api/heatmap/{course_id}/weak")
+def class_weak_concepts(course_id: str, top_n: int = 3) -> dict[str, Any]:
+    top_n = max(1, min(top_n, 10))
+    return {"items": _get_service().get_class_weak_concepts(course_id, top_n=top_n)}

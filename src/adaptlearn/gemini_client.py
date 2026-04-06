@@ -1,13 +1,28 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
 try:
     from google import genai
+    from google.api_core import exceptions as google_exceptions
 except Exception:  # pragma: no cover
     genai = None  # type: ignore[assignment]
+    google_exceptions = None  # type: ignore[assignment]
+
+logger = logging.getLogger("adaptlearn.gemini")
+
+# Specific exceptions we expect from the Gemini API
+_API_ERRORS: tuple[type[Exception], ...] = ()
+if google_exceptions is not None:
+    _API_ERRORS = (
+        google_exceptions.GoogleAPIError,
+        google_exceptions.RetryError,
+        TimeoutError,
+        ConnectionError,
+    )
 
 
 class GeminiClient:
@@ -33,15 +48,22 @@ class GeminiClient:
                     model=candidate_model,
                     contents=prompt,
                 )
-            except Exception as exc:
+            except _API_ERRORS as exc:
+                logger.warning("Gemini API error (model=%s): %s", candidate_model, exc)
                 last_error = exc
                 continue
+            except Exception as exc:
+                # Unexpected error — log and re-raise so bugs aren't silently swallowed
+                logger.error("Unexpected error calling Gemini (model=%s): %s", candidate_model, exc)
+                raise
 
             self.model_name = candidate_model
             self.last_error = ""
+            logger.debug("Gemini response OK (model=%s, len=%d)", candidate_model, len(_safe_text(response)))
             return _safe_text(response)
 
         self.last_error = str(last_error) if last_error else "Gemini returned no response."
+        logger.warning("All Gemini model candidates failed: %s", self.last_error)
         return ""
 
     def extract_concepts(

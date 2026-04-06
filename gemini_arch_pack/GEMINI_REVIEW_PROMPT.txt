@@ -1,0 +1,32 @@
+You are a senior software architect reviewing the AdaptLearn AI-assisted learning platform.
+
+Goals:
+1) Summarize current architecture by layers and responsibilities.
+2) Map end-to-end data flow from material ingest to nightly study plan.
+3) Identify top 8 risks by severity with concrete code evidence.
+4) Propose a staged refactor plan:
+   - Phase 1: low-risk quick wins (1-2 weeks)
+   - Phase 2: medium refactors (2-4 weeks)
+   - Phase 3: structural redesign candidates
+5) Provide a target architecture that improves:
+   - Concept extraction quality and observability
+   - Service boundaries and testability
+   - Caching consistency and invalidation strategy
+   - Frontend-backend contract clarity
+6) For the top 3 recommended changes, provide:
+   - Why this is high impact
+   - What files/modules to change first
+   - Migration strategy that minimizes regressions
+
+Constraints:
+- Prefer incremental, testable changes over full rewrite.
+- Explicitly distinguish correctness risk vs scalability risk.
+- Call out assumptions and unknowns.
+- Avoid introducing breaking API changes unless strongly justified.
+
+Output format:
+- Section A: Current Architecture Map
+- Section B: Data Flow and Boundaries
+- Section C: Risks with Evidence
+- Section D: Refactor Roadmap (phased)
+- Section E: First 3 Changes to Implement Now

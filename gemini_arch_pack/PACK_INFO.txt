@@ -1,0 +1,28 @@
+Project root: /Users/petertsai/Documents/project
+Generated at: 2026-04-06T15:00:19Z
+
+Included files:
+- GEMINI_ARCHITECTURE_BRIEF.md
+- GEMINI_REVIEW_PROMPT.txt
+- README.md
+- requirements.txt
+- pyproject.toml
+- webapp/main.py
+- src/adaptlearn/config.py
+- src/adaptlearn/models.py
+- src/adaptlearn/pipeline.py
+- src/adaptlearn/knowledge_graph.py
+- src/adaptlearn/gemini_client.py
+- src/adaptlearn/pdf_parser.py
+- src/adaptlearn/domain_templates.py
+- src/adaptlearn/quiz_engine.py
+- src/adaptlearn/review_scheduler.py
+- src/adaptlearn/database.py
+- src/adaptlearn/vector_store.py
+- webapp/frontend/src/App.jsx
+- webapp/frontend/src/hooks/useApi.ts
+- webapp/frontend/vite.config.js
+- webapp/frontend/package.json
+- tests/test_api_integration.py
+- tests/test_unit.py
+- tests/test_service_workflow.py

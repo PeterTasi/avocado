@@ -137,7 +137,6 @@ class StudyRepository:
                 CREATE INDEX IF NOT EXISTS idx_questions_concept_id ON questions(concept_id);
                 CREATE INDEX IF NOT EXISTS idx_concept_edges_source ON concept_edges(source_id);
                 CREATE INDEX IF NOT EXISTS idx_concept_edges_target ON concept_edges(target_id);
-                CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id);
                 CREATE INDEX IF NOT EXISTS idx_cross_course_from ON cross_course_edges(from_concept_id);
                 CREATE INDEX IF NOT EXISTS idx_cross_course_to ON cross_course_edges(to_concept_id);
                 """
@@ -146,6 +145,7 @@ class StudyRepository:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(concepts)").fetchall()}
             if "course_id" not in columns:
                 conn.execute("ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id)")
 
     def reset_learning_state(self, include_attempts: bool = True) -> None:
         with self._connect() as conn:
@@ -163,13 +163,14 @@ class StudyRepository:
         with self._connect() as conn:
             conn.executemany(
                 """
-                INSERT INTO concepts (id, name, chapter, description, prerequisites_json)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO concepts (id, name, chapter, description, prerequisites_json, course_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     chapter = excluded.chapter,
                     description = excluded.description,
-                    prerequisites_json = excluded.prerequisites_json
+                    prerequisites_json = excluded.prerequisites_json,
+                    course_id = excluded.course_id
                 """,
                 [
                     (
@@ -178,6 +179,7 @@ class StudyRepository:
                         concept.chapter,
                         concept.description,
                         json.dumps(concept.prerequisites, ensure_ascii=False),
+                        concept.course_id or None,
                     )
                     for concept in concepts
                 ],

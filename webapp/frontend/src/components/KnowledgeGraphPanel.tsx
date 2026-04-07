@@ -53,12 +53,11 @@ export function KnowledgeGraphPanel({ dotSource, isLoading }: Props) {
       <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
         <span>節點 {graph.nodes.length}</span>
         <span>關係 {graph.edges.length}</span>
-        <span className="inline-flex items-center gap-1">
-          <i className="h-2 w-2 rounded-full bg-cyan-400" /> prerequisite
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <i className="h-2 w-2 rounded-full bg-amber-400" /> progression
-        </span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-cyan-400" /> prerequisite</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-400" /> progression</span>
+        <span className="inline-flex items-center gap-1 border-l border-slate-700 pl-3"><i className="h-2 w-2 rounded-full bg-pink-400" /> cross:equivalent</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-indigo-400" /> cross:generalization</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-lime-400" /> cross:analogy</span>
       </div>
 
       {isLoading ? (

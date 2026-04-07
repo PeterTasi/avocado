@@ -9,6 +9,7 @@ import { DailyProgressRing } from "./components/DailyProgressRing";
 import { InsightFeed } from "./components/InsightFeed";
 import type { Insight } from "./components/InsightFeed";
 import { KnowledgeGraphPanel } from "./components/KnowledgeGraphPanel";
+import { ClassHeatmapPanel } from "./components/ClassHeatmapPanel";
 import { MasteryTable } from "./components/MasteryTable";
 import { MetricCardsGrid } from "./components/MetricCardsGrid";
 import { QuizPanel } from "./components/QuizPanel";
@@ -321,9 +322,12 @@ export default function App() {
                   )}
                 </ErrorBoundary>
 
-                <div ref={graphRef} id="section-graph">
+                <div ref={graphRef} id="section-graph" className="flex flex-col gap-6">
                   <ErrorBoundary>
                     <KnowledgeGraphPanel dotSource={knowledgeGraphDot} isLoading={graphLoading} />
+                  </ErrorBoundary>
+                  <ErrorBoundary>
+                    <ClassHeatmapPanel />
                   </ErrorBoundary>
                 </div>
               </div>

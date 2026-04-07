@@ -245,3 +245,49 @@ export function useSaveApiKey() {
     },
   });
 }
+
+// ── Module D & E ───────────────────────────────────────────────
+
+export interface Course {
+  id: string;
+  subject: string;
+  filename: string;
+  uploaded_at: string;
+}
+
+export interface ClassNodeStat {
+  concept_id: string;
+  concept_name: string;
+  error_rate: number;
+  sample_count: number;
+  status: "red" | "yellow" | "green";
+}
+
+export function useCourses() {
+  return useQuery({
+    queryKey: ["courses"],
+    queryFn: () => apiFetch("/api/courses") as Promise<{ items: Course[] }>,
+    staleTime: 60000,
+  });
+}
+
+export function useClassHeatmap(courseId: string | null) {
+  return useQuery({
+    queryKey: ["heatmap", courseId],
+    queryFn: () => apiFetch(`/api/heatmap/${courseId}`) as Promise<{ items: ClassNodeStat[] }>,
+    enabled: !!courseId,
+    staleTime: 30000,
+  });
+}
+
+export function useClassWeakConcepts(courseId: string | null, topN = 3) {
+  return useQuery({
+    queryKey: ["heatmap-weak", courseId, topN],
+    queryFn: () =>
+      apiFetch(`/api/heatmap/${courseId}/weak?top_n=${topN}`) as Promise<{
+        items: Array<{ concept_id: string; error_rate: number; sample_count: number; estimated_uplift: number }>;
+      }>,
+    enabled: !!courseId,
+    staleTime: 30000,
+  });
+}

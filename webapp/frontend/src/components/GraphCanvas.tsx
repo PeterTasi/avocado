@@ -57,7 +57,9 @@ export function GraphCanvas({ graph }: Props) {
           const bend = sameColumn ? 92 : controlOffset;
           const path = `M ${startX} ${startY} C ${startX + direction * bend} ${startY}, ${endX - direction * bend} ${endY}, ${endX} ${endY}`;
 
-          const color = EDGE_COLORS[edge.relation] ?? EDGE_COLORS.related;
+          // Cross-course labels look like "equivalent (0.94)" — extract just the type word
+          const relationKey = edge.relation.split(" ")[0].toLowerCase();
+          const color = EDGE_COLORS[relationKey] ?? EDGE_COLORS[edge.relation] ?? EDGE_COLORS.related;
           const isCross = edge.style === "dashed";
           return (
             <path

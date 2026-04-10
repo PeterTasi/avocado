@@ -14,7 +14,6 @@ This repository bootstraps the first runnable version of the project described i
 - Python 3.11
 - FastAPI (web backend API)
 - React + Tailwind CSS + Lucide + Recharts (web frontend)
-- Streamlit (legacy local UI)
 - Gemini API (LLM reasoning, question generation, grading)
 - SQLite (attempt history and plans)
 - ChromaDB (concept vector retrieval)
@@ -24,7 +23,6 @@ This repository bootstraps the first runnable version of the project described i
 
 ```text
 .
-├── app.py
 ├── webapp/
 │   ├── main.py
 │   ├── frontend/
@@ -100,12 +98,6 @@ npm run dev
 ```
 
 Then open `http://localhost:5173`.
-
-## Optional: Streamlit Mode (legacy)
-
-```bash
-streamlit run app.py
-```
 
 ## Workflow
 

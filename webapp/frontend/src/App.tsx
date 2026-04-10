@@ -229,10 +229,10 @@ export default function App() {
         <div className="mt-6 grid gap-6 xl:grid-cols-[300px,minmax(0,1fr)]">
           <aside className="glass-panel hidden h-fit flex-col rounded-[32px] p-6 xl:flex xl:sticky xl:top-28">
             <div>
-              <p className="section-eyebrow">操作中樞</p>
-              <h2 className="mt-3 text-2xl font-semibold text-white">學習節奏總控台</h2>
+              <p className="section-eyebrow">智能指揮台</p>
+              <h2 className="mt-3 text-2xl font-semibold text-white">AI 自適應學習中心</h2>
               <p className="mt-3 text-sm leading-6 text-white/72">
-                這個面板整合教材匯入、診斷測驗、知識圖譜與班級熱點，讓你用同一個介面快速調整學習方向。
+                整合教材解析、Gemini 診斷測驗、知識圖譜與班級熱點，一個介面即時調整學習方向。
               </p>
             </div>
 
@@ -295,12 +295,12 @@ export default function App() {
             <section ref={dashboardRef} id="section-dashboard" className="glass-panel rounded-[32px] p-6 md:p-8">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),320px] lg:items-start">
                 <div>
-                  <p className="section-eyebrow">適應式學習引擎</p>
+                  <p className="section-eyebrow">AI 驅動 · 自適應引擎</p>
                   <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-tight text-white md:text-5xl">
-                    用玻璃擬態介面掌握<span className="gradient-text">課程脈絡、弱點與複習節奏</span>
+                    針對課程脈絡及弱點，<span className="gradient-text">為你打造複習節奏</span>
                   </h1>
                   <p className="mt-4 max-w-3xl text-sm leading-7 text-white/74 md:text-base">
-                    依照教材內容、自適應測驗與圖譜關聯，即時整理出今晚該先讀什麼、哪裡需要補強，以及全班共同卡住的概念。
+                    上傳 PDF 教材，Gemini 自動抽取概念、建立知識圖譜；自適應測驗即時找弱點，配合遺忘曲線生成今晚最值得投資的複習清單。
                   </p>
 
                   <div className="mt-6 grid gap-3 md:grid-cols-3">
@@ -338,8 +338,8 @@ export default function App() {
                 <div className="glass-panel-strong rounded-[30px] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="section-eyebrow">即時狀態</p>
-                      <h2 className="mt-3 text-xl font-semibold text-white">本輪學習摘要</h2>
+                      <p className="section-eyebrow">AI 診斷結果</p>
+                      <h2 className="mt-3 text-xl font-semibold text-white">即時學習快照</h2>
                     </div>
                     <div className="md:hidden">
                       <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />

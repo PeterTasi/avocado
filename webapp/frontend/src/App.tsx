@@ -315,7 +315,7 @@ export default function App() {
 
                   <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr),280px]">
                     <label className="relative block">
-                      <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/55" />
+                      <Search size={16} className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-white/55" />
                       <input
                         type="text"
                         value={search}

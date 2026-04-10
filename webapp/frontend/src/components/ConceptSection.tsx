@@ -16,18 +16,32 @@ export function ConceptSection({ concepts, search }: Props) {
   }, [concepts, search]);
 
   return (
-    <div className="mt-4 max-h-52 space-y-2 overflow-auto rounded-xl border border-slate-800/70 bg-slate-950/50 p-3">
+    <div className="mt-5 rounded-[26px] border border-white/12 bg-[rgba(8,15,32,0.12)] p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">已抽取概念</p>
+          <p className="mt-1 text-xs text-white/62">
+            {search.trim() ? `依「${search.trim()}」篩選結果` : "從教材自動整理的概念與章節摘要"}
+          </p>
+        </div>
+        <span className="rounded-full border border-white/12 bg-white/10 px-3 py-1 text-xs text-white/72">
+          共 {filtered.length} 筆
+        </span>
+      </div>
+
+      <div className="max-h-64 space-y-2 overflow-auto pr-1">
       {filtered.length === 0 ? (
-        <p className="text-xs text-slate-400">目前沒有可顯示的概念。</p>
+        <p className="text-xs text-white/62">目前沒有可顯示的概念。</p>
       ) : (
         filtered.map((item) => (
-          <article key={item.id} className="rounded-lg border border-slate-800/70 bg-slate-900/40 p-3">
-            <p className="text-sm font-medium text-slate-100">{item.name}</p>
-            <p className="text-xs text-indigo-400">{item.chapter}</p>
-            <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+          <article key={item.id} className="rounded-[20px] border border-white/10 bg-white/8 p-3">
+            <p className="text-sm font-medium text-white">{item.name}</p>
+            <p className="text-xs text-cyan-100/80">{item.chapter}</p>
+            <p className="mt-1 text-xs leading-5 text-white/62">{item.description}</p>
           </article>
         ))
       )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,19 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --text-primary: #f8fbff;
+  --text-secondary: rgba(244, 247, 255, 0.78);
+  --text-tertiary: rgba(228, 236, 255, 0.58);
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.09));
+  --glass-bg-strong: linear-gradient(180deg, rgba(13, 21, 45, 0.28), rgba(255, 255, 255, 0.08));
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 28px 80px rgba(9, 14, 30, 0.28);
+}
 
 html,
 body,
@@ -9,13 +22,131 @@ body,
   height: 100%;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: "Outfit", "Noto Sans TC", "PingFang TC", "Segoe UI", sans-serif;
+  font-family: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  color: var(--text-primary);
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 119, 146, 0.34), transparent 24%),
+    radial-gradient(circle at 82% 16%, rgba(74, 144, 226, 0.42), transparent 26%),
+    radial-gradient(circle at 58% 72%, rgba(16, 185, 129, 0.22), transparent 26%),
+    linear-gradient(135deg, #183b7a 0%, #2457b8 34%, #18779d 66%, #ff8a65 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 90%);
+  pointer-events: none;
+}
+
+a {
+  color: inherit;
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.glass-panel-strong {
+  background: var(--glass-bg-strong);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.glass-subpanel {
+  background: rgba(10, 18, 38, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.glass-button {
+  background: rgba(8, 15, 32, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-primary);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.glass-button-primary {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(224, 242, 254, 0.94));
+  color: #13213f;
+  box-shadow: 0 16px 36px rgba(255, 255, 255, 0.18);
+}
+
+.glass-button-primary:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(186, 230, 253, 0.98));
+}
+
+.glass-input {
+  background: rgba(8, 15, 32, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-primary);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-input::placeholder {
+  color: rgba(234, 241, 255, 0.5);
+}
+
+.section-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(236, 242, 255, 0.62);
+}
+
+.floating-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(34px);
+  opacity: 0.72;
+  animation: drift 14s ease-in-out infinite alternate;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #ffffff 0%, #dbeafe 42%, #fde68a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(24px, -18px, 0) scale(1.08);
+  }
 }
 
 ::-webkit-scrollbar {
@@ -24,10 +155,10 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(7, 13, 28, 0.25);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.8);
+  background: rgba(255, 255, 255, 0.24);
   border-radius: 999px;
 }

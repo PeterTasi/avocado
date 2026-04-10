@@ -26,22 +26,22 @@ export function ClassHeatmapPanel() {
   const weak = weakData?.items ?? [];
 
   return (
-    <section className="rounded-2xl border border-slate-800/50 bg-slate-900/60 p-5 backdrop-blur-sm">
+    <section className="glass-panel rounded-[28px] p-6 text-white">
       <div className="mb-4 flex items-center gap-3">
-        <div className="rounded-xl border border-orange-500/20 bg-slate-900 p-2 text-orange-400">
+        <div className="rounded-2xl border border-white/14 bg-white/12 p-2.5 text-orange-100">
           <BarChart2 size={17} />
         </div>
         <div>
-          <h2 className="text-base font-semibold text-slate-100">班級知識熱力圖</h2>
-          <p className="text-xs text-slate-400">彙整全班作答，找出共同弱點</p>
+          <p className="section-eyebrow">班級視角</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">班級知識熱力圖</h2>
+          <p className="text-xs text-white/62">彙整全班作答，找出共同弱點</p>
         </div>
       </div>
 
-      {/* Course selector */}
       {coursesLoading ? (
-        <p className="text-xs text-slate-400">載入課程中...</p>
+        <p className="text-xs text-white/62">載入課程中...</p>
       ) : courses.length === 0 ? (
-        <p className="text-xs text-slate-400">尚未上傳任何課程教材。</p>
+        <p className="text-xs text-white/62">尚未上傳任何課程教材。</p>
       ) : (
         <>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -50,10 +50,10 @@ export function ClassHeatmapPanel() {
                 key={c.id}
                 type="button"
                 onClick={() => setSelectedCourseId(c.id)}
-                className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                className={`rounded-full border px-3 py-1.5 text-xs transition ${
                   activeCourseId === c.id
-                    ? "border-orange-500/60 bg-orange-500/10 text-orange-300 font-semibold"
-                    : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600"
+                    ? "border-white/20 bg-white/18 text-white font-semibold"
+                    : "glass-button text-white/68"
                 }`}
               >
                 {c.subject}
@@ -61,30 +61,28 @@ export function ClassHeatmapPanel() {
             ))}
           </div>
 
-          {/* Weak concepts callout */}
           {weak.length > 0 && (
-            <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
-              <p className="mb-2 text-xs font-semibold text-rose-300">教師建議 — 本週優先加強：</p>
+            <div className="mb-4 rounded-[22px] border border-rose-200/18 bg-rose-200/10 p-3">
+              <p className="mb-2 text-xs font-semibold text-rose-100">教師建議：本週優先加強</p>
               <ul className="space-y-1">
                 {weak.map((w) => (
                   <li key={w.concept_id} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-200">{w.concept_id}</span>
-                    <span className="text-rose-400">錯誤率 {(w.error_rate * 100).toFixed(0)}% · 若補強預估提升 +{(w.estimated_uplift * 100).toFixed(1)}%</span>
+                    <span className="text-white">{w.concept_id}</span>
+                    <span className="text-rose-100/88">錯誤率 {(w.error_rate * 100).toFixed(0)}% · 若補強預估提升 +{(w.estimated_uplift * 100).toFixed(1)}%</span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {/* Heatmap table */}
           {heatmapLoading ? (
-            <p className="text-xs text-slate-400">計算中...</p>
+            <p className="text-xs text-white/62">計算中...</p>
           ) : stats.length === 0 ? (
-            <p className="text-xs text-slate-400">此課程尚無作答資料，請先產生並完成測驗。</p>
+            <p className="text-xs text-white/62">此課程尚無作答資料，請先產生並完成測驗。</p>
           ) : (
-            <div className="max-h-72 overflow-auto rounded-xl border border-slate-800/70 bg-slate-950/50">
+            <div className="max-h-72 overflow-auto rounded-[24px] border border-white/12 bg-[rgba(8,15,32,0.12)]">
               <table className="min-w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-900/90 text-slate-300">
+                <thead className="sticky top-0 bg-[rgba(9,16,34,0.52)] text-white/78 backdrop-blur-xl">
                   <tr>
                     <th className="px-3 py-2">概念</th>
                     <th className="px-3 py-2">班級錯誤率</th>
@@ -94,11 +92,11 @@ export function ClassHeatmapPanel() {
                 </thead>
                 <tbody>
                   {stats.map((row) => (
-                    <tr key={row.concept_id} className="border-t border-slate-800/70">
-                      <td className="px-3 py-2 text-slate-100">{row.concept_name}</td>
+                    <tr key={row.concept_id} className="border-t border-white/10">
+                      <td className="px-3 py-2 text-white">{row.concept_name}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-800">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/12">
                             <div
                               className={`h-full rounded-full ${
                                 row.status === "green"
@@ -123,7 +121,7 @@ export function ClassHeatmapPanel() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-slate-300">{row.sample_count}</td>
+                      <td className="px-3 py-2 text-white/72">{row.sample_count}</td>
                       <td className="px-3 py-2">
                         <StatusDot status={row.status} />
                       </td>

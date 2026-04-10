@@ -59,11 +59,11 @@ export function parseDotGraph(dotSource: string): ParsedGraph {
       const decodedLabel = decodeDotText(labelMatch ? labelMatch[1] : nodeId);
 
       let name = decodedLabel || nodeId;
-      let chapter = "Core Concepts";
+      let chapter = "核心概念";
       const chapterMatch = decodedLabel.match(/^(.*)\n\[(.*)\]$/s);
       if (chapterMatch) {
         name = chapterMatch[1].trim() || nodeId;
-        chapter = chapterMatch[2].trim() || "Core Concepts";
+        chapter = chapterMatch[2].trim() || "核心概念";
       }
 
       nodeMap.set(nodeId, { id: nodeId, name, chapter });
@@ -88,7 +88,7 @@ export function parseDotGraph(dotSource: string): ParsedGraph {
   }
 
   const nodes = Array.from(nodeMap.values());
-  const chapters = Array.from(new Set(nodes.map((n) => n.chapter ?? "Core Concepts")));
+  const chapters = Array.from(new Set(nodes.map((n) => n.chapter ?? "核心概念")));
 
   return { nodes, edges, chapters };
 }
@@ -107,7 +107,7 @@ export function buildGraphLayout(graph: ParsedGraph): GraphLayout {
   for (const chapter of graph.chapters) groupedByChapter.set(chapter, []);
 
   for (const node of graph.nodes) {
-    const chapter = node.chapter ?? "Core Concepts";
+    const chapter = node.chapter ?? "核心概念";
     if (!groupedByChapter.has(chapter)) groupedByChapter.set(chapter, []);
     groupedByChapter.get(chapter)!.push(node);
   }

@@ -34,7 +34,7 @@ export function MetricCardsGrid({ chapterMastery, accuracy, tonight, chartsReady
     const dynamicCards: ModuleCardItem[] = [
       {
         id: "focus-score",
-        name: "Focus Score",
+        name: "專注分數",
         valueLabel: `${focusScore} / 100`,
         progress: focusScore,
         delta: focusScore - 70,
@@ -43,8 +43,8 @@ export function MetricCardsGrid({ chapterMastery, accuracy, tonight, chartsReady
       },
       {
         id: "retention-rate",
-        name: "Retention Rate",
-        valueLabel: `${retention}% retained`,
+        name: "保留率",
+        valueLabel: `${retention}% 已穩定`,
         progress: retention,
         delta: retention - 66,
         icon: Brain,
@@ -57,7 +57,7 @@ export function MetricCardsGrid({ chapterMastery, accuracy, tonight, chartsReady
       const idx = cards.length + 1;
       cards.push({
         id: `fallback-${idx}`,
-        name: `Learning Module ${idx}`,
+        name: `待補資料模組 ${idx}`,
         valueLabel: "等待資料",
         progress: 45 + idx * 5,
         delta: 2 + idx,

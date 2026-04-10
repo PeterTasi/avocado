@@ -14,7 +14,6 @@ interface Props {
   setMaterialFile: (f: File | null) => void;
   concepts: Concept[];
   search: string;
-  setSearch: (s: string) => void;
 }
 
 export function SetupPanel({
@@ -56,39 +55,55 @@ export function SetupPanel({
     ? ingestMaterial.error.message
     : "";
 
-  return (
-    <article className="rounded-2xl border border-slate-800/50 bg-slate-900/60 p-5 backdrop-blur-sm">
-      <h2 className="text-base font-semibold text-slate-100">設定與教材</h2>
-      <p className="mt-1 text-xs text-slate-400">上傳教材後會重建概念圖譜，並清空舊教材的狀態。</p>
+  const templateLabel =
+    templateMode === "generic" ? "通用抽取" : templateMode === "auto" ? "自動偵測" : "線性代數";
 
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+  return (
+    <article className="glass-panel rounded-[28px] p-6 text-white">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="section-eyebrow">教材設定</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">匯入教材與課程配置</h2>
+          <p className="mt-2 text-sm leading-6 text-white/72">
+            上傳 PDF 或 TXT 後，系統會重建概念、知識圖譜與後續複習節奏。新教材會覆寫目前的課程狀態。
+          </p>
+        </div>
+
+        <div className="glass-subpanel rounded-[22px] px-4 py-3 text-right md:min-w-48">
+          <p className="text-xs uppercase tracking-[0.18em] text-white/55">目前配置</p>
+          <p className="mt-2 text-base font-semibold text-white">{templateLabel}</p>
+          <p className="mt-1 text-xs text-white/65">已抽取概念 {concepts.length} 筆</p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm">
-          <span className="text-slate-400">Gemini API 金鑰</span>
+          <span className="text-white/72">Gemini API 金鑰</span>
           <input
             type="password"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
             placeholder="選填金鑰"
-            className="h-10 w-full rounded-xl border border-slate-800/70 bg-slate-950/80 px-3 text-sm outline-none focus:border-indigo-500/60"
+            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
           />
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-slate-400">課程名稱</span>
+          <span className="text-white/72">課程名稱</span>
           <input
             type="text"
             value={courseName}
             onChange={(event) => setCourseName(event.target.value)}
-            className="h-10 w-full rounded-xl border border-slate-800/70 bg-slate-950/80 px-3 text-sm outline-none focus:border-indigo-500/60"
+            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
           />
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-slate-400">課程模板</span>
+          <span className="text-white/72">課程模板</span>
           <select
             value={templateMode}
             onChange={(event) => setTemplateMode(event.target.value)}
-            className="h-10 w-full rounded-xl border border-slate-800/70 bg-slate-950/80 px-3 text-sm outline-none focus:border-indigo-500/60"
+            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
           >
             <option value="generic">通用模式（依講義抽取）</option>
             <option value="linear-algebra">線性代數模板</option>
@@ -97,22 +112,29 @@ export function SetupPanel({
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-slate-400">教材檔案（PDF/TXT）</span>
+          <span className="text-white/72">教材檔案（PDF / TXT）</span>
           <input
             type="file"
             accept=".pdf,.txt"
             onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)}
-            className="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-200"
+            className="block w-full text-xs text-white/68 file:mr-3 file:rounded-xl file:border-0 file:bg-white/18 file:px-4 file:py-2.5 file:text-white"
           />
         </label>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 rounded-[24px] border border-white/12 bg-[rgba(8,15,32,0.12)] px-4 py-3 text-sm text-white/72">
+        <p className="font-medium text-white">目前教材</p>
+        <p className="mt-1 truncate text-xs text-white/62">
+          {materialFile?.name ?? "尚未選擇檔案，可先匯入講義再產生圖譜與測驗。"}
+        </p>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={handleSaveApiKey}
           disabled={saveApiKey.isPending}
-          className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 transition hover:border-indigo-500/40 disabled:opacity-60"
+          className="glass-button rounded-full px-5 py-2.5 text-sm transition disabled:opacity-60"
         >
           {saveApiKey.isPending ? "儲存中..." : "儲存金鑰"}
         </button>
@@ -120,11 +142,11 @@ export function SetupPanel({
           type="button"
           onClick={handleIngest}
           disabled={ingestMaterial.isPending || !materialFile}
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_15px_rgba(99,102,241,0.2)] transition hover:bg-indigo-500 disabled:opacity-60"
+          className="glass-button-primary rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:opacity-60"
         >
           {ingestMaterial.isPending ? "建立中..." : "建立知識圖譜"}
         </button>
-        <span className="text-xs text-slate-400">{status}</span>
+        <span className="text-xs text-white/68">{status}</span>
       </div>
 
       <ConceptSection concepts={concepts} search={search} />

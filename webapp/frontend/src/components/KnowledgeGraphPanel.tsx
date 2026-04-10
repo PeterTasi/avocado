@@ -25,17 +25,20 @@ export function KnowledgeGraphPanel({ dotSource, isLoading }: Props) {
   }, [dotSource]);
 
   return (
-    <article className="rounded-2xl border border-slate-800/50 bg-slate-900/60 p-5 backdrop-blur-sm">
+    <article className="glass-panel rounded-[28px] p-6 text-white">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Network size={16} className="text-indigo-400" />
-          <h2 className="text-base font-semibold text-slate-100">Knowledge Graph</h2>
+          <Network size={16} className="text-cyan-100" />
+          <div>
+            <p className="section-eyebrow">關聯視圖</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">知識圖譜</h2>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setShowRawDot((prev) => !prev)}
-            className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300"
+            className="glass-button rounded-full px-3 py-1.5 text-xs"
           >
             {showRawDot ? "隱藏 DOT" : "顯示 DOT"}
           </button>
@@ -43,31 +46,31 @@ export function KnowledgeGraphPanel({ dotSource, isLoading }: Props) {
             type="button"
             onClick={handleCopy}
             disabled={!dotSource}
-            className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300 disabled:opacity-50"
+            className="glass-button rounded-full px-3 py-1.5 text-xs disabled:opacity-50"
           >
             {copied ? "已複製" : "複製 DOT"}
           </button>
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-white/62">
         <span>節點 {graph.nodes.length}</span>
         <span>關係 {graph.edges.length}</span>
-        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-cyan-400" /> prerequisite</span>
-        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-400" /> progression</span>
-        <span className="inline-flex items-center gap-1 border-l border-slate-700 pl-3"><i className="h-2 w-2 rounded-full bg-pink-400" /> cross:equivalent</span>
-        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-indigo-400" /> cross:generalization</span>
-        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-lime-400" /> cross:analogy</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-cyan-300" /> 先修關係</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-300" /> 進展順序</span>
+        <span className="inline-flex items-center gap-1 border-l border-white/12 pl-3"><i className="h-2 w-2 rounded-full bg-pink-300" /> 跨課等價</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-indigo-300" /> 跨課泛化</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-lime-300" /> 跨課類比</span>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-slate-400">載入圖譜中...</p>
+        <p className="text-xs text-white/62">載入圖譜中...</p>
       ) : (
         <div className="space-y-3">
           <GraphCanvas graph={graph} />
           {showRawDot ? (
-            <pre className="max-h-64 overflow-auto rounded-lg border border-slate-800/70 bg-slate-950/70 p-3 text-[11px] leading-relaxed text-slate-300">
-              {dotSource || 'digraph ConceptGraph { empty [label="No concepts yet"]; }'}
+            <pre className="max-h-64 overflow-auto rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.16)] p-3 text-[11px] leading-relaxed text-white/78">
+              {dotSource || 'digraph ConceptGraph { empty [label="尚無概念"]; }'}
             </pre>
           ) : null}
         </div>

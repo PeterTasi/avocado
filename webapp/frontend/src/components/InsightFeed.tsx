@@ -14,14 +14,15 @@ interface Props {
 
 export function InsightFeed({ insights }: Props) {
   return (
-    <section className="rounded-2xl border border-slate-800/50 bg-slate-900/60 p-5 backdrop-blur-sm shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+    <section className="glass-panel rounded-[28px] p-6 text-white shadow-[0_20px_50px_rgba(15,23,42,0.16)]">
       <div className="mb-4 flex items-center gap-3">
-        <div className="rounded-xl border border-indigo-500/20 bg-slate-900 p-2 text-indigo-400">
+        <div className="rounded-2xl border border-white/14 bg-white/12 p-2.5 text-white">
           <Sparkles size={17} />
         </div>
         <div>
-          <h2 className="text-base font-semibold text-slate-100">AI Insight Feed</h2>
-          <p className="text-xs text-slate-400">由你的作答紀錄與概念圖譜即時生成</p>
+          <p className="section-eyebrow">AI 洞察</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">學習動態摘要</h2>
+          <p className="text-xs text-white/62">由作答紀錄、複習節奏與概念圖譜即時生成</p>
         </div>
       </div>
 
@@ -29,20 +30,20 @@ export function InsightFeed({ insights }: Props) {
         {insights.map((item) => (
           <article
             key={item.id}
-            className="rounded-xl border border-slate-800/70 bg-slate-950/60 p-4 transition-all duration-300 hover:border-indigo-500/40"
+            className="rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.14)] p-4 transition-all duration-300 hover:bg-white/12"
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium text-slate-100">{item.title}</h3>
+              <h3 className="text-sm font-medium text-white">{item.title}</h3>
               <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  item.level === "high" ? "bg-rose-500/15 text-rose-300" : "bg-emerald-500/15 text-emerald-300"
+                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ${
+                  item.level === "high" ? "bg-rose-200/16 text-rose-100" : "bg-emerald-200/16 text-emerald-100"
                 }`}
               >
-                {item.level === "high" ? "High" : "Medium"}
+                {item.level === "high" ? "高優先" : "中優先"}
               </span>
             </div>
-            <p className="text-sm text-slate-400">{item.description}</p>
-            <p className="mt-2 text-xs font-medium text-indigo-400">{item.impact}</p>
+            <p className="text-sm leading-6 text-white/68">{item.description}</p>
+            <p className="mt-2 text-xs font-medium text-cyan-100/82">{item.impact}</p>
           </article>
         ))}
       </div>

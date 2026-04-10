@@ -15,28 +15,28 @@ export function GraphCanvas({ graph }: Props) {
 
   if (!graph.nodes.length) {
     return (
-      <div className="rounded-lg border border-slate-800/70 bg-slate-950/70 p-4 text-xs text-slate-400">
+      <div className="rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.16)] p-4 text-xs text-white/62">
         目前沒有可視化的圖譜節點。
       </div>
     );
   }
 
   return (
-    <div className="overflow-auto rounded-xl border border-slate-800/70 bg-slate-950/70">
+    <div className="overflow-auto rounded-[24px] border border-white/12 bg-[rgba(8,15,32,0.16)]">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
-        className="h-[360px] w-full min-w-[680px]"
+        className="h-[380px] w-full min-w-[700px]"
         role="img"
-        aria-label="Knowledge graph visualization"
+        aria-label="知識圖譜視覺化"
       >
         <defs>
           <marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#dbeafe" />
           </marker>
         </defs>
 
         {Array.from(layout.groupedByChapter.entries()).map(([chapter], index) => (
-          <text key={`chapter-${chapter}`} x={28 + index * (layout.nodeWidth + 86)} y={28} fill="#94a3b8" fontSize="11" letterSpacing="1.1">
+          <text key={`chapter-${chapter}`} x={28 + index * (layout.nodeWidth + 86)} y={28} fill="#eff6ff" fontSize="11" letterSpacing="1.1">
             {chapter}
           </text>
         ))}
@@ -80,9 +80,9 @@ export function GraphCanvas({ graph }: Props) {
           if (!pos) return null;
           return (
             <g key={node.id} transform={`translate(${pos.x},${pos.y})`}>
-              <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="12" fill="#0f172a" stroke="#334155" />
-              <text x="12" y="28" fill="#e2e8f0" fontSize="12" fontWeight="600">{shortLabel(node.name, 32)}</text>
-              <text x="12" y="48" fill="#94a3b8" fontSize="11">{shortLabel(node.chapter, 28)}</text>
+              <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="16" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.22)" />
+              <text x="12" y="28" fill="#ffffff" fontSize="12" fontWeight="600">{shortLabel(node.name, 32)}</text>
+              <text x="12" y="48" fill="#dbeafe" fontSize="11">{shortLabel(node.chapter, 28)}</text>
               <title>{`${node.name} [${node.chapter}]`}</title>
             </g>
           );

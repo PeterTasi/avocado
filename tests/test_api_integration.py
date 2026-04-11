@@ -17,6 +17,19 @@ from adaptlearn.pipeline import AdaptLearnService
 from webapp import main as web_main
 
 
+class _FakeVisionGemini:
+    def __init__(self, transcription: str, records: list[dict[str, object]]) -> None:
+        self.enabled = True
+        self.transcription = transcription
+        self.records = records
+
+    def transcribe_images(self, images, course_name: str = "") -> str:
+        return self.transcription
+
+    def extract_concepts(self, text: str, course_name: str, max_concepts: int = 24) -> list[dict[str, object]]:
+        return self.records
+
+
 class AdaptLearnApiIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tempdir = tempfile.TemporaryDirectory()
@@ -111,6 +124,44 @@ class AdaptLearnApiIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         detail = response.json().get("detail", "")
         self.assertIn("幾乎沒有可讀文字", detail)
+
+    def test_image_upload_uses_gemini_ocr_when_available(self) -> None:
+        self._service.gemini = _FakeVisionGemini(
+            transcription=(
+                "Breadth first search uses a queue. "
+                "Depth first search uses a stack or recursion."
+            ),
+            records=[
+                {
+                    "name": "Breadth First Search",
+                    "chapter": "Graph Traversal",
+                    "description": "Queue-based graph traversal.",
+                    "prerequisites": [],
+                },
+                {
+                    "name": "Depth First Search",
+                    "chapter": "Graph Traversal",
+                    "description": "Stack-based graph traversal.",
+                    "prerequisites": ["Breadth First Search"],
+                },
+            ],
+        )
+
+        response = self.client.post(
+            "/api/material/ingest",
+            files={"file": ("handwritten.png", b"fake-image-bytes", "image/png")},
+            data={
+                "course_name": "Algorithms",
+                "template_mode": "generic",
+                "api_key": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get("ingest_mode"), "ocr-transcription")
+        self.assertTrue(bool(payload.get("ocr_used")))
+        self.assertEqual(payload.get("source_type"), "image-ocr")
 
 
 if __name__ == "__main__":

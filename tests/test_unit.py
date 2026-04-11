@@ -229,6 +229,50 @@ class TestAdaptLearnService:
             )
         assert "幾乎沒有可讀文字" in str(exc_info.value)
 
+    def test_image_ingest_requires_ocr_provider(self, service):
+        with pytest.raises(ValueError) as exc_info:
+            service.ingest_material(
+                file_name="handwritten.png",
+                file_bytes=b"fake-image-bytes",
+                course_name="General",
+                template_mode="generic",
+            )
+        assert "Gemini API 金鑰" in str(exc_info.value)
+
+    def test_image_ingest_uses_gemini_ocr(self, service):
+        service.gemini = _FakeVisionGemini(
+            transcription=(
+                "Matrix multiplication combines rows and columns. "
+                "Eigenvalues satisfy det(A - lambda I) = 0."
+            ),
+            records=[
+                {
+                    "name": "Matrix Multiplication",
+                    "chapter": "Core Concepts",
+                    "description": "Combine rows and columns to produce a new matrix.",
+                    "prerequisites": [],
+                },
+                {
+                    "name": "Eigenvalues",
+                    "chapter": "Core Concepts",
+                    "description": "Scalar values satisfying det(A - lambda I) = 0.",
+                    "prerequisites": ["Matrix Multiplication"],
+                },
+            ],
+        )
+
+        result = service.ingest_material(
+            file_name="handwritten.png",
+            file_bytes=b"fake-image-bytes",
+            course_name="Linear Algebra",
+            template_mode="generic",
+        )
+
+        assert result["ingest_mode"] == "ocr-transcription"
+        assert result["ocr_used"] is True
+        assert result["source_type"] == "image-ocr"
+        assert result["concept_count"] >= 2
+
     def test_list_concepts_after_ingest(self, service):
         text = (
             "Breadth breadth first search BFS BFS uses a queue queue queue data structure. "
@@ -279,6 +323,19 @@ class TestAdaptLearnService:
 class _FakeGeminiExtractor:
     def __init__(self, records):
         self.records = records
+
+    def extract_concepts(self, text, course_name, max_concepts=24):
+        return self.records
+
+
+class _FakeVisionGemini:
+    def __init__(self, transcription, records):
+        self.enabled = True
+        self.transcription = transcription
+        self.records = records
+
+    def transcribe_images(self, images, course_name=""):
+        return self.transcription
 
     def extract_concepts(self, text, course_name, max_concepts=24):
         return self.records

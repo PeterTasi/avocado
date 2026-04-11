@@ -101,7 +101,7 @@ Then open `http://localhost:5173`.
 
 ## Workflow
 
-1. Upload a PDF/TXT material and build the concept graph.
+1. Upload a PDF/TXT/image material and build the concept graph.
 2. Generate adaptive diagnostics for weak concepts.
 3. Submit answers to get AI grading + feedback.
 4. Recalculate the review schedule to get a prioritized tonight plan.
@@ -112,11 +112,12 @@ Then open `http://localhost:5173`.
 - `linear-algebra`: explicitly enable linear algebra template fallback.
 - `auto`: detect likely linear algebra course names before using template.
 
-If a PDF has almost no selectable text (scanned handwriting), use OCR first or choose an explicit template.
+If a PDF has almost no selectable text (scanned handwriting), the app can try Gemini vision transcription when a Gemini API key is configured. Otherwise, use OCR first or choose an explicit template.
 
 ## Notes
 
 - If Gemini key is empty, the app still runs with local heuristic fallback behavior.
+- Handwritten images and scanned PDFs require Gemini vision transcription or an external OCR step before ingest.
 - Data is persisted in `data/adaptlearn.db` and Chroma storage under `data/chroma/`.
 
 ## Tests

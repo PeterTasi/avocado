@@ -65,7 +65,7 @@ export function SetupPanel({
           <p className="section-eyebrow">教材設定</p>
           <h2 className="mt-2 text-xl font-semibold text-white">匯入教材與課程配置</h2>
           <p className="mt-2 text-sm leading-6 text-white/72">
-            上傳 PDF 或 TXT 後，系統會重建概念、知識圖譜與後續複習節奏。新教材會覆寫目前的課程狀態。
+            上傳 PDF、TXT 或圖片後，系統會重建概念、知識圖譜與後續複習節奏。手寫/掃描筆記會優先使用 Gemini 視覺轉寫。新教材會覆寫目前的課程狀態。
           </p>
         </div>
 
@@ -112,10 +112,10 @@ export function SetupPanel({
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-white/72">教材檔案（PDF / TXT）</span>
+          <span className="text-white/72">教材檔案（PDF / TXT / 圖片）</span>
           <input
             type="file"
-            accept=".pdf,.txt"
+            accept=".pdf,.txt,image/*,.tif,.tiff"
             onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)}
             className="block w-full text-xs text-white/68 file:mr-3 file:rounded-xl file:border-0 file:bg-white/18 file:px-4 file:py-2.5 file:text-white"
           />
@@ -126,6 +126,9 @@ export function SetupPanel({
         <p className="font-medium text-white">目前教材</p>
         <p className="mt-1 truncate text-xs text-white/62">
           {materialFile?.name ?? "尚未選擇檔案，可先匯入講義再產生圖譜與測驗。"}
+        </p>
+        <p className="mt-2 text-xs text-white/55">
+          手寫圖片與掃描 PDF 需要可用的 Gemini API 金鑰，否則請先做 OCR。
         </p>
       </div>
 

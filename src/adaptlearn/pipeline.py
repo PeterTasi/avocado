@@ -14,7 +14,7 @@ from .domain_templates import get_seed_concepts
 from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
 from .models import Attempt, Concept, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
-from .pdf_parser import extract_text
+from .pdf_parser import extract_material_text
 from .quiz_engine import build_questions_for_concepts
 from .review_scheduler import build_review_plan
 from .vector_store import ConceptVectorStore
@@ -50,7 +50,13 @@ class AdaptLearnService:
         course_name: str,
         template_mode: str = "generic",
     ) -> dict[str, object]:
-        material_text = extract_text(file_name=file_name, file_bytes=file_bytes)
+        extracted_material = extract_material_text(
+            file_name=file_name,
+            file_bytes=file_bytes,
+            gemini_client=self.gemini,
+            ocr_context=course_name,
+        )
+        material_text = extracted_material.text
         text_chars = len(material_text.strip())
         low_text_mode = text_chars < 40
         seed_concepts = get_seed_concepts(course_name=course_name, template_mode=template_mode)
@@ -64,7 +70,8 @@ class AdaptLearnService:
             else:
                 raise ValueError(
                     "這份檔案幾乎沒有可讀文字。"
-                    "請先把 PDF 做 OCR（可搜尋文字），或明確選擇課程模板。"
+                    "若是手寫/掃描筆記，請先提供 Gemini API 金鑰讓系統轉寫，"
+                    "或先把 PDF 做 OCR（可搜尋文字），或明確選擇課程模板。"
                 )
         else:
             concepts, edges = build_knowledge_graph(
@@ -75,12 +82,13 @@ class AdaptLearnService:
             if used_seed_template:
                 concepts = _merge_concept_sets(concepts, seed_concepts)
                 edges = _build_edges_from_concepts(concepts)
-            ingest_mode = "text-extraction"
+            ingest_mode = "ocr-transcription" if extracted_material.ocr_used else "text-extraction"
 
         if not concepts:
             raise ValueError(
                 "無法從這份檔案抽取概念。"
-                "若是掃描/圖片筆記，請先做 OCR，或改用明確模板。"
+                "若是掃描/圖片筆記，請先做 OCR，或提供 Gemini API 金鑰後再試，"
+                "或改用明確模板。"
             )
 
         # Create course record
@@ -121,6 +129,8 @@ class AdaptLearnService:
             "cross_course_links": len(cross_edges),
             "material_chars": text_chars,
             "low_text_mode": low_text_mode,
+            "ocr_used": extracted_material.ocr_used,
+            "source_type": extracted_material.source_type,
             "used_seed_template": used_seed_template,
             "template_mode": template_mode,
             "ingest_mode": ingest_mode,

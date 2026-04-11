@@ -184,7 +184,7 @@ export default function App() {
       key: "setup",
       step: "Step 1",
       title: "匯入教材",
-      description: "上傳 PDF / TXT，建立概念、章節與課程基礎。",
+      description: "上傳 PDF / TXT / 圖片，建立概念、章節與課程基礎。",
       status: selectedFileLabel === "尚未選擇教材檔案" ? `${concepts.length} 個概念已同步` : selectedFileLabel,
       icon: Activity,
     },

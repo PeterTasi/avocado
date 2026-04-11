@@ -8,9 +8,11 @@ from typing import Any
 try:
     from google import genai
     from google.api_core import exceptions as google_exceptions
+    from google.genai import types as genai_types
 except Exception:  # pragma: no cover
     genai = None  # type: ignore[assignment]
     google_exceptions = None  # type: ignore[assignment]
+    genai_types = None  # type: ignore[assignment]
 
 logger = logging.getLogger("adaptlearn.gemini")
 
@@ -37,7 +39,7 @@ class GeminiClient:
         if self.enabled:
             self._client = genai.Client(api_key=self.api_key)
 
-    def _generate_content(self, prompt: str) -> str:
+    def _generate_content(self, contents: Any) -> str:
         if not self.enabled or not self._client:
             return ""
 
@@ -46,7 +48,7 @@ class GeminiClient:
             try:
                 response = self._client.models.generate_content(
                     model=candidate_model,
-                    contents=prompt,
+                    contents=contents,
                 )
             except _API_ERRORS as exc:
                 logger.warning("Gemini API error (model=%s): %s", candidate_model, exc)
@@ -65,6 +67,47 @@ class GeminiClient:
         self.last_error = str(last_error) if last_error else "Gemini returned no response."
         logger.warning("All Gemini model candidates failed: %s", self.last_error)
         return ""
+
+    def transcribe_images(
+        self,
+        images: list[dict[str, Any]],
+        course_name: str = "",
+    ) -> str:
+        if not self.enabled or not self._client or genai_types is None or not images:
+            return ""
+
+        transcripts: list[str] = []
+        context = course_name.strip() or "General study notes"
+
+        for index, image in enumerate(images, start=1):
+            data = image.get("data")
+            mime_type = str(image.get("mime_type", "image/png")).strip() or "image/png"
+            if not isinstance(data, bytes) or not data:
+                continue
+
+            label = str(image.get("label", f"page {index}")).strip() or f"page {index}"
+            prompt = (
+                "You are transcribing a page of study notes.\n"
+                "Return plain text only.\n"
+                "Rules:\n"
+                "- Transcribe all legible text faithfully in reading order.\n"
+                "- Preserve line breaks, bullets, short tables, and formulas when possible.\n"
+                "- Keep Chinese, English, numbers, and symbols as written.\n"
+                "- Do not summarize, explain, or add headings.\n"
+                "- If a short span is unreadable, write [illegible].\n"
+                f"Course context: {context}.\n"
+                f"Page label: {label}."
+            )
+            parts = [
+                genai_types.Part.from_text(text=prompt),
+                genai_types.Part.from_bytes(data=data, mime_type=mime_type),
+            ]
+            raw_text = self._generate_content(genai_types.UserContent(parts=parts))
+            cleaned = _clean_transcription_text(raw_text)
+            if cleaned:
+                transcripts.append(cleaned)
+
+        return "\n\n".join(transcripts).strip()
 
     def extract_concepts(
         self,
@@ -277,6 +320,13 @@ def _safe_text(response: Any) -> str:
             return "\n".join(parts).strip()
 
     return ""
+
+
+def _clean_transcription_text(raw: str) -> str:
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```[A-Za-z0-9_-]*\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
 
 
 def _parse_json_payload(raw: str) -> Any:

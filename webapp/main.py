@@ -341,3 +341,10 @@ def class_heatmap(course_id: str) -> dict[str, Any]:
 def class_weak_concepts(course_id: str, top_n: int = 3) -> dict[str, Any]:
     top_n = max(1, min(top_n, 10))
     return {"items": _get_service().get_class_weak_concepts(course_id, top_n=top_n)}
+
+
+@app.get("/{full_path:path}")
+def spa_entry(full_path: str) -> FileResponse:
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(STATIC_DIR / "index.html")

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -43,6 +43,20 @@ const VIEW_ITEMS = [
 
 type ViewKey = (typeof VIEW_ITEMS)[number]["key"];
 
+const VIEW_PATHS: Record<ViewKey, string> = {
+  home: "/",
+  setup: "/setup",
+  quiz: "/quiz",
+  review: "/review",
+  graph: "/graph",
+};
+
+function getViewFromPathname(pathname: string): ViewKey {
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  const matchingEntry = Object.entries(VIEW_PATHS).find(([, path]) => path === normalizedPath);
+  return (matchingEntry?.[0] as ViewKey | undefined) ?? "home";
+}
+
 const PAGE_META: Record<Exclude<ViewKey, "home">, { title: string; description: string }> = {
   setup: {
     title: "教材與課程設定",
@@ -80,7 +94,12 @@ const FALLBACK_INSIGHTS: Insight[] = [
 ];
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ViewKey>("home");
+  const [activeView, setActiveView] = useState<ViewKey>(() => {
+    if (typeof window === "undefined") {
+      return "home";
+    }
+    return getViewFromPathname(window.location.pathname);
+  });
   const [search, setSearch] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [courseName, setCourseName] = useState("通用課程");
@@ -197,7 +216,38 @@ export default function App() {
 
   const navigateTo = useCallback((view: ViewKey) => {
     setActiveView(view);
+    if (typeof window !== "undefined") {
+      const targetPath = VIEW_PATHS[view];
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, "", targetPath);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const syncViewFromLocation = () => {
+      setActiveView(getViewFromPathname(window.location.pathname));
+    };
+
+    window.addEventListener("popstate", syncViewFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncViewFromLocation);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.title = activeView === "home"
+      ? "AdaptLearn 自適應學習儀表板"
+      : `AdaptLearn｜${VIEW_ITEMS.find((item) => item.key === activeView)?.label ?? "儀表板"}`;
+  }, [activeView]);
 
   const pageMeta = activeView === "home" ? null : PAGE_META[activeView];
 

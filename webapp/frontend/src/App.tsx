@@ -258,7 +258,7 @@ export default function App() {
           <div className="glass-subpanel rounded-[26px] p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-white">先上傳教材，再讓系統建立知識結構</p>
+                      <p className="mt-2 text-sm leading-6 text-white/72">{runtimeHint}</p>
                 <p className="mt-1 text-xs text-white/65">這裡是整個流程的起點，完成後其他頁面資料才會完整。</p>
               </div>
               <label className="relative block md:w-[320px]">
@@ -442,10 +442,10 @@ export default function App() {
                     key={item.key}
                     type="button"
                     onClick={() => navigateTo(item.key)}
-                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
+                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${
                       activeView === item.key
-                        ? "bg-white/22 text-white shadow-[0_10px_28px_rgba(15,23,42,0.16)]"
-                        : "glass-button text-white/78"
+                        ? "border-white/16 bg-white/10 text-white shadow-[0_10px_28px_rgba(15,23,42,0.16)]"
+                        : "glass-button border-white/10 text-white/72"
                     }`}
                   >
                     <Icon size={15} />
@@ -459,7 +459,7 @@ export default function App() {
               <div className="hidden md:block">
                 <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
               </div>
-              <div className="glass-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/85">
+              <div className="glass-button inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white/85">
                 <UserCircle2 size={17} className="text-white/70" />
                 <span>學生模式</span>
               </div>
@@ -469,69 +469,126 @@ export default function App() {
 
         <main className="mt-6">
           {activeView === "home" ? (
-            <section className="glass-panel rounded-[36px] p-6 md:p-8 xl:min-h-[calc(100vh-9.5rem)]">
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr),minmax(360px,0.95fr)]">
-                <div className="flex flex-col justify-between gap-6">
+            <section className="demo-home-shell glass-panel overflow-hidden rounded-[36px] p-6 md:p-8 xl:min-h-[calc(100vh-8.75rem)]">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.06fr),minmax(420px,0.94fr)] xl:items-stretch">
+                <div className="flex flex-col justify-between gap-8">
                   <div>
-                    <p className="section-eyebrow">一頁看懂 AdaptLearn</p>
-                    <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-tight text-white md:text-5xl">
-                      把教材變成<span className="gradient-text">測驗、複習計畫與知識圖譜</span>
+                    <div className="demo-badge inline-flex items-center gap-2">
+                      <Sparkles size={14} className="text-amber-300" />
+                      <span>Competition Demo · AI Learning Copilot</span>
+                    </div>
+                    <p className="section-eyebrow mt-6">像產品首頁，不像管理後台</p>
+                    <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.04] text-white md:text-6xl">
+                      用一個畫面說清楚<span className="gradient-text">教材如何變成測驗、複習與知識圖譜</span>
                     </h1>
-                    <p className="mt-4 max-w-3xl text-sm leading-7 text-white/74 md:text-base">
-                      這個系統只做四件事：上傳教材、找出弱點、安排複習、看懂概念關聯。從右側任一按鈕進去，你就能直接操作對應功能。
+                    <p className="mt-5 max-w-2xl text-sm leading-8 text-white/70 md:text-base">
+                      AdaptLearn 把教材解析、弱點診斷與複習策略壓成一條可展示的學習流程，讓評審不用往下捲很多頁，就能理解產品價值與操作順序。
                     </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("setup")}
+                      className="demo-primary-button inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
+                    >
+                      <Activity size={16} />
+                      <span>開始匯入教材</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("graph")}
+                      className="demo-secondary-button inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
+                    >
+                      <Network size={16} />
+                      <span>直接看知識圖譜</span>
+                    </button>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-3">
                     {overviewCards.map((card) => (
-                      <div key={card.label} className="glass-subpanel rounded-[24px] p-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-white/55">{card.label}</p>
+                      <div key={card.label} className="demo-stat-card glass-subpanel rounded-[24px] p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-white/48">{card.label}</p>
                         <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
-                        <p className="mt-2 text-xs leading-5 text-white/65">{card.hint}</p>
+                        <p className="mt-2 text-xs leading-5 text-white/62">{card.hint}</p>
                       </div>
                     ))}
                   </div>
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),280px]">
-                    <div className="glass-subpanel rounded-[24px] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-white/55">系統現在在做什麼</p>
-                      <p className="mt-3 text-lg font-semibold text-white">{runtimeLabel}</p>
-                      <p className="mt-2 text-sm leading-6 text-white/72">{runtimeHint}</p>
-                    </div>
-                    <div className="glass-subpanel rounded-[24px] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-white/55">下一步建議</p>
-                      <p className="mt-3 text-sm leading-6 text-white/78">
-                        {reviewItems.length > 0
-                          ? `先處理 ${reviewItems[0]?.concept_name ?? "高優先概念"}，再進入測驗頁驗證理解。`
-                          : "先進入教材頁上傳講義，後面三個頁面就會自動開始有內容。"}
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {homeActions.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => navigateTo(item.key)}
-                        className="glass-panel-strong group flex min-h-[200px] flex-col rounded-[30px] p-5 text-left transition hover:-translate-y-1 hover:bg-white/14"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="rounded-2xl border border-white/14 bg-white/12 p-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)]">
-                            <Icon size={18} />
-                          </div>
-                          <ArrowRight size={18} className="text-white/60 transition group-hover:translate-x-1" />
+                <div className="demo-preview glass-panel-strong rounded-[32px] p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-white/45">Product Preview</p>
+                      <h2 className="mt-3 text-2xl font-semibold text-white">評審 15 秒可理解的操作流程</h2>
+                    </div>
+                    <div className="hidden sm:block">
+                      <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.12fr),minmax(180px,0.88fr)]">
+                    <div className="glass-subpanel rounded-[24px] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-white/45">核心承諾</p>
+                      <p className="mt-3 text-lg font-semibold leading-8 text-white">
+                        上傳教材後，系統會自動建立概念、生成題目，並安排下一輪最值得讀的複習節奏。
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="demo-chip">教材抽取</span>
+                        <span className="demo-chip">弱點診斷</span>
+                        <span className="demo-chip">SM-2 排程</span>
+                        <span className="demo-chip">Graph 視覺化</span>
+                      </div>
+                    </div>
+
+                    <div className="glass-subpanel rounded-[24px] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-white/45">即時資訊</p>
+                      <div className="mt-4 space-y-3 text-sm text-white/74">
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">系統模式</p>
+                          <p className="mt-2 font-semibold text-white">{runtimeLabel}</p>
+                          <p className="mt-2 text-xs leading-5 text-white/58">{runtimeHint}</p>
                         </div>
-                        <p className="mt-5 text-xs uppercase tracking-[0.18em] text-white/55">{item.step}</p>
-                        <h2 className="mt-2 text-xl font-semibold text-white">{item.title}</h2>
-                        <p className="mt-2 text-sm leading-6 text-white/72">{item.description}</p>
-                        <p className="mt-auto pt-5 text-xs text-cyan-100/82">{item.status}</p>
-                      </button>
-                    );
-                  })}
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">目前課程</p>
+                          <p className="mt-2 font-semibold text-white">{activeCourseName}</p>
+                        </div>
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">下一步</p>
+                          <p className="mt-2 leading-6 text-white/74">
+                            {reviewItems.length > 0
+                              ? `先處理 ${reviewItems[0]?.concept_name ?? "高優先概念"}`
+                              : "先進入教材頁上傳講義"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {homeActions.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => navigateTo(item.key)}
+                          className="demo-action-card group rounded-[24px] p-4 text-left transition"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="rounded-2xl border border-white/14 bg-white/[0.06] p-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)]">
+                              <Icon size={18} />
+                            </div>
+                            <ArrowRight size={18} className="text-white/45 transition group-hover:translate-x-1 group-hover:text-white/72" />
+                          </div>
+                          <p className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/42">{item.step}</p>
+                          <h3 className="mt-2 text-lg font-semibold text-white">{item.title}</h3>
+                          <p className="mt-2 text-sm leading-6 text-white/64">{item.description}</p>
+                          <p className="mt-4 text-xs text-cyan-100/78">{item.status}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </section>
@@ -542,7 +599,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigateTo("home")}
-                    className="glass-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/82"
+                    className="glass-button inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white/82"
                   >
                     <ChevronLeft size={16} />
                     <span>回首頁</span>

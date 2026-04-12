@@ -404,7 +404,7 @@ export default function App() {
     return (
       <div className="space-y-6">
         <ErrorBoundary>
-          <KnowledgeGraphPanel dotSource={knowledgeGraphDot} isLoading={graphLoading} />
+          <KnowledgeGraphPanel dotSource={knowledgeGraphDot} isLoading={graphLoading} masteryItems={conceptMastery} />
         </ErrorBoundary>
         <ErrorBoundary>
           <ClassHeatmapPanel />

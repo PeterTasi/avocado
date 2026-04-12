@@ -72,6 +72,12 @@ cp .env.example .env
 
 Then set your `GEMINI_API_KEY` in `.env`.
 
+If you expect long scanned PDFs, you can also raise the OCR page cap in `.env`:
+
+```bash
+MAX_OCR_PAGES=24
+```
+
 4. Build frontend assets.
 
 ```bash
@@ -118,6 +124,7 @@ If a PDF has almost no selectable text (scanned handwriting), the app can try Ge
 
 - If Gemini key is empty, the app still runs with local heuristic fallback behavior.
 - Handwritten images and scanned PDFs require Gemini vision transcription or an external OCR step before ingest.
+- Scanned-PDF OCR page cap is configurable with `MAX_OCR_PAGES` in `.env`.
 - Data is persisted in `data/adaptlearn.db` and Chroma storage under `data/chroma/`.
 
 ## Tests

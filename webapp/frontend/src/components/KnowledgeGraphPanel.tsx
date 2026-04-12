@@ -1,14 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { Network } from "lucide-react";
 import { parseDotGraph } from "../utils/graphUtils";
-import { GraphCanvas } from "./GraphCanvas";
+import { ForceGraphCanvas, MasteryLegend } from "./ForceGraphCanvas";
+import type { ConceptMastery } from "../hooks/useApi";
 
 interface Props {
   dotSource: string;
   isLoading: boolean;
+  masteryItems?: ConceptMastery[];
 }
 
-export function KnowledgeGraphPanel({ dotSource, isLoading }: Props) {
+export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [] }: Props) {
   const [copied, setCopied] = useState(false);
   const [showRawDot, setShowRawDot] = useState(false);
   const graph = useMemo(() => parseDotGraph(dotSource), [dotSource]);
@@ -67,7 +69,8 @@ export function KnowledgeGraphPanel({ dotSource, isLoading }: Props) {
         <p className="text-xs text-white/62">載入圖譜中...</p>
       ) : (
         <div className="space-y-3">
-          <GraphCanvas graph={graph} />
+          <ForceGraphCanvas graph={graph} masteryItems={masteryItems} />
+          <MasteryLegend />
           {showRawDot ? (
             <pre className="max-h-64 overflow-auto rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.16)] p-3 text-[11px] leading-relaxed text-white/78">
               {dotSource || 'digraph ConceptGraph { empty [label="尚無概念"]; }'}

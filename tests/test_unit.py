@@ -273,6 +273,47 @@ class TestAdaptLearnService:
         assert result["source_type"] == "image-ocr"
         assert result["concept_count"] >= 2
 
+    def test_scanned_pdf_uses_configurable_ocr_page_limit(self, temp_dir):
+        import fitz
+
+        settings = Settings(
+            database_path=temp_dir / "test_limit.db",
+            chroma_path=temp_dir / "chroma-limit",
+            gemini_api_key="",
+            gemini_model="gemini-flash-latest",
+            max_ocr_pages=1,
+        )
+        service = AdaptLearnService(settings=settings, api_key="")
+        service.gemini = _FakeVisionGemini(
+            transcription="matrix multiplication eigenvalues",
+            records=[
+                {
+                    "name": "Matrix Multiplication",
+                    "chapter": "Core Concepts",
+                    "description": "Combine rows and columns to produce a new matrix.",
+                    "prerequisites": [],
+                }
+            ],
+        )
+
+        doc = fitz.open()
+        doc.new_page()
+        doc.new_page()
+        pdf_bytes = doc.tobytes()
+        doc.close()
+
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                service.ingest_material(
+                    file_name="scan.pdf",
+                    file_bytes=pdf_bytes,
+                    course_name="Linear Algebra",
+                    template_mode="generic",
+                )
+            assert "上限 1 頁" in str(exc_info.value)
+        finally:
+            service.close()
+
     def test_list_concepts_after_ingest(self, service):
         text = (
             "Breadth breadth first search BFS BFS uses a queue queue queue data structure. "

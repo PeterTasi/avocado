@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+from fsrs import Card, Rating, Scheduler, State
 
 from .models import Attempt, Concept, ReviewItem
 
+# One shared scheduler instance using default FSRS-5 parameters.
+_SCHEDULER = Scheduler()
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def build_review_plan(
     concepts: list[Concept],
@@ -13,6 +20,7 @@ def build_review_plan(
 ) -> list[ReviewItem]:
     if now is None:
         now = datetime.now()
+    now_utc = _to_utc(now)
 
     attempts_by_concept: dict[str, list[Attempt]] = defaultdict(list)
     for attempt in attempts:
@@ -20,14 +28,23 @@ def build_review_plan(
 
     review_items: list[ReviewItem] = []
     for concept in concepts:
-        history = sorted(attempts_by_concept.get(concept.id, []), key=lambda item: item.created_at)
-        priority, interval_hours, reason = _score_concept(history, now)
+        history = sorted(
+            attempts_by_concept.get(concept.id, []),
+            key=lambda a: a.created_at,
+        )
+        card, retrievability, reason = _build_fsrs_card(history, now_utc)
+
+        # priority = how urgently the concept needs review (0 = fresh, 1 = forgotten)
+        priority = round(min(1.0, 1.0 - retrievability), 4)
+        # strip timezone so ReviewItem remains naive (compatible with existing DB layer)
+        next_review_at = card.due.replace(tzinfo=None)
+
         review_items.append(
             ReviewItem(
                 concept_id=concept.id,
                 concept_name=concept.name,
                 priority=priority,
-                next_review_at=now + timedelta(hours=interval_hours),
+                next_review_at=next_review_at,
                 suggested_slot=_suggest_slot(priority),
                 reason=reason,
             )
@@ -37,48 +54,62 @@ def build_review_plan(
     return review_items
 
 
-def _score_concept(history: list[Attempt], now: datetime) -> tuple[float, int, str]:
+# ── FSRS core ─────────────────────────────────────────────────────────────────
+
+def _build_fsrs_card(
+    history: list[Attempt],
+    now_utc: datetime,
+) -> tuple[Card, float, str]:
+    """
+    Replay the attempt history through FSRS to reconstruct the current card
+    state.  Returns (card, retrievability, human-readable reason string).
+    """
+    card = Card()
+
     if not history:
-        return 0.85, 6, "No attempt history yet, run diagnostics early."
+        # Unseen concept — schedule first review in 6 hours and treat as
+        # high-priority (retrievability 0 means it hasn't been consolidated).
+        card.due = now_utc + timedelta(hours=6)
+        return card, 0.0, "尚無作答紀錄，建議盡早初次測驗"
 
-    accuracy = sum(1.0 for item in history if item.is_correct) / len(history)
-    mean_score = sum(item.score for item in history) / len(history)
+    for attempt in history:
+        rating = _score_to_rating(attempt.score, attempt.is_correct)
+        review_dt = _to_utc(attempt.created_at)
+        card, _ = _SCHEDULER.review_card(card, rating, review_datetime=review_dt)
 
-    last_attempt = history[-1]
-    days_since_last = max((now - last_attempt.created_at).total_seconds() / 86400.0, 0.0)
-    forgetting_factor = min(days_since_last / 5.0, 1.0)
-
-    wrong_streak = 0
-    for item in reversed(history):
-        if item.is_correct:
-            break
-        wrong_streak += 1
-    streak_penalty = min(wrong_streak / 3.0, 1.0)
-
-    weakness = 1.0 - mean_score
-    error_rate = 1.0 - accuracy
-
-    priority = min(
-        1.0,
-        (0.5 * weakness) + (0.25 * error_rate) + (0.2 * forgetting_factor) + (0.15 * streak_penalty),
+    retrievability = _SCHEDULER.get_card_retrievability(card, current_datetime=now_utc)
+    days_since = max(
+        (now_utc - _to_utc(history[-1].created_at)).total_seconds() / 86400, 0.0
     )
-
-    if priority >= 0.8:
-        interval_hours = 6
-    elif priority >= 0.65:
-        interval_hours = 12
-    elif priority >= 0.5:
-        interval_hours = 24
-    elif priority >= 0.35:
-        interval_hours = 48
-    else:
-        interval_hours = 96
-
+    state_name = State(card.state).name
     reason = (
-        f"avg_score={mean_score:.2f}, accuracy={accuracy:.2f}, "
-        f"days_since_last={days_since_last:.1f}, wrong_streak={wrong_streak}"
+        f"FSRS state={state_name}, "
+        f"stability={card.stability:.2f}, "
+        f"difficulty={card.difficulty:.2f}, "
+        f"retrievability={retrievability:.1%}, "
+        f"days_since_last={days_since:.1f}"
     )
-    return priority, interval_hours, reason
+    return card, retrievability, reason
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _score_to_rating(score: float, is_correct: bool) -> Rating:
+    """Map a 0–1 score to an FSRS Rating (Again / Hard / Good / Easy)."""
+    if not is_correct or score < 0.45:
+        return Rating.Again
+    if score < 0.65:
+        return Rating.Hard
+    if score < 0.85:
+        return Rating.Good
+    return Rating.Easy
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Return a UTC-aware datetime; naive datetimes are assumed to be UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _suggest_slot(priority: float) -> str:

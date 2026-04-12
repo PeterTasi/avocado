@@ -8,7 +8,7 @@ import fitz
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 OCR_FALLBACK_CHAR_THRESHOLD = 40
-MAX_OCR_PAGES = 12
+DEFAULT_MAX_OCR_PAGES = 12
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 
@@ -24,6 +24,7 @@ def extract_material_text(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     ocr_context: str = "",
+    max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
     if len(file_bytes) > MAX_FILE_SIZE:
         raise ValueError(
@@ -32,7 +33,12 @@ def extract_material_text(
 
     suffix = Path(file_name).suffix.lower()
     if suffix == ".pdf":
-        return _extract_pdf_material(file_bytes, gemini_client=gemini_client, ocr_context=ocr_context)
+        return _extract_pdf_material(
+            file_bytes,
+            gemini_client=gemini_client,
+            ocr_context=ocr_context,
+            max_ocr_pages=max_ocr_pages,
+        )
     if suffix == ".txt":
         return ExtractedMaterial(
             text=file_bytes.decode("utf-8", errors="ignore"),
@@ -54,12 +60,14 @@ def extract_text(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     ocr_context: str = "",
+    max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> str:
     return extract_material_text(
         file_name=file_name,
         file_bytes=file_bytes,
         gemini_client=gemini_client,
         ocr_context=ocr_context,
+        max_ocr_pages=max_ocr_pages,
     ).text
 
 
@@ -67,6 +75,7 @@ def _extract_pdf_material(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     ocr_context: str = "",
+    max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         page_text = [page.get_text("text") for page in doc]
@@ -74,10 +83,11 @@ def _extract_pdf_material(
         if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not _ocr_available(gemini_client):
             return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
 
-        if len(doc) > MAX_OCR_PAGES:
+        resolved_max_ocr_pages = max(1, int(max_ocr_pages))
+        if len(doc) > resolved_max_ocr_pages:
             raise ValueError(
-                f"這份掃描 PDF 共有 {len(doc)} 頁，超過內建 OCR 上限 {MAX_OCR_PAGES} 頁。"
-                "請先拆分重點頁面，或先做外部 OCR 後再上傳。"
+                f"這份掃描 PDF 共有 {len(doc)} 頁，超過目前 OCR 上限 {resolved_max_ocr_pages} 頁。"
+                "請先拆分重點頁面、在 .env 調高 MAX_OCR_PAGES，或先做外部 OCR 後再上傳。"
             )
 
         images = _pdf_pages_to_images(doc)

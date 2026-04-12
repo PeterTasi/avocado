@@ -55,6 +55,7 @@ class AdaptLearnService:
             file_bytes=file_bytes,
             gemini_client=self.gemini,
             ocr_context=course_name,
+            max_ocr_pages=self.settings.max_ocr_pages,
         )
         material_text = extracted_material.text
         text_chars = len(material_text.strip())

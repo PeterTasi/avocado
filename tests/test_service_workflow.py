@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,8 @@ if str(SRC_ROOT) not in sys.path:
 from adaptlearn.config import Settings
 from adaptlearn.pipeline import AdaptLearnService
 
+_TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn_test")
+
 
 class AdaptLearnWorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -20,12 +23,14 @@ class AdaptLearnWorkflowTests(unittest.TestCase):
         root = Path(self._tempdir.name)
 
         settings = Settings(
-            database_path=root / "adaptlearn_test.db",
+            database_url=_TEST_DB_URL,
             chroma_path=root / "chroma",
             gemini_api_key="",
             gemini_model="gemini-flash-latest",
         )
         self.service = AdaptLearnService(settings=settings, api_key="")
+        # Reset state so tests don't bleed into each other
+        self.service.repo.reset_learning_state(include_attempts=True)
 
     def tearDown(self) -> None:
         self._tempdir.cleanup()

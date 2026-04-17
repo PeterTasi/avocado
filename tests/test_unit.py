@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from adaptlearn.models import Attempt, Concept, Question, ReviewItem
 from adaptlearn.pipeline import AdaptLearnService
 from datetime import datetime, timedelta
 
+_TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn_test")
+
 
 @pytest.fixture
 def temp_dir():
@@ -28,7 +31,7 @@ def temp_dir():
 @pytest.fixture
 def settings(temp_dir):
     return Settings(
-        database_path=temp_dir / "test.db",
+        database_url=_TEST_DB_URL,
         chroma_path=temp_dir / "chroma",
         gemini_api_key="",
         gemini_model="gemini-flash-latest",
@@ -37,13 +40,11 @@ def settings(temp_dir):
 
 @pytest.fixture
 def repo(settings):
-    repo = StudyRepository(settings.database_path)
+    repo = StudyRepository(settings.database_url)
     repo.initialize()
     repo.reset_learning_state(include_attempts=True)
     yield repo
     repo.close()
-    if hasattr(StudyRepository, "_local"):
-        StudyRepository._local = type(StudyRepository._local)()
 
 
 @pytest.fixture

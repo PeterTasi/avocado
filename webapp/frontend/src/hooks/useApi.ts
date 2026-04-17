@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-const API_BASE = "";
+// For GitHub Pages deployments, set VITE_API_BASE_URL to the Render backend URL.
+// Leave empty (default) when frontend and backend are served from the same origin.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function apiFetch(path: string, options?: RequestInit): Promise<unknown> {
   const response = await fetch(`${API_BASE}${path}`, options);

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import secrets
 import sys
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -12,7 +13,8 @@ from typing import Any, Callable, TypeVar
 
 from cachetools import TTLCache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -58,10 +60,37 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AdaptLearn Web API", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# CORS — allow GitHub Pages (and dev server) to call the API.
+_cors_origins = [o.strip() for o in (_settings.allowed_origins or "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["X-API-Key", "Content-Type"],
+    )
+
 # Rate limiting (🟡 Fix #14)
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next):
+    """Enforce X-API-Key header when API_ACCESS_KEY is configured in .env.
+    Health check and static assets are always allowed.
+    """
+    key = _settings.api_access_key
+    path = request.url.path
+    if key and path.startswith("/api/") and path != "/api/health":
+        token = request.headers.get("x-api-key", "")
+        if not token or not secrets.compare_digest(token, key):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "API 金鑰無效或未提供 X-API-Key header。"},
+            )
+    return await call_next(request)
 
 _cache: TTLCache[str, Any] = TTLCache(maxsize=128, ttl=30)
 _cache_large: TTLCache[str, Any] = TTLCache(maxsize=32, ttl=60)

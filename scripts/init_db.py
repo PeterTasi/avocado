@@ -14,9 +14,12 @@ from adaptlearn.database import StudyRepository
 
 def main() -> None:
     settings = Settings()
-    repo = StudyRepository(settings.database_path)
+    if not settings.database_url:
+        print("ERROR: DATABASE_URL is not set. Please configure it in .env before running this script.")
+        sys.exit(1)
+    repo = StudyRepository(settings.database_url)
     repo.initialize()
-    print(f"Database initialized: {settings.database_path}")
+    print(f"Database initialized: {settings.database_url}")
 
 
 if __name__ == "__main__":

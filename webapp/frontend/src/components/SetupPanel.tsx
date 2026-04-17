@@ -55,6 +55,9 @@ export function SetupPanel({
     ? ingestMaterial.error.message
     : "";
 
+  const ingestData = ingestMaterial.data as { llm_degraded?: boolean } | undefined;
+  const llmDegraded = ingestMaterial.isSuccess && ingestData?.llm_degraded === true;
+
   const templateLabel =
     templateMode === "generic" ? "通用抽取" : templateMode === "auto" ? "自動偵測" : "線性代數";
 
@@ -151,6 +154,13 @@ export function SetupPanel({
         </button>
         <span className="text-xs text-white/68">{status}</span>
       </div>
+
+      {llmDegraded && (
+        <div className="mt-3 rounded-[18px] border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <span className="font-semibold">⚠ AI 降級警告：</span>
+          Gemini API 呼叫失敗，概念圖譜已改用啟發式規則建立，品質可能較低。請確認 API 金鑰是否正確並重新匯入。
+        </div>
+      )}
 
       <ConceptSection concepts={concepts} search={search} />
     </article>

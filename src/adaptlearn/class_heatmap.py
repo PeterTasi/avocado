@@ -40,18 +40,21 @@ def get_weak_concepts(
     repo: StudyRepository,
     top_n: int = 3,
     error_threshold: float = 0.5,
+    uplift_cap: float = 0.23,
+    uplift_ratio: float = 0.35,
 ) -> list[dict]:
     """Return the top-N concepts the class struggles with most.
 
     Useful for generating teacher recommendations like
     "focus on these 3 concepts next week".
+    uplift_cap and uplift_ratio are configurable via Settings.
     """
     all_stats = repo.list_class_node_stats(course_id)
     weak = [s for s in all_stats if s.error_rate >= error_threshold and s.sample_count > 0]
 
     results: list[dict] = []
     for stat in weak[:top_n]:
-        estimated_uplift = round(min(0.23, stat.error_rate * 0.35), 3)
+        estimated_uplift = round(min(uplift_cap, stat.error_rate * uplift_ratio), 3)
         results.append({
             "concept_id": stat.concept_id,
             "error_rate": stat.error_rate,

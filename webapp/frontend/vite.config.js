@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/static/",
+  // VITE_BASE_PATH: set to "/repo-name/" for GitHub project pages, or "/" for user pages.
+  // When serving via FastAPI static mount the default "/static/" is correct.
+  base: process.env.VITE_BASE_PATH ?? "/static/",
   server: {
     proxy: {
       "/api": {

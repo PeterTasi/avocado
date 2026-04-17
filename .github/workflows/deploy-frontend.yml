@@ -1,0 +1,53 @@
+name: Deploy Frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webapp/frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch: # allow manual trigger
+
+permissions:
+  contents: write   # needed to push to gh-pages branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: webapp/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: webapp/frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: webapp/frontend
+        env:
+          # Point the frontend at the Render backend.
+          # Set VITE_API_BASE_URL as a GitHub Actions variable in:
+          #   Settings → Secrets and variables → Actions → Variables
+          # Example value: https://adaptlearn-api.onrender.com
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          # Set to "/" for user pages (username.github.io)
+          # Set to "/repo-name/" for project pages (username.github.io/repo-name)
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
+        run: npm run build
+
+      # The built files land in webapp/static — deploy that directory.
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: webapp/static
+          # Ensure React Router works: redirect 404 → index.html
+          enable_jekyll: false

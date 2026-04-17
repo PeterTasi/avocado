@@ -13,14 +13,17 @@ def get_seed_concepts(course_name: str, template_mode: str = "generic") -> list[
         is_linear_algebra = True
     elif mode == "auto":
         lowered = course_name.lower()
+        # Require "linear algebra" or "線性代數/线性代数" as the topic.
+        # "matrix" alone is intentionally excluded — it appears in too many
+        # non-linear-algebra courses (e.g. transformation matrix in graphics,
+        # confusion matrix in ML) and would inject unwanted seed concepts.
         is_linear_algebra = any(
             keyword in lowered
             for keyword in (
                 "linear algebra",
                 "lin alg",
-                "matrix",
-                "\u7dda\u6027\u4ee3\u6578",
-                "\u7ebf\u6027\u4ee3\u6570",
+                "線性代數",
+                "线性代数",
             )
         )
     else:

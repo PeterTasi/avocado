@@ -27,7 +27,7 @@ class AdaptLearnService:
         self.settings = settings
         key = settings.gemini_api_key if api_key is None else api_key.strip()
 
-        self.repo = StudyRepository(settings.database_path)
+        self.repo = StudyRepository(settings.database_url)
         self.repo.initialize()
 
         self.gemini = GeminiClient(api_key=key, model=settings.gemini_model)
@@ -63,6 +63,9 @@ class AdaptLearnService:
         seed_concepts = get_seed_concepts(course_name=course_name, template_mode=template_mode)
         used_seed_template = bool(seed_concepts)
 
+        # Reset LLM error state so we can detect failures during this ingest.
+        self.gemini.last_error = ""
+
         if low_text_mode:
             if used_seed_template:
                 concepts = list(seed_concepts)
@@ -84,6 +87,11 @@ class AdaptLearnService:
                 concepts = _merge_concept_sets(concepts, seed_concepts)
                 edges = _build_edges_from_concepts(concepts)
             ingest_mode = "ocr-transcription" if extracted_material.ocr_used else "text-extraction"
+
+        # Capture whether Gemini encountered errors during this ingest.
+        llm_degraded = self.gemini.enabled and bool(self.gemini.last_error)
+        if llm_degraded:
+            logger.warning("LLM degraded during ingest (last_error=%s)", self.gemini.last_error)
 
         if not concepts:
             raise ValueError(
@@ -135,6 +143,7 @@ class AdaptLearnService:
             "used_seed_template": used_seed_template,
             "template_mode": template_mode,
             "ingest_mode": ingest_mode,
+            "llm_degraded": llm_degraded,
         }
 
     def generate_diagnostics(self, question_count: int = 9) -> list[Question]:
@@ -347,7 +356,13 @@ class AdaptLearnService:
 
     def get_class_weak_concepts(self, course_id: str, top_n: int = 3) -> list[dict]:
         """Return teacher recommendations for weakest concepts."""
-        return get_weak_concepts(course_id=course_id, repo=self.repo, top_n=top_n)
+        return get_weak_concepts(
+            course_id=course_id,
+            repo=self.repo,
+            top_n=top_n,
+            uplift_cap=self.settings.heatmap_uplift_cap,
+            uplift_ratio=self.settings.heatmap_uplift_ratio,
+        )
 
     def list_courses(self) -> list[Course]:
         return self.repo.list_courses()

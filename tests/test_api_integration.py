@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,8 @@ if str(SRC_ROOT) not in sys.path:
 from adaptlearn.config import Settings
 from adaptlearn.pipeline import AdaptLearnService
 from webapp import main as web_main
+
+_TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn_test")
 
 
 class _FakeVisionGemini:
@@ -38,13 +41,14 @@ class AdaptLearnApiIntegrationTests(unittest.TestCase):
         self._old_get_service = web_main._get_service
 
         settings = Settings(
-            database_path=root / "adaptlearn_api_test.db",
+            database_url=_TEST_DB_URL,
             chroma_path=root / "chroma",
             gemini_api_key="",
             gemini_model="gemini-flash-latest",
         )
         self._service = AdaptLearnService(settings=settings, api_key="")
         self._service.repo.initialize()
+        self._service.repo.reset_learning_state(include_attempts=True)
 
         def _fake_get_service(api_key_override: str | None = None) -> AdaptLearnService:
             return self._service

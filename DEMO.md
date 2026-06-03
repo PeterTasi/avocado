@@ -43,7 +43,9 @@ cp .env.example .env   # 複製範本
 |------|------|------|
 | `DATABASE_URL` | PostgreSQL 連線字串，例：`postgresql://user:pass@localhost/adaptlearn` | ✅ |
 | `GEMINI_API_KEY` | Google Gemini API 金鑰（無金鑰可用備援模式） | 建議 |
-| `CHANDRA_METHOD` | `vllm`（需執行伺服器）或 `hf`（本機下載模型） | 選用 |
+| `OLLAMA_OCR_MODEL` | 本地 Ollama 視覺模型名（如 `qwen2.5vl:7b`），手寫 OCR 首選；留空則停用 | demo 建議 |
+| `OLLAMA_URL` | Ollama 伺服器位址（預設 `http://localhost:11434`） | 選用 |
+| `CHANDRA_METHOD` | `vllm`（需執行伺服器）或 `hf`（本機下載模型，需 GPU） | 選用 |
 | `CHANDRA_VLLM_URL` | Chandra vLLM 伺服器位址（預設 `http://localhost:8000/v1`） | 選用 |
 
 ### 第四步：初始化資料庫
@@ -57,7 +59,18 @@ python scripts/init_db.py   # 建立所有資料表（若資料庫已初始化�
 
 ## 一、本機啟動
 
-### 1. 啟動後端（含前端）
+### 0. 最快打開網站（macOS，推薦）
+
+在 Finder 進入專案根目錄，**雙擊 `start_adaptlearn_web.command`** → 會自動開一個終端機啟動後端 →
+等出現 `Uvicorn running on ...` 後，瀏覽器打開 **http://localhost:8000** 就是完整系統。
+（前端已預先建置進 `webapp/static/`，不用另外跑 npm。）
+
+> **前置條件**：
+> 1. 需有可連線的 **PostgreSQL**，且 `.env` 的 `DATABASE_URL` 已填好（沒有本機資料庫時，可暫時指向 Render 的資料庫連線字串）。
+> 2. 手寫 OCR demo 另需先設好 **Ollama**（見下方第 4 點）。
+> 停止：在那個終端機按 `Ctrl+C`。
+
+### 1. 手動啟動後端（含前端）
 
 ```bash
 cd /path/to/project
@@ -66,8 +79,6 @@ uvicorn webapp.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 打開 **http://localhost:8000** 即可看到完整系統。
-
-> **macOS 快捷**：直接雙擊 `start_adaptlearn_web.command` 檔案，自動啟動後端。
 
 ### 2. 若需前端熱更新開發模式
 
@@ -92,29 +103,41 @@ curl -X POST http://localhost:8000/api/config/api-key \
   -d '{"api_key": "YOUR_GEMINI_KEY"}'
 ```
 
-### 4. 啟用 Chandra 手寫辨識 OCR（選用）
+### 4. 手寫辨識 OCR（本地 demo 推薦：Ollama）
 
-**方案 A：本機 HF 模型**（需下載約 10 GB 模型，第一次慢）
+OCR 優先序：**Ollama（本地）→ Chandra → Gemini 原生 PDF → Gemini 逐頁 vision**，任一產出文字即採用。
+
+**方案 A（推薦，本地 demo 用）：本地 Ollama 視覺模型**
+手寫品質高、**零 API 成本、本地無 proxy 不會 502**、可離線。
 
 ```bash
+# 1) 安裝 Ollama（macOS）：到 https://ollama.com 下載，或
+brew install ollama
+# 2) 拉一個視覺模型（約 6 GB，只需一次）：
+ollama pull qwen2.5vl:7b
+# 3) 在 .env 設定：
+OLLAMA_OCR_MODEL=qwen2.5vl:7b
+# OLLAMA_URL=http://localhost:11434   # 預設值，通常不用改
+```
+
+設好後上傳手寫 PDF/圖片會**自動優先**用 Ollama 辨識（成功時 `source_type` 顯示 `pdf-ollama-ocr`），失敗才退回 Gemini。
+
+> **多頁手寫 PDF 要整份本地辨識**：把 `.env` 的 `MAX_OCR_PAGES` 調到 ≥ 總頁數（例：28 頁 → `MAX_OCR_PAGES=28`），否則超過上限的部分會跳過本地、改用 Gemini。本地逐頁約數十秒，整份多頁會跑數分鐘屬正常。
+
+**方案 B：Chandra（需 GPU）**
+Chandra 模型本身需 GPU（HF 後端約 16–24 GB VRAM；或自架 vLLM 伺服器），一般筆電 / Render 免費方案跑不動。若有 GPU 機器：
+
+```bash
+# HF 本機模型（需 GPU）：
 pip install chandra-ocr[hf]
-# 在 .env 設定：
-CHANDRA_METHOD=hf
+# .env： CHANDRA_METHOD=hf
+
+# 或 vLLM 伺服器（在 GPU 機器上啟動）：
+chandra_vllm
+# .env： CHANDRA_METHOD=vllm  /  CHANDRA_VLLM_URL=http://<GPU伺服器IP>:8000/v1
 ```
 
-**方案 B：vLLM 伺服器**（需另外架設 GPU 伺服器）
-
-```bash
-# 安裝 vLLM 伺服器端（在 GPU 機器上）：
-pip install chandra-ocr
-chandra_vllm   # 啟動 vLLM，預設 port 8000
-
-# 在 .env 設定（你的應用程式那台）：
-CHANDRA_METHOD=vllm
-CHANDRA_VLLM_URL=http://<GPU伺服器IP>:8000/v1
-```
-
-啟用後，上傳**手寫筆記圖片**時會自動優先使用 Chandra；若 Chandra 失敗則退回 Gemini。
+**方案 C：什麼都不設** → 自動用 Gemini Vision 辨識（需 `GEMINI_API_KEY`；官方文件指出手寫品質較弱）。
 
 ---
 
@@ -157,8 +180,8 @@ CHANDRA_VLLM_URL=http://<GPU伺服器IP>:8000/v1
 | 面向 | 說明 |
 |------|------|
 | **AI 骨幹** | Google Gemini 2.5 Flash — 概念抽取、題目生成、語意評分 |
-| **手寫辨識** | Chandra OCR（datalab-to/chandra）— 支援手寫筆記、複雜表格、數學公式，90+ 語言 |
-| **OCR 容錯** | 優先 Chandra → 自動退回 Gemini Vision，任一可用即正常運作 |
+| **手寫辨識** | 本地 Ollama 視覺模型（如 Qwen2.5-VL）優先 — 離線、零 API 成本、不卡 proxy；雲端以 Gemini Vision 後備 |
+| **OCR 容錯** | Ollama（本地）→ Chandra → Gemini 原生 PDF → Gemini 逐頁 vision，任一可用即正常運作 |
 | **知識結構** | DOT 格式知識圖譜，涵蓋先修、進展、跨課等價、泛化等 8 種關係 |
 | **遺忘曲線** | FSRS-5 間隔重複演算法排定每位同學的複習優先序 |
 | **前端** | React 18 + Vite + Tailwind CSS，玻璃擬態(Glassmorphism)介面 |

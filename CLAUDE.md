@@ -22,6 +22,7 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 | Database | PostgreSQL via psycopg2 (connection pool, 10 conns) |
 | Vector store | ChromaDB (concept semantic search) |
 | PDF/image parsing | PyMuPDF (fitz) + Chandra OCR (`chandra-ocr`) |
+| Local handwriting OCR | Ollama vision model (e.g. `qwen2.5vl:7b`), opt-in via `OLLAMA_OCR_MODEL` |
 | Spaced repetition | FSRS-5 (`fsrs` library) |
 | Rate limiting | slowapi |
 | In-process cache | cachetools TTLCache |
@@ -51,9 +52,10 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 │   ├── config.py                # Settings dataclass, reads .env
 │   ├── models.py                # Dataclasses: Course, Concept, Question, Attempt, ReviewItem, etc.
 │   ├── database.py              # StudyRepository — all PostgreSQL queries (psycopg2)
-│   ├── chandra_client.py        # Chandra OCR wrapper (handwriting-aware; vllm/hf backends)
+│   ├── chandra_client.py        # Chandra OCR wrapper (handwriting-aware; vllm/hf backends — needs GPU)
+│   ├── ollama_client.py         # Local Ollama vision-OCR wrapper (handwriting; opt-in, primary OCR path)
 │   ├── gemini_client.py         # Gemini API wrapper (transcription, quiz gen, grading)
-│   ├── pdf_parser.py            # File ingestion: PDF/TXT/image → text + OCR (Chandra→Gemini)
+│   ├── pdf_parser.py            # File ingestion: PDF/TXT/image → text + OCR (Ollama→Chandra→Gemini)
 │   ├── knowledge_graph.py       # LLM-driven concept graph extraction from text
 │   ├── pipeline.py              # AdaptLearnService — orchestrates all modules
 │   ├── quiz_engine.py           # Adaptive question generation targeting weak concepts
@@ -85,6 +87,8 @@ Optional:
 - `HEATMAP_UPLIFT_CAP`, `HEATMAP_UPLIFT_RATIO` — heatmap tuning
 - `CHANDRA_METHOD` — `"vllm"` (default, needs running server) or `"hf"` (local model, ~10 GB download)
 - `CHANDRA_VLLM_URL` — vLLM server URL for Chandra (default `http://localhost:8000/v1`)
+- `OLLAMA_OCR_MODEL` — local Ollama vision model for primary on-device OCR (e.g. `qwen2.5vl:7b`); empty = disabled (so it is skipped on Render). Best for local demos: strong handwriting, no API cost, no proxy 502
+- `OLLAMA_URL` — Ollama server URL (default `http://localhost:11434`)
 
 ---
 
@@ -144,14 +148,25 @@ Supported formats: `.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.t
 
 Flow:
 1. Extract text from file (PyMuPDF for PDF, direct decode for TXT, bytes for images)
-2. If text is too sparse (`< 40 chars`) → OCR fallback chain:
-   - **PDF:** Chandra OCR first (per-page images, handwriting-aware, subject to `MAX_OCR_PAGES`) → **Gemini native PDF second** (`GeminiClient.transcribe_pdf` sends the whole document inline as `application/pdf` in ONE call, no page cap). The `MAX_OCR_PAGES` limit now only gates the Chandra image path; the Gemini path handles arbitrarily long PDFs.
-   - **Image:** Chandra OCR first → Gemini vision OCR second (`transcribe_images`).
+2. If text is too sparse (`< 40 chars`) → OCR fallback chain (first non-empty result wins):
+   - **PDF:** **Ollama local vision OCR** (per-page images, on-device, opt-in via `OLLAMA_OCR_MODEL`, capped by `MAX_OCR_PAGES`) → **Chandra** (per-page images, also `MAX_OCR_PAGES`-capped) → **Gemini native PDF** (`GeminiClient.transcribe_pdf`, whole doc in ONE `application/pdf` call, no page cap) → **Gemini page-by-page vision** (`transcribe_images`, no cap).
+   - **Image:** Ollama → Chandra → Gemini vision OCR.
+   - `MAX_OCR_PAGES` only caps the **local** image paths (Ollama + Chandra, which render + infer on-device — they share one rendered page set). The Gemini paths are uncapped (pure API). When a doc exceeds the cap, local OCR is skipped (logged) and Gemini handles the full document.
 3. Build knowledge graph via `knowledge_graph.py` (LLM extracts concepts + edges)
 4. Optionally merge with domain seed templates (`domain_templates.py`)
 5. Save to PostgreSQL + ChromaDB; discover cross-course links
 
-OCR `source_type` values: `pdf-text` (native), `pdf-chandra-ocr`, `pdf-ocr` (Gemini), `image-chandra-ocr`, `image-ocr` (Gemini), `txt`.
+OCR `source_type` values: `pdf-text` (native), `pdf-ollama-ocr` (local Ollama), `pdf-chandra-ocr`, `pdf-ocr` (Gemini native/vision), `image-ollama-ocr`, `image-chandra-ocr`, `image-ocr` (Gemini), `txt`.
+
+### OCR internals (quick map — check here before re-opening the files)
+
+- **Entry:** `pdf_parser.extract_material_text(file_name, file_bytes, gemini_client, chandra_client, ollama_client, ocr_context, max_ocr_pages)` → `ExtractedMaterial(text, source_type, ocr_used)`.
+- **PDF order** (`pdf_parser._extract_pdf_material`): native text (PyMuPDF) if ≥ 40 chars, else Ollama → Chandra → Gemini native PDF → Gemini vision. Ollama + Chandra share one rendered page set and the `MAX_OCR_PAGES` cap; over-cap → local skipped (logged) → Gemini.
+- **Image order** (`pdf_parser._transcribe_with_fallback`): Ollama → Chandra → Gemini.
+- **Clients** (all expose `enabled` + `transcribe_images`): `ollama_client.OllamaClient` (stdlib `urllib` → Ollama `/api/generate`; opt-in via `OLLAMA_OCR_MODEL`; errors → `""` so it falls back), `chandra_client.ChandraClient` (vllm/hf — needs GPU, can't run in-process on Render free), `gemini_client.GeminiClient` (also `transcribe_pdf` for native PDF; 120 s `HttpOptions` timeout; API errors degrade to `""` via `_API_ERRORS`).
+- **Wiring:** `pipeline.AdaptLearnService.__init__` builds `self.gemini/chandra/ollama`; `ingest_material` calls `extract_material_text` then `build_knowledge_graph`.
+- **502 fix (only live after a push redeploy):** route `ingest_material` runs the sync ingest via `run_in_threadpool` (event loop stays free for health checks); Gemini calls capped at 120 s; frontend `useApi.ts errorMessage()` shows clean status-code messages instead of leaking proxy HTML.
+- **Render reality:** no GPU / no Ollama → Chandra + Ollama disabled → Gemini is the only working OCR. Local demo → set `OLLAMA_OCR_MODEL` for best handwriting.
 
 ---
 
@@ -167,10 +182,11 @@ Known UI issues to fix during redesign:
 ## Planned Features (in-progress)
 
 ### 1. Handwritten Note Recognition ✅ DONE
+- **Local demo (recommended): `ollama_client.OllamaClient`** runs a local Ollama vision model (e.g. `qwen2.5vl:7b`, same Qwen-VL family as Chandra) as the **primary** OCR — strongest handwriting, zero API cost, no proxy 502, offline. Opt-in via `OLLAMA_OCR_MODEL` (`ollama pull qwen2.5vl:7b` first). For OCR-ing a long doc fully on-device, raise `MAX_OCR_PAGES` (else over-cap docs fall through to Gemini).
 - Integrated `chandra-ocr` (datalab-to/chandra on GitHub) — handwriting-aware document intelligence
-- `src/adaptlearn/chandra_client.py` wraps `InferenceManager`; supports `vllm` and `hf` backends
-- `pdf_parser.py` uses Chandra first, falls back to Gemini; new `source_type` values: `image-chandra-ocr`, `pdf-chandra-ocr`
-- Configure via `CHANDRA_METHOD` / `CHANDRA_VLLM_URL` in `.env`
+- `src/adaptlearn/chandra_client.py` wraps `InferenceManager`; supports `vllm` and `hf` backends. **Needs a GPU** (HF backend ≈ 16–24 GB VRAM for Qwen3-VL; vllm needs a server) so it can't run in-process on Render free. The Datalab **hosted Chandra API** (datalab.to, ~$5 free credits) is the no-GPU cloud alternative if you ever want managed Chandra.
+- `pdf_parser.py` OCR order is Ollama → Chandra → Gemini; `source_type` values include `image-chandra-ocr`, `pdf-chandra-ocr`, `image-ollama-ocr`, `pdf-ollama-ocr`
+- Configure via `OLLAMA_OCR_MODEL` / `OLLAMA_URL`, or `CHANDRA_METHOD` / `CHANDRA_VLLM_URL` in `.env`
 
 ### 2. Learning Progress Tracking Algorithm
 - New endpoint(s) to expose per-concept progress over time (not just current mastery)

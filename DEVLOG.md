@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-06-03 — 本地 Ollama 視覺 OCR:手寫辨識的真正升級(取代「在 Render 跑 Chandra」幻想)✅
+
+- **起點(使用者痛點):** 手寫辨識太弱。線上 Render 版上傳手寫 PDF 仍出 502,且就算成功,
+  Gemini `flash` 對手寫的品質也不夠。使用者問:「真的沒辦法啟用 Chandra 嗎?」
+- **查證(推翻與釐清幾個假設):**
+  - **Chandra 在 Render 免費方案「機器內」確實跑不動:** vLLM 後端要 GPU;HF 後端官方建議
+    **16–24GB VRAM** 載 Qwen3-VL。Render 免費約 512MB、無 GPU。`requirements.txt` 的
+    `chandra-ocr` 在線上只是「裝了卻永遠連不到 localhost:8000」。
+  - **但 Chandra 有雲端託管 API**(datalab.to,$5 免費額度、250 頁約 15 秒)——
+    這才是免 GPU「啟用 Chandra」的路;不過要註冊+付費。
+  - **Gemini `flash` 手寫確實弱:** 公開比較顯示 flash 手寫「4 頁錯 3 頁」,
+    `2.5-pro` 約 93%。但 pro 較慢、API 計費,且**學生方案的「Gemini Pro」是 App 訂閱、不含 API 額度**
+    (常見誤會,已向使用者澄清:本專案用 API 金鑰,計費與 App 訂閱是兩條獨立帳)。
+- **決策(關鍵轉折):** 使用者比賽 demo **用本地跑**。偵測其機器為 **MacBook Air M4 / 16GB / 已裝 Ollama**
+  (已在跑 deepseek-r1:8b 5.2GB)。→ 結論:**本地 demo 用 Ollama 跑視覺 OCR** 才是最佳解——
+  手寫品質高、**零 API 成本、本地無 proxy 故不會 502**、離線可用。選 `qwen2.5vl:7b`
+  (與 Chandra 同源的 Qwen-VL 家族、Ollama 官方有、4-bit 約 6GB 在 16GB M4 跑得順)。
+  Render 線上版維持 Gemini 後備。
+- **實作:**
+  - 新增 `src/adaptlearn/ollama_client.py`(`OllamaClient`):純 stdlib(`urllib`)打 Ollama
+    `/api/generate`,逐頁送 base64 圖、temperature 0、`num_predict=4096`;任何錯誤(連不到/模型不存在/逾時)
+    都 log 並回 `""` 讓上層 fallback。介面對齊 `GeminiClient`(`enabled`/`transcribe_images`)。
+  - **Opt-in:** 只有設了 `OLLAMA_OCR_MODEL` 才啟用(`enabled` 只做便宜檢查、不連網),
+    所以 Render(未設)完全跳過、零回歸。新增 `OLLAMA_URL` / `OLLAMA_OCR_MODEL`(config + .env.example)。
+  - `pdf_parser.py` OCR fallback 鏈改為:**Ollama(本地、受 `MAX_OCR_PAGES`)→ Chandra(本地、同上限)
+    → Gemini 原生 PDF(無上限)→ Gemini 逐頁 vision(無上限)**。Ollama 與 Chandra **共用同一份**
+    逐頁影像(少渲染一次)。超過頁數上限時**明確 log**(符合「no silent caps」)。
+    新增 `source_type`:`pdf-ollama-ocr`、`image-ollama-ocr`。
+  - `pipeline.py` 建 `self.ollama` 並傳入 `extract_material_text`。
+- **順手修掉一個既有回歸(HEAD 上就壞的測試):** `test_page_limit_still_blocks_without_native_pdf`
+  在 HEAD 已 **FAIL**——上一輪「Gemini 逐頁 vision 不受頁數限制」(commit 37b1204)改變了語意:
+  **有 Gemini 時超頁不再擋下**,改由 Gemini 接手。原測試還假設會擋下,故失敗。
+  重寫為正確語意並補一支正向測試:
+  - `test_page_limit_blocks_local_ocr_without_gemini`:capped 本地 OCR(Ollama)+ 超頁 + **無 Gemini** → 擋下。
+  - `test_over_cap_not_blocked_when_gemini_available`:有 Gemini → 超頁**不擋**,走 `pdf-ocr`。
+  - 新增 `TestLocalOllamaOcr` 三支:Ollama 優先於 Gemini、Ollama 空回退 Gemini、圖片走 `image-ollama-ocr`。
+- **驗證:** `py_compile` 綠;`ruff` 對新原始碼全綠(測試檔 7 個 E402 為**既有**,stash 前後皆 7);
+  免 DB 的 6 支 OCR 測試全過;對**真實本地 Ollama** 煙霧測試:`enabled` 閘門正確、
+  不存在的模型 → 404 → 優雅回 `""`(會 fallback)✅。
+- **使用者的手動步驟(demo 前一次):** `ollama pull qwen2.5vl:7b`,在 `.env` 設 `OLLAMA_OCR_MODEL=qwen2.5vl:7b`。
+  28 頁那份要本地整份 OCR 的話,把 `MAX_OCR_PAGES` 調到 ≥28(否則超頁會跳過本地、改用 Gemini)。
+- **取捨/備註:** 本地 7B VLM 逐頁約數十秒,28 頁會跑數分鐘——但本地無 proxy、不會 502;
+  嫌慢可減頁數或改用雲端 Chandra API。社群移植的 `chandra-ocr-2` Ollama 版亦可換 env 試,但品質未經官方驗證。
+
+---
+
 ## 2026-06-03 — Render 上傳手寫 PDF 回 502,狀態列被塞滿原始 HTML ✅
 
 - **症狀:** 在 Render 線上版上傳手寫 PDF(`線性代數第七章內積空間.pdf`)按「建立知識圖譜」後,

@@ -488,24 +488,142 @@ class TestNativePdfTranscription:
         assert material.source_type == "pdf-ocr"
         assert "matrix" in material.text.lower()
 
-    def test_page_limit_still_blocks_without_native_pdf(self):
+    def test_page_limit_blocks_local_ocr_without_gemini(self):
+        """The page cap only gates a CAPPED LOCAL OCR path (Ollama/Chandra). With no
+        Gemini fallback, an over-cap scan is blocked with the page-limit message."""
         from adaptlearn.pdf_parser import extract_material_text
 
-        class _FakeImageOnlyGemini:
+        class _FakeLocalOcr:
             enabled = True
 
             def transcribe_images(self, images, course_name=""):
                 return "matrix multiplication eigenvalues"
-            # No transcribe_pdf -> native bypass does not apply.
 
         with pytest.raises(ValueError) as exc_info:
             extract_material_text(
                 file_name="scan.pdf",
                 file_bytes=self._blank_pdf(2),
-                gemini_client=_FakeImageOnlyGemini(),
+                ollama_client=_FakeLocalOcr(),
                 max_ocr_pages=1,
             )
         assert "上限 1 頁" in str(exc_info.value)
+
+    def test_over_cap_not_blocked_when_gemini_available(self):
+        """Locks in the intended behavior of the uncapped Gemini vision fallback: when
+        Gemini is available, an over-cap doc is NOT blocked — Gemini page-by-page vision
+        (no local rendering cost) handles all pages. (Previously this wrongly raised.)"""
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeVisionOnlyGemini:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return "matrix multiplication eigenvalues"
+            # No transcribe_pdf -> uses page-by-page vision, which has no page cap.
+
+        material = extract_material_text(
+            file_name="scan.pdf",
+            file_bytes=self._blank_pdf(2),
+            gemini_client=_FakeVisionOnlyGemini(),
+            max_ocr_pages=1,
+        )
+        assert material.ocr_used is True
+        assert material.source_type == "pdf-ocr"
+        assert "matrix" in material.text.lower()
+
+
+class TestLocalOllamaOcr:
+    """Local Ollama vision OCR is the primary OCR path when configured.
+
+    Exercised at the `pdf_parser` level (no database). A client exposing
+    `enabled` + `transcribe_images` is tried before Chandra and Gemini; on empty
+    output the chain falls through to Gemini.
+    """
+
+    def _blank_pdf(self, pages: int) -> bytes:
+        import fitz
+
+        doc = fitz.open()
+        for _ in range(pages):
+            doc.new_page()
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        return pdf_bytes
+
+    def test_ollama_used_before_gemini_within_cap(self):
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeOllama:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return "ollama transcription: inner product space"
+
+        class _FakeGemini:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return "gemini transcription"
+
+            def transcribe_pdf(self, pdf_bytes, course_name=""):
+                return "gemini native pdf"
+
+        material = extract_material_text(
+            file_name="notes.pdf",
+            file_bytes=self._blank_pdf(2),
+            gemini_client=_FakeGemini(),
+            ollama_client=_FakeOllama(),
+            max_ocr_pages=12,
+        )
+        assert material.source_type == "pdf-ollama-ocr"
+        assert material.ocr_used is True
+        assert "ollama" in material.text.lower()
+
+    def test_falls_back_to_gemini_when_ollama_empty(self):
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeEmptyOllama:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return ""
+
+        class _FakeNativeGemini:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return ""
+
+            def transcribe_pdf(self, pdf_bytes, course_name=""):
+                return "gemini native pdf fallback"
+
+        material = extract_material_text(
+            file_name="notes.pdf",
+            file_bytes=self._blank_pdf(2),
+            gemini_client=_FakeNativeGemini(),
+            ollama_client=_FakeEmptyOllama(),
+            max_ocr_pages=12,
+        )
+        assert material.source_type == "pdf-ocr"
+        assert "fallback" in material.text.lower()
+
+    def test_image_uses_ollama_first(self):
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeOllama:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return "handwritten note text"
+
+        material = extract_material_text(
+            file_name="note.png",
+            file_bytes=b"\x89PNG fake image bytes",
+            ollama_client=_FakeOllama(),
+        )
+        assert material.source_type == "image-ollama-ocr"
+        assert material.ocr_used is True
+        assert "handwritten" in material.text.lower()
 
 
 class TestPdfSizeLimit:

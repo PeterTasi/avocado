@@ -15,6 +15,7 @@ from .domain_templates import get_seed_concepts
 from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
 from .models import Attempt, Concept, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
+from .ollama_client import OllamaClient
 from .pdf_parser import extract_material_text
 from .quiz_engine import build_questions_for_concepts
 from .review_scheduler import build_review_plan
@@ -35,6 +36,11 @@ class AdaptLearnService:
         self.chandra = ChandraClient(
             method=settings.chandra_method,
             vllm_url=settings.chandra_vllm_url,
+        )
+        # Local Ollama vision OCR (opt-in via OLLAMA_OCR_MODEL); primary OCR path when set.
+        self.ollama = OllamaClient(
+            model=settings.ollama_ocr_model,
+            base_url=settings.ollama_url,
         )
         self.vector_store = ConceptVectorStore(settings.chroma_path)
 
@@ -60,6 +66,7 @@ class AdaptLearnService:
             file_bytes=file_bytes,
             gemini_client=self.gemini,
             chandra_client=self.chandra,
+            ollama_client=self.ollama,
             ocr_context=course_name,
             max_ocr_pages=self.settings.max_ocr_pages,
         )

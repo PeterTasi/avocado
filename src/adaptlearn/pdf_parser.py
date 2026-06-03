@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import fitz
+
+logger = logging.getLogger("adaptlearn.pdf_parser")
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 OCR_FALLBACK_CHAR_THRESHOLD = 40
@@ -24,6 +27,7 @@ def extract_material_text(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     chandra_client: Any | None = None,
+    ollama_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
@@ -38,6 +42,7 @@ def extract_material_text(
             file_bytes,
             gemini_client=gemini_client,
             chandra_client=chandra_client,
+            ollama_client=ollama_client,
             ocr_context=ocr_context,
             max_ocr_pages=max_ocr_pages,
         )
@@ -53,6 +58,7 @@ def extract_material_text(
             file_bytes=file_bytes,
             gemini_client=gemini_client,
             chandra_client=chandra_client,
+            ollama_client=ollama_client,
             ocr_context=ocr_context,
         )
     raise ValueError("目前支援 PDF、TXT，以及 PNG/JPG/WEBP/BMP/TIFF 圖片檔。")
@@ -63,6 +69,7 @@ def extract_text(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     chandra_client: Any | None = None,
+    ollama_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> str:
@@ -71,6 +78,7 @@ def extract_text(
         file_bytes=file_bytes,
         gemini_client=gemini_client,
         chandra_client=chandra_client,
+        ollama_client=ollama_client,
         ocr_context=ocr_context,
         max_ocr_pages=max_ocr_pages,
     ).text
@@ -80,9 +88,11 @@ def _extract_pdf_material(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     chandra_client: Any | None = None,
+    ollama_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
+    ollama_ok = _ocr_available(ollama_client)
     chandra_ok = _ocr_available(chandra_client)
     gemini_ok = _ocr_available(gemini_client)
     gemini_pdf_ok = gemini_ok and callable(getattr(gemini_client, "transcribe_pdf", None))
@@ -91,33 +101,47 @@ def _extract_pdf_material(
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         page_text = [page.get_text("text") for page in doc]
         extracted_text = "\n".join(text.strip() for text in page_text if text and text.strip())
-        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not (chandra_ok or gemini_ok):
+        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not (
+            ollama_ok or chandra_ok or gemini_ok
+        ):
             return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
 
         page_count = len(doc)
-        # MAX_OCR_PAGES only caps Chandra (local GPU rendering).
-        # Gemini page-by-page is pure API calls — no local resource reason to cap it.
-        chandra_images = (
-            _pdf_pages_to_images(doc)[:resolved_max_ocr_pages]
-            if chandra_ok and page_count <= resolved_max_ocr_pages
-            else None
+        # Local OCR (Ollama / Chandra) renders + infers each page on-device, so
+        # MAX_OCR_PAGES caps it. Gemini is pure API calls — no local cost, no cap.
+        within_local_cap = page_count <= resolved_max_ocr_pages
+        local_images = (
+            _pdf_pages_to_images(doc) if (ollama_ok or chandra_ok) and within_local_cap else None
         )
-        # Always render all pages for Gemini vision fallback when Gemini is available.
         gemini_vision_images = _pdf_pages_to_images(doc) if gemini_ok else None
 
-    # 1) Chandra first (handwriting-aware), when available and within the page cap.
-    if chandra_images is not None:
-        text = _transcribe_images(chandra_client, chandra_images, ocr_context)
+    if (ollama_ok or chandra_ok) and not within_local_cap:
+        logger.info(
+            "Local OCR (Ollama/Chandra) skipped: %d pages > MAX_OCR_PAGES=%d; using Gemini fallback. "
+            "Raise MAX_OCR_PAGES to OCR the whole document locally.",
+            page_count,
+            resolved_max_ocr_pages,
+        )
+
+    # 1) Ollama local vision OCR first (handwriting-aware, on-device, no API cost).
+    if ollama_ok and local_images is not None:
+        text = _transcribe_images(ollama_client, local_images, ocr_context)
+        if text.strip():
+            return ExtractedMaterial(text=text, source_type="pdf-ollama-ocr", ocr_used=True)
+
+    # 2) Chandra (vLLM/HF), when available and within the page cap.
+    if chandra_ok and local_images is not None:
+        text = _transcribe_images(chandra_client, local_images, ocr_context)
         if text.strip():
             return ExtractedMaterial(text=text, source_type="pdf-chandra-ocr", ocr_used=True)
 
-    # 2) Gemini native PDF — whole document in one call, no page cap.
+    # 3) Gemini native PDF — whole document in one call, no page cap.
     if gemini_pdf_ok:
         text = str(gemini_client.transcribe_pdf(pdf_bytes=file_bytes, course_name=ocr_context)).strip()
         if text:
             return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
 
-    # 3) Gemini page-by-page vision — fallback when native PDF returns too little text.
+    # 4) Gemini page-by-page vision — fallback when native PDF returns too little text.
     # Each page is sent as a separate image; more reliable for dense handwriting.
     # No page cap: Gemini API calls have no local rendering cost.
     if gemini_vision_images:
@@ -125,10 +149,10 @@ def _extract_pdf_material(
         if text.strip():
             return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
 
-    # 4) Nothing produced usable text.
+    # 5) Nothing produced usable text.
     if page_count > resolved_max_ocr_pages and not gemini_ok:
         raise ValueError(
-            f"這份掃描 PDF 共有 {page_count} 頁，超過目前 OCR 上限 {resolved_max_ocr_pages} 頁。"
+            f"這份掃描 PDF 共有 {page_count} 頁，超過目前本地 OCR 上限 {resolved_max_ocr_pages} 頁。"
             "請先拆分重點頁面、在 .env 調高 MAX_OCR_PAGES，或提供可用的 Gemini API 金鑰以整份辨識。"
         )
     raise ValueError(
@@ -142,11 +166,16 @@ def _extract_image_material(
     file_bytes: bytes,
     gemini_client: Any | None = None,
     chandra_client: Any | None = None,
+    ollama_client: Any | None = None,
     ocr_context: str = "",
 ) -> ExtractedMaterial:
-    if not _ocr_available(chandra_client) and not _ocr_available(gemini_client):
+    if not (
+        _ocr_available(ollama_client)
+        or _ocr_available(chandra_client)
+        or _ocr_available(gemini_client)
+    ):
         raise ValueError(
-            "手寫或掃描圖片需要 Chandra OCR 或 Gemini API 金鑰，"
+            "手寫或掃描圖片需要本地 Ollama / Chandra OCR 或 Gemini API 金鑰，"
             "或請先轉成可搜尋 PDF/TXT 後再上傳。"
         )
 
@@ -162,9 +191,11 @@ def _extract_image_material(
 
     ocr_text, source_type = _transcribe_with_fallback(
         images=images,
+        ollama_client=ollama_client,
         chandra_client=chandra_client,
         gemini_client=gemini_client,
         ocr_context=ocr_context,
+        ollama_source="image-ollama-ocr",
         chandra_source="image-chandra-ocr",
         gemini_source="image-ocr",
     )
@@ -210,13 +241,20 @@ def _transcribe_images(
 
 def _transcribe_with_fallback(
     images: list[dict[str, bytes | str]],
+    ollama_client: Any | None,
     chandra_client: Any | None,
     gemini_client: Any | None,
     ocr_context: str,
+    ollama_source: str,
     chandra_source: str,
     gemini_source: str,
 ) -> tuple[str, str]:
-    """Try Chandra OCR first; fall back to Gemini if Chandra is unavailable or returns empty."""
+    """Try local OCR (Ollama, then Chandra) first; fall back to Gemini if empty/unavailable."""
+    if _ocr_available(ollama_client):
+        text = _transcribe_images(ollama_client, images, ocr_context)
+        if text.strip():
+            return text, ollama_source
+
     if _ocr_available(chandra_client):
         text = _transcribe_images(chandra_client, images, ocr_context)
         if text.strip():

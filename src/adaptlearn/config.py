@@ -62,6 +62,11 @@ class Settings:
     chandra_method: str = os.getenv("CHANDRA_METHOD", "vllm").strip()
     # vLLM server URL used when chandra_method="vllm".
     chandra_vllm_url: str = os.getenv("CHANDRA_VLLM_URL", "http://localhost:8000/v1").strip()
+    # Local Ollama vision-OCR (opt-in, primary OCR path when set). Point OLLAMA_OCR_MODEL
+    # at a local vision model (e.g. "qwen2.5vl:7b") to run handwriting OCR on-device.
+    # Empty = disabled, so deployments without a local Ollama (e.g. Render) skip it.
+    ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434").strip()
+    ollama_ocr_model: str = os.getenv("OLLAMA_OCR_MODEL", "").strip()
     # Heatmap uplift estimation parameters (tunable via .env).
     heatmap_uplift_cap: float = _get_float_env("HEATMAP_UPLIFT_CAP", 0.23)
     heatmap_uplift_ratio: float = _get_float_env("HEATMAP_UPLIFT_RATIO", 0.35)

@@ -10,9 +10,10 @@ export interface Insight {
 
 interface Props {
   insights: Insight[];
+  isError?: boolean;
 }
 
-export function InsightFeed({ insights }: Props) {
+export function InsightFeed({ insights, isError = false }: Props) {
   return (
     <section className="glass-panel rounded-[28px] p-6 text-white shadow-[0_20px_50px_rgba(15,23,42,0.16)]">
       <div className="mb-4 flex items-center gap-3">
@@ -27,7 +28,16 @@ export function InsightFeed({ insights }: Props) {
       </div>
 
       <div className="space-y-3">
-        {insights.map((item) => (
+        {isError ? (
+          <p className="rounded-[18px] border border-red-400/40 bg-red-500/12 px-4 py-3 text-sm text-red-300">
+            ⚠ 無法讀取學習動態，請確認後端連線後重試。
+          </p>
+        ) : insights.length === 0 ? (
+          <p className="rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.14)] p-4 text-sm text-white/62">
+            尚未有可顯示的學習動態。上傳教材並完成測驗後，這裡會即時更新複習建議。
+          </p>
+        ) : (
+          insights.map((item) => (
           <article
             key={item.id}
             className="rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.14)] p-4 transition-all duration-300 hover:bg-white/12"
@@ -45,7 +55,8 @@ export function InsightFeed({ insights }: Props) {
             <p className="text-sm leading-6 text-white/68">{item.description}</p>
             <p className="mt-2 text-xs font-medium text-cyan-100/82">{item.impact}</p>
           </article>
-        ))}
+          ))
+        )}
       </div>
     </section>
   );

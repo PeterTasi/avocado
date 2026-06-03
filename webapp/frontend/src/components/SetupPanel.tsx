@@ -14,6 +14,9 @@ interface Props {
   setMaterialFile: (f: File | null) => void;
   concepts: Concept[];
   search: string;
+  sessionUploaded: boolean;
+  onIngested: () => void;
+  conceptsError: boolean;
 }
 
 export function SetupPanel({
@@ -27,6 +30,9 @@ export function SetupPanel({
   setMaterialFile,
   concepts,
   search,
+  sessionUploaded,
+  onIngested,
+  conceptsError,
 }: Props) {
   const saveApiKey = useSaveApiKey();
   const ingestMaterial = useIngestMaterial();
@@ -45,7 +51,10 @@ export function SetupPanel({
       formData.append("api_key", apiKey.trim());
     }
     await ingestMaterial.mutateAsync(formData);
-  }, [materialFile, courseName, templateMode, apiKey, ingestMaterial]);
+    // Mutation only resolves on a successful ingest; flip the session gate so
+    // the concept list and insights start reflecting this upload.
+    onIngested();
+  }, [materialFile, courseName, templateMode, apiKey, ingestMaterial, onIngested]);
 
   const ingestData = ingestMaterial.data as
     | { llm_degraded?: boolean; ocr_failed?: boolean; ocr_message?: string; llm_last_error?: string }
@@ -80,7 +89,9 @@ export function SetupPanel({
         <div className="glass-subpanel rounded-[22px] px-4 py-3 text-right md:min-w-48">
           <p className="text-xs uppercase tracking-[0.18em] text-white/55">目前配置</p>
           <p className="mt-2 text-base font-semibold text-white">{templateLabel}</p>
-          <p className="mt-1 text-xs text-white/65">已抽取概念 {concepts.length} 筆</p>
+          <p className="mt-1 text-xs text-white/65">
+            {conceptsError ? "概念讀取失敗" : `已抽取概念 ${concepts.length} 筆`}
+          </p>
         </div>
       </div>
 
@@ -181,7 +192,12 @@ export function SetupPanel({
         </div>
       )}
 
-      <ConceptSection concepts={concepts} search={search} />
+      <ConceptSection
+        concepts={concepts}
+        search={search}
+        sessionUploaded={sessionUploaded}
+        isError={conceptsError}
+      />
     </article>
   );
 }

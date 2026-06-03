@@ -12,14 +12,33 @@ async function apiFetch(path: string, options?: RequestInit): Promise<unknown> {
     : await response.text();
 
   if (!response.ok) {
-    const message = (payload && typeof payload === "object" && "detail" in payload)
-      ? String((payload as { detail: string }).detail)
-      : typeof payload === "string" && payload.trim().length > 0
-      ? payload
-      : response.statusText || "請求失敗";
-    throw new Error(message);
+    throw new Error(errorMessage(response.status, payload));
   }
   return payload;
+}
+
+// Build a clean, user-facing error message. JSON `detail` is trusted; any non-JSON
+// body (e.g. a proxy's 502 HTML page) is ignored in favour of a status-based message
+// so raw HTML never leaks into the UI.
+function errorMessage(status: number, payload: unknown): string {
+  if (payload && typeof payload === "object" && "detail" in payload) {
+    const detail = String((payload as { detail: unknown }).detail).trim();
+    if (detail) return detail;
+  }
+  switch (status) {
+    case 502:
+    case 503:
+    case 504:
+      return `伺服器忙線或處理逾時（${status}）。教材可能過大或辨識太久，請稍後再試。`;
+    case 413:
+      return "上傳檔案過大，請改用較小的檔案。";
+    case 429:
+      return "請求過於頻繁，請稍候再試。";
+    default:
+      return status >= 500
+        ? `伺服器發生錯誤（${status}），請稍後再試。`
+        : `請求失敗（${status}），請稍後再試。`;
+  }
 }
 
 export interface HealthResponse {

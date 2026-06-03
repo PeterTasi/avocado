@@ -24,12 +24,28 @@ try:
 except Exception:  # pragma: no cover
     google_exceptions = None  # type: ignore[assignment]
 
+# httpx underlies the google-genai transport; a request timeout surfaces as
+# httpx.TimeoutException, which is NOT a builtin TimeoutError, so catch it explicitly.
+try:
+    import httpx as _httpx
+except Exception:  # pragma: no cover
+    _httpx = None  # type: ignore[assignment]
+
 logger = logging.getLogger("adaptlearn.gemini")
+
+# Upper bound (milliseconds) on any single Gemini HTTP call. Native-PDF transcription
+# of a multi-page handwritten doc can run long; without a cap the request hangs until
+# the hosting proxy (e.g. Render) returns a 502. 120s is generous for one PDF call but
+# still fails fast and degrades gracefully instead of blocking the worker indefinitely.
+_GEMINI_TIMEOUT_MS = 120_000
 
 # Specific exceptions we expect from the Gemini API. Anything listed here is caught in
 # _generate_content and turned into graceful degradation (last_error set, "" returned)
 # instead of propagating as an HTTP 500.
 _API_ERRORS: tuple[type[Exception], ...] = (TimeoutError, ConnectionError)
+if _httpx is not None:
+    # Request/connect/read timeouts and transport errors — degrade, don't 500/502.
+    _API_ERRORS += (_httpx.TimeoutException, _httpx.TransportError)
 if genai_errors is not None:
     # APIError is the base of ClientError (4xx: invalid key, quota) and ServerError (5xx).
     _API_ERRORS += (genai_errors.APIError,)
@@ -50,7 +66,12 @@ class GeminiClient:
         self._client = None
 
         if self.enabled:
-            self._client = genai.Client(api_key=self.api_key)
+            # Bound every call with an HTTP timeout so a slow/stuck transcription fails
+            # fast and degrades gracefully instead of hanging until the proxy 502s.
+            client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+            if genai_types is not None:
+                client_kwargs["http_options"] = genai_types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS)
+            self._client = genai.Client(**client_kwargs)
 
     def _generate_content(self, contents: Any) -> str:
         if not self.enabled or not self._client:

@@ -5,6 +5,58 @@
 
 ---
 
+## 2026-06-03 — Render 上傳手寫 PDF 回 502,狀態列被塞滿原始 HTML ✅
+
+- **症狀:** 在 Render 線上版上傳手寫 PDF(`線性代數第七章內積空間.pdf`)按「建立知識圖譜」後,
+  狀態列出現一整頁原始 HTML,`<title>` 是 **502**。
+- **根因(兩個疊加):**
+  1. **單一 worker 被卡死。** `render.yaml` 用 `uvicorn`(預設單 worker、單事件迴圈)。
+     路由 `async def ingest_material` 卻**直接同步呼叫** `service.ingest_material(...)`,
+     在長時間 OCR/LLM 期間整個事件迴圈被卡住,worker 無法回應 Render 健康檢查 →
+     邊緣 proxy 斷線 → **502 Bad Gateway**(那頁 HTML)。
+  2. **Gemini 呼叫沒有逾時上限。** `GeminiClient` 建 `genai.Client(api_key=...)` 未設 `http_options`,
+     `transcribe_pdf` 整份 PDF 一次送,手寫文件可能跑很久而無上界,既餵養根因 1 也可能撞 proxy 逾時。
+  - 另:前端 `apiFetch` 在非 JSON 錯誤(502 的 HTML)時把整個 body 當訊息丟出,
+    `SetupPanel` 直接把它當狀態文字顯示——這是讓 HTML 外露的**前端既有行為**(非本次 502 根因)。
+- **修法(後端):**
+  - `webapp/main.py`:`ingest_material` 改用 `await run_in_threadpool(service.ingest_material, ...)`,
+    讓同步重工跑在執行緒池,事件迴圈保持可回應健康檢查 → 消除主要 502 路徑。
+  - `gemini_client.py`:建 client 時帶 `HttpOptions(timeout=120_000ms)`,讓卡住的轉寫快速失敗;
+    並把 `httpx.TimeoutException` / `TransportError` 併入 `_API_ERRORS`,逾時改為優雅降級(回 "")→
+    走既有的「文字太少」400 JSON,而非 502。
+- **驗證:** `py_compile` + `ruff` 全綠;`pytest` 的 2 支 `TestNativePdfTranscription`(免 DB)通過;
+  確認 SDK `types.HttpOptions(timeout=...)` 與 `httpx.TimeoutException/TransportError` 皆存在。
+- **前端 apiFetch HTML 外露一併修掉:** `useApi.ts` 新增 `errorMessage(status, payload)`——
+  只信任 JSON 的 `detail`,任何非 JSON body(proxy 的 502 HTML 頁)一律忽略內容,
+  改用依狀態碼的乾淨訊息(502/503/504→「伺服器忙線或處理逾時」、413→檔案過大、429→過於頻繁、
+  其餘 5xx/4xx 通用)。原始 HTML 不再外露。`npm run build` 綠燈,產物已進 `webapp/static/`。
+- **重要提醒:** 後端與前端產物都需 **push 觸發 Render 重新部署**後才生效;目前線上版仍是舊行為。
+
+---
+
+## 2026-06-03 — 教材「已抽取概念」與首頁「學習動態摘要」殘留前次資料 ✅
+
+- **症狀:** 尚未上傳任何檔案(未選擇檔案)時,教材頁的「已抽取概念」就已列出 16 個
+  線性代數概念(Linear Combination、Span…),首頁/側欄的「學習動態摘要」也顯示
+  「優先複習：…」卡片。學生會誤以為這是自己教材的結果,實際上是資料庫殘留的前次 ingest
+  (或種子模板)。此外無資料時還會顯示兩則寫死的假洞察(`FALLBACK_INSIGHTS`,
+  「預估保留率 +3.8%」等),同樣誤導。
+- **根因:** 這些面板忠實顯示 `GET /api/concepts` 與 `GET /api/tonight` 回傳的 DB 內容;
+  PostgreSQL 跨 session 保留舊概念,前端沒有「本次 session 是否真的上傳過」的概念,
+  讀取失敗也被 `?? []` 吞掉,看起來只是「空的」而非「壞掉」。
+- **決策:** 採**前端 session 閘門**(不刪資料,DB 內容保留)。
+- **修法(前端):**
+  - `App.tsx` 新增 `sessionUploaded` 狀態,成功 ingest(`SetupPanel` 的 `onIngested`)後才設 true;
+    重新整理頁面(= 重新「登入」)即歸零。
+  - `concepts` 與 `insights` 都以 `sessionUploaded` 閘門:上傳前一律空。
+  - 移除誤導性的 `FALLBACK_INSIGHTS` 假資料。
+  - 讀取失敗改為**明確紅色報錯**:`useConcepts` / `useTonightDashboard` 的 `isError`
+    傳入 `ConceptSection` 與 `InsightFeed`,顯示「無法讀取…請確認後端連線」而非偽裝成空。
+  - 空狀態文案:「尚未上傳教材。匯入講義後,這裡會顯示自動抽取的概念。」
+- **驗證:** `npm run build` 綠燈,產物已寫入 `webapp/static/`。
+
+---
+
 ## 2026-06-03 — OCR / Gemini 整合的三個 Bug + 原生 PDF 辨識
 
 ### 背景與決策:要重寫整個專案嗎?

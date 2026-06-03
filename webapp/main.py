@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -222,7 +223,12 @@ async def ingest_material(
 
     service = _get_service(api_key_override=api_key)
     try:
-        result = service.ingest_material(
+        # ingest_material is synchronous and can run for many seconds (OCR + LLM calls).
+        # Run it in a threadpool so the single uvicorn worker's event loop stays free to
+        # answer health checks — otherwise a long ingest blocks the worker and the hosting
+        # proxy (Render) returns a 502 Bad Gateway.
+        result = await run_in_threadpool(
+            service.ingest_material,
             file_name=file.filename,
             file_bytes=file_bytes,
             course_name=course_name.strip() or "Course",

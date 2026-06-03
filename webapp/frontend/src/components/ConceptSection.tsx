@@ -4,9 +4,11 @@ import type { Concept } from "../hooks/useApi";
 interface Props {
   concepts: Concept[];
   search: string;
+  sessionUploaded: boolean;
+  isError: boolean;
 }
 
-export function ConceptSection({ concepts, search }: Props) {
+export function ConceptSection({ concepts, search, sessionUploaded, isError }: Props) {
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return concepts;
@@ -30,7 +32,13 @@ export function ConceptSection({ concepts, search }: Props) {
       </div>
 
       <div className="max-h-64 space-y-2 overflow-auto pr-1">
-      {filtered.length === 0 ? (
+      {isError ? (
+        <p className="rounded-[18px] border border-red-400/40 bg-red-500/12 px-4 py-3 text-xs text-red-300">
+          ⚠ 無法讀取概念資料，請確認後端連線後重試（避免顯示過期或錯誤的內容）。
+        </p>
+      ) : !sessionUploaded ? (
+        <p className="text-xs text-white/62">尚未上傳教材。匯入講義後，這裡會顯示自動抽取的概念。</p>
+      ) : filtered.length === 0 ? (
         <p className="text-xs text-white/62">目前沒有可顯示的概念。</p>
       ) : (
         filtered.map((item) => (

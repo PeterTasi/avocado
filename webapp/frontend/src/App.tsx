@@ -76,23 +76,6 @@ const PAGE_META: Record<Exclude<ViewKey, "home">, { title: string; description: 
   },
 };
 
-const FALLBACK_INSIGHTS: Insight[] = [
-  {
-    id: "fallback-1",
-    title: "AI 建議：安排下一次複習",
-    description: "依忘記曲線，2 小時內安排一次短複習可明顯提升保留率。",
-    impact: "預估保留率 +3.8%",
-    level: "high",
-  },
-  {
-    id: "fallback-2",
-    title: "AI 建議：切換題型",
-    description: "先做 2 題基礎題再做 1 題進階題，能降低認知負荷。",
-    impact: "預估答對率 +2.4%",
-    level: "medium",
-  },
-];
-
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>(() => {
     if (typeof window === "undefined") {
@@ -107,12 +90,16 @@ export default function App() {
   const [materialFile, setMaterialFile] = useState<File | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
+  // Session gate: until this session successfully ingests a file, concept &
+  // insight panels stay empty so stale DB data from a prior session can't be
+  // mistaken for the freshly uploaded material. Resets on page reload.
+  const [sessionUploaded, setSessionUploaded] = useState(false);
 
   const { data: healthData } = useHealth();
-  const { data: conceptsData, isLoading: conceptsLoading } = useConcepts();
+  const { data: conceptsData, isLoading: conceptsLoading, isError: conceptsError } = useConcepts();
   const { data: masteryData, isLoading: masteryLoading } = useConceptMastery();
   const { data: chapterData } = useChapterMastery();
-  const { data: tonightData, isLoading: tonightLoading } = useTonightDashboard();
+  const { data: tonightData, isLoading: tonightLoading, isError: tonightError } = useTonightDashboard();
   const { data: reviewPlanData, isLoading: reviewPlanLoading } = useReviewPlan();
   const { data: graphData, isLoading: graphLoading } = useKnowledgeGraph();
 
@@ -122,7 +109,8 @@ export default function App() {
     llm_enabled: healthData?.llm_enabled ?? false,
   };
 
-  const concepts = conceptsData?.items ?? [];
+  // Only reveal concepts once this session has uploaded material.
+  const concepts = sessionUploaded ? (conceptsData?.items ?? []) : [];
   const conceptMastery = masteryData?.items ?? [];
   const chapterMastery = chapterData?.items ?? [];
   const reviewItems = reviewPlanData?.items ?? [];
@@ -136,16 +124,15 @@ export default function App() {
   };
 
   const insights = useMemo<Insight[]>(() => {
-    const aiFocus = (tonight.focus_items ?? []).slice(0, 4).map((item, index) => ({
+    if (!sessionUploaded) return [];
+    return (tonight.focus_items ?? []).slice(0, 4).map((item, index) => ({
       id: `focus-${index}`,
       title: `優先複習：${item.concept}`,
       description: `${item.chapter} · 建議時段 ${item.slot}。優先度 ${safeNumber(item.priority).toFixed(2)}。`,
       impact: `預估提升 +${(safeNumber(item.estimated_gain) * 100).toFixed(1)}%`,
       level: (index < 2 ? "high" : "medium") as "high" | "medium",
     }));
-
-    return aiFocus.length > 0 ? aiFocus : FALLBACK_INSIGHTS;
-  }, [tonight.focus_items]);
+  }, [tonight.focus_items, sessionUploaded]);
 
   const runtimeLabel = metrics.llm_enabled ? "Gemini 已啟用" : "備援模式";
   const runtimeHint = metrics.llm_enabled ? "可使用生成式診斷、摘要與評分" : "目前以規則與既有資料回應";
@@ -298,6 +285,9 @@ export default function App() {
                   setMaterialFile={setMaterialFile}
                   concepts={concepts}
                   search={search}
+                  sessionUploaded={sessionUploaded}
+                  onIngested={() => setSessionUploaded(true)}
+                  conceptsError={conceptsError}
                 />
               )}
             </ErrorBoundary>
@@ -320,7 +310,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <InsightFeed insights={insights.slice(0, 3)} />
+              <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
             </div>
           </div>
         </div>
@@ -357,7 +347,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <InsightFeed insights={insights.slice(0, 3)} />
+            <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
           </div>
         </div>
       );

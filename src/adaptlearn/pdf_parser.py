@@ -23,6 +23,7 @@ def extract_material_text(
     file_name: str,
     file_bytes: bytes,
     gemini_client: Any | None = None,
+    chandra_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
@@ -36,6 +37,7 @@ def extract_material_text(
         return _extract_pdf_material(
             file_bytes,
             gemini_client=gemini_client,
+            chandra_client=chandra_client,
             ocr_context=ocr_context,
             max_ocr_pages=max_ocr_pages,
         )
@@ -50,6 +52,7 @@ def extract_material_text(
             file_name=file_name,
             file_bytes=file_bytes,
             gemini_client=gemini_client,
+            chandra_client=chandra_client,
             ocr_context=ocr_context,
         )
     raise ValueError("目前支援 PDF、TXT，以及 PNG/JPG/WEBP/BMP/TIFF 圖片檔。")
@@ -59,6 +62,7 @@ def extract_text(
     file_name: str,
     file_bytes: bytes,
     gemini_client: Any | None = None,
+    chandra_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> str:
@@ -66,6 +70,7 @@ def extract_text(
         file_name=file_name,
         file_bytes=file_bytes,
         gemini_client=gemini_client,
+        chandra_client=chandra_client,
         ocr_context=ocr_context,
         max_ocr_pages=max_ocr_pages,
     ).text
@@ -74,13 +79,15 @@ def extract_text(
 def _extract_pdf_material(
     file_bytes: bytes,
     gemini_client: Any | None = None,
+    chandra_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         page_text = [page.get_text("text") for page in doc]
         extracted_text = "\n".join(text.strip() for text in page_text if text and text.strip())
-        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not _ocr_available(gemini_client):
+        any_ocr = _ocr_available(chandra_client) or _ocr_available(gemini_client)
+        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not any_ocr:
             return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
 
         resolved_max_ocr_pages = max(1, int(max_ocr_pages))
@@ -92,40 +99,53 @@ def _extract_pdf_material(
 
         images = _pdf_pages_to_images(doc)
 
-    ocr_text = _transcribe_images(gemini_client=gemini_client, images=images, ocr_context=ocr_context)
+    ocr_text, source_type = _transcribe_with_fallback(
+        images=images,
+        chandra_client=chandra_client,
+        gemini_client=gemini_client,
+        ocr_context=ocr_context,
+        chandra_source="pdf-chandra-ocr",
+        gemini_source="pdf-ocr",
+    )
     if not ocr_text.strip():
         raise ValueError(
             "已嘗試辨識這份掃描 PDF，但可讀文字仍然太少。"
             "請提高掃描清晰度、對比度，或先做外部 OCR。"
         )
 
-    return ExtractedMaterial(text=ocr_text, source_type="pdf-ocr", ocr_used=True)
+    return ExtractedMaterial(text=ocr_text, source_type=source_type, ocr_used=True)
 
 
 def _extract_image_material(
     file_name: str,
     file_bytes: bytes,
     gemini_client: Any | None = None,
+    chandra_client: Any | None = None,
     ocr_context: str = "",
 ) -> ExtractedMaterial:
-    if not _ocr_available(gemini_client):
+    if not _ocr_available(chandra_client) and not _ocr_available(gemini_client):
         raise ValueError(
-            "手寫或掃描圖片需要可用的 Gemini API 金鑰，"
+            "手寫或掃描圖片需要 Chandra OCR 或 Gemini API 金鑰，"
             "或請先轉成可搜尋 PDF/TXT 後再上傳。"
         )
 
     suffix = Path(file_name).suffix.lower()
     mime_type = _mime_type_for_suffix(suffix)
-    ocr_text = _transcribe_images(
+    images = [
+        {
+            "label": Path(file_name).name,
+            "data": file_bytes,
+            "mime_type": mime_type,
+        }
+    ]
+
+    ocr_text, source_type = _transcribe_with_fallback(
+        images=images,
+        chandra_client=chandra_client,
         gemini_client=gemini_client,
-        images=[
-            {
-                "label": Path(file_name).name,
-                "data": file_bytes,
-                "mime_type": mime_type,
-            }
-        ],
         ocr_context=ocr_context,
+        chandra_source="image-chandra-ocr",
+        gemini_source="image-ocr",
     )
     if not ocr_text.strip():
         raise ValueError(
@@ -133,7 +153,7 @@ def _extract_image_material(
             "請改用更清楚的照片，或先做外部 OCR。"
         )
 
-    return ExtractedMaterial(text=ocr_text, source_type="image-ocr", ocr_used=True)
+    return ExtractedMaterial(text=ocr_text, source_type=source_type, ocr_used=True)
 
 
 def _pdf_pages_to_images(doc: fitz.Document) -> list[dict[str, bytes | str]]:
@@ -151,20 +171,41 @@ def _pdf_pages_to_images(doc: fitz.Document) -> list[dict[str, bytes | str]]:
     return images
 
 
-def _ocr_available(gemini_client: Any | None) -> bool:
+def _ocr_available(client: Any | None) -> bool:
     return bool(
-        gemini_client
-        and getattr(gemini_client, "enabled", False)
-        and callable(getattr(gemini_client, "transcribe_images", None))
+        client
+        and getattr(client, "enabled", False)
+        and callable(getattr(client, "transcribe_images", None))
     )
 
 
 def _transcribe_images(
-    gemini_client: Any,
+    client: Any,
     images: list[dict[str, bytes | str]],
     ocr_context: str,
 ) -> str:
-    return str(gemini_client.transcribe_images(images=images, course_name=ocr_context)).strip()
+    return str(client.transcribe_images(images=images, course_name=ocr_context)).strip()
+
+
+def _transcribe_with_fallback(
+    images: list[dict[str, bytes | str]],
+    chandra_client: Any | None,
+    gemini_client: Any | None,
+    ocr_context: str,
+    chandra_source: str,
+    gemini_source: str,
+) -> tuple[str, str]:
+    """Try Chandra OCR first; fall back to Gemini if Chandra is unavailable or returns empty."""
+    if _ocr_available(chandra_client):
+        text = _transcribe_images(chandra_client, images, ocr_context)
+        if text.strip():
+            return text, chandra_source
+
+    if _ocr_available(gemini_client):
+        text = _transcribe_images(gemini_client, images, ocr_context)
+        return text, gemini_source
+
+    return "", gemini_source
 
 
 def _mime_type_for_suffix(suffix: str) -> str:

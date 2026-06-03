@@ -58,6 +58,10 @@ class Settings:
     api_access_key: str = os.getenv("API_ACCESS_KEY", "").strip()
     # Comma-separated allowed origins for CORS (e.g. GitHub Pages URL).
     allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "").strip()
+    # Chandra OCR backend: "hf" (local model) or "vllm" (remote server, default).
+    chandra_method: str = os.getenv("CHANDRA_METHOD", "vllm").strip()
+    # vLLM server URL used when chandra_method="vllm".
+    chandra_vllm_url: str = os.getenv("CHANDRA_VLLM_URL", "http://localhost:8000/v1").strip()
     # Heatmap uplift estimation parameters (tunable via .env).
     heatmap_uplift_cap: float = _get_float_env("HEATMAP_UPLIFT_CAP", 0.23)
     heatmap_uplift_ratio: float = _get_float_env("HEATMAP_UPLIFT_RATIO", 0.35)

@@ -4,6 +4,57 @@
 
 ---
 
+## 零、首次設定（只需做一次）
+
+### 第一步：安裝 Python 依賴
+
+```bash
+cd /path/to/project          # 進入專案根目錄
+
+# 建立虛擬環境（若 .venv 不存在）
+python3.11 -m venv .venv
+
+# 啟動虛擬環境
+source .venv/bin/activate    # macOS / Linux
+# .venv\Scripts\activate     # Windows
+
+# 安裝所有套件
+pip install -r requirements.txt
+```
+
+### 第二步：建置前端（React → 靜態檔）
+
+```bash
+cd webapp/frontend
+npm install        # 安裝 Node.js 依賴（只需一次）
+npm run build      # 編譯到 webapp/static/（每次改前端後重做）
+cd ../..           # 回到專案根目錄
+```
+
+### 第三步：設定環境變數
+
+```bash
+cp .env.example .env   # 複製範本
+```
+
+用文字編輯器打開 `.env`，填入：
+
+| 變數 | 說明 | 必填 |
+|------|------|------|
+| `DATABASE_URL` | PostgreSQL 連線字串，例：`postgresql://user:pass@localhost/adaptlearn` | ✅ |
+| `GEMINI_API_KEY` | Google Gemini API 金鑰（無金鑰可用備援模式） | 建議 |
+| `CHANDRA_METHOD` | `vllm`（需執行伺服器）或 `hf`（本機下載模型） | 選用 |
+| `CHANDRA_VLLM_URL` | Chandra vLLM 伺服器位址（預設 `http://localhost:8000/v1`） | 選用 |
+
+### 第四步：初始化資料庫
+
+```bash
+source .venv/bin/activate
+python scripts/init_db.py   # 建立所有資料表（若資料庫已初始化可略過）
+```
+
+---
+
 ## 一、本機啟動
 
 ### 1. 啟動後端（含前端）
@@ -16,7 +67,21 @@ uvicorn webapp.main:app --reload --host 0.0.0.0 --port 8000
 
 打開 **http://localhost:8000** 即可看到完整系統。
 
-### 2. 若需 Gemini AI 功能
+> **macOS 快捷**：直接雙擊 `start_adaptlearn_web.command` 檔案，自動啟動後端。
+
+### 2. 若需前端熱更新開發模式
+
+```bash
+# 終端機一：啟動後端
+source .venv/bin/activate
+uvicorn webapp.main:app --reload --port 8000
+
+# 終端機二：啟動前端開發伺服器
+cd webapp/frontend
+npm run dev    # 在 http://localhost:5173 預覽，修改立即生效
+```
+
+### 3. 若需 Gemini AI 功能
 
 在右側面板「匯入教材與課程配置」→「Gemini API 金鑰」欄位填入 key，  
 或先執行：
@@ -26,6 +91,30 @@ curl -X POST http://localhost:8000/api/config/api-key \
   -H "Content-Type: application/json" \
   -d '{"api_key": "YOUR_GEMINI_KEY"}'
 ```
+
+### 4. 啟用 Chandra 手寫辨識 OCR（選用）
+
+**方案 A：本機 HF 模型**（需下載約 10 GB 模型，第一次慢）
+
+```bash
+pip install chandra-ocr[hf]
+# 在 .env 設定：
+CHANDRA_METHOD=hf
+```
+
+**方案 B：vLLM 伺服器**（需另外架設 GPU 伺服器）
+
+```bash
+# 安裝 vLLM 伺服器端（在 GPU 機器上）：
+pip install chandra-ocr
+chandra_vllm   # 啟動 vLLM，預設 port 8000
+
+# 在 .env 設定（你的應用程式那台）：
+CHANDRA_METHOD=vllm
+CHANDRA_VLLM_URL=http://<GPU伺服器IP>:8000/v1
+```
+
+啟用後，上傳**手寫筆記圖片**時會自動優先使用 Chandra；若 Chandra 失敗則退回 Gemini。
 
 ---
 
@@ -68,10 +157,12 @@ curl -X POST http://localhost:8000/api/config/api-key \
 | 面向 | 說明 |
 |------|------|
 | **AI 骨幹** | Google Gemini 2.5 Flash — 概念抽取、題目生成、語意評分 |
+| **手寫辨識** | Chandra OCR（datalab-to/chandra）— 支援手寫筆記、複雜表格、數學公式，90+ 語言 |
+| **OCR 容錯** | 優先 Chandra → 自動退回 Gemini Vision，任一可用即正常運作 |
 | **知識結構** | DOT 格式知識圖譜，涵蓋先修、進展、跨課等價、泛化等 8 種關係 |
-| **遺忘曲線** | SM-2 間隔重複演算法排定每位同學的複習優先序 |
+| **遺忘曲線** | FSRS-5 間隔重複演算法排定每位同學的複習優先序 |
 | **前端** | React 18 + Vite + Tailwind CSS，玻璃擬態(Glassmorphism)介面 |
-| **後端** | FastAPI + SQLite，API 語意清晰、前後端完整分離 |
+| **後端** | FastAPI + PostgreSQL，API 語意清晰、前後端完整分離 |
 | **語系** | 全介面繁體中文，`zh-TW` 日期格式 |
 
 ---

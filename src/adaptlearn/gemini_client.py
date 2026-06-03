@@ -209,6 +209,7 @@ From the material below, extract at most {max_concepts} core concepts.
     - Prefer concept names as canonical noun phrases (typically 2-5 words). Single-word concepts are allowed only if technically standard (e.g., Rank, Nullity).
     - "chapter" should be a real topic/chapter label, not week number.
     - "prerequisites" should include only genuine conceptual dependencies that are likely also in the extracted list.
+    - IMPORTANT: Match the language of the source material. If the material is primarily in Traditional Chinese, output concept names, chapters, and descriptions in Traditional Chinese. If primarily in English, use English.
 
 Course: {course_name}
 

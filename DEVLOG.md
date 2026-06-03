@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-06-03 — 知識圖譜改為放射狀心智圖(SVG) ✅
+
+- **起點(使用者痛點):** 圖譜頁原本是 `react-force-graph-2d` 力導向圖——節點隨機堆在中間、
+  標籤截斷(≥22字就變「Eigenvalues of Ma...」)、看不出章節階層，完全不像「把觀念連起來」的心智圖。
+  線性代數課特別需要能看出概念之間依存關係的視覺化。
+- **決策:** 換成純 SVG 放射狀心智圖，不加任何新 npm 套件。
+- **新架構(`MindMapCanvas.tsx`):**
+  - **佈局:** 中心節點(課程名稱) → 第一環:章節圓圈(每章一個調色盤顏色) → 第二環:概念 pill 節點
+  - **幾何:** 章節在半徑 170px、概念在半徑 340px(固定虛擬座標空間 1000×700,再 scale 到容器寬)
+  - **概念 fan 展開:** 每章的概念以章節角度為中心，依數量展開 ±75° 扇形,不重疊
+  - **邊線三層:** trunk(中心→章節,粗透明彩線) / branch(章節→概念,細彩線) / cross-edges(概念→概念 Bezier 箭頭,依 relation type 著色)
+  - **Pill 寬度:** 動態計算(約字數 × 7.5px + 32),不截斷 ≤22 字的名稱
+  - **互動:** 拖曳平移、滾輪縮放(0.25x~3x)、點 pill 節點顯示底部 detail panel(掌握度%)、右上角 +/−/⟳ 按鈕
+- **額外修正(同次):** `gemini_client.py extract_concepts` 提示詞加入語言指令 —
+  「IMPORTANT: Match the language of the source material. If primarily in Traditional Chinese, output Chinese names and descriptions.」
+  修前:概念名稱總輸出英文(提示詞全英文 → Gemini 照英文回);修後:中文筆記 → 中文概念名稱。
+- **驗證:** `npm run build` 零錯誤。`react-force-graph-2d` chunk 縮至 0.03 kB(舊路徑保留備用但不再掛載)。
+- **KnowledgeGraphPanel 變化:** 移除舊 `ForceGraphCanvas`/`MasteryLegend` import,換 `MindMapCanvas`/`MindMapLegend`;
+  `courseName` prop 從 App.tsx 的 `activeCourseName` 傳入,顯示在中心節點。
+
+---
+
 ## 2026-06-03 — 本地 Ollama 視覺 OCR:手寫辨識的真正升級(取代「在 Render 跑 Chandra」幻想)✅
 
 - **起點(使用者痛點):** 手寫辨識太弱。線上 Render 版上傳手寫 PDF 仍出 502,且就算成功,

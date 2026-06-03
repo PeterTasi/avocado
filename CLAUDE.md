@@ -193,11 +193,13 @@ Known UI issues to fix during redesign:
 - Track attempt history timelines; surface trend signals (improving / declining / plateaued)
 - Extend `models.py` and `database.py` as needed; expose via new API routes
 
-### 3. Mind Map Generation
-- After material ingestion, auto-generate a mind map from the concept graph
-- Output format TBD (JSON tree for frontend rendering, or Mermaid/DOT string)
-- Add `POST /api/mindmap/{course_id}` endpoint
-- Frontend: new view or panel in the graph page
+### 3. Mind Map Visualization ✅ DONE (frontend)
+- The 圖譜 (Graph) view now renders a **radial SVG mind map** instead of the old force-directed graph.
+- Components: `MindMapCanvas.tsx` + `MindMapLegend` (replace `ForceGraphCanvas.tsx`).
+- Layout: centre node = course name → first ring = chapters (coloured by hue) → outer ring = concept pills (coloured by mastery status).
+- Edges: trunk lines (centre→chapter), branch lines (chapter→concept), prerequisite/progression curved Bezier arrows between concepts.
+- Interaction: mouse-drag pan, scroll-wheel zoom, click concept pill to see detail panel.
+- No new npm dependencies — pure SVG + React. `react-force-graph-2d` still in package.json but no longer used in the main graph view.
 
 ---
 

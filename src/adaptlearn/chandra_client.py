@@ -40,7 +40,8 @@ class ChandraClient:
 
     @property
     def enabled(self) -> bool:
-        return _check_importable()
+        # Empty method = explicitly disabled (e.g. set CHANDRA_METHOD= in .env).
+        return bool(self.method) and _check_importable()
 
     def _get_manager(self) -> Any:
         if self._manager is None:

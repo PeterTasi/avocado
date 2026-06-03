@@ -6,6 +6,8 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 
 **Competition context:** This is a student learning website competition project. Correctness and feature completeness matter more than perfect abstraction.
 
+> **DevLog:** chronological development & debugging history lives in `DEVLOG.md` (kept for the poster/report). Append a dated entry there when you finish notable work.
+
 ---
 
 ## Tech Stack

@@ -174,7 +174,14 @@ class GeminiClient:
             genai_types.Part.from_text(text=prompt),
             genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
         ]
-        raw_text = self._generate_content(genai_types.UserContent(parts=parts))
+        try:
+            raw_text = self._generate_content(genai_types.UserContent(parts=parts))
+        except (UnicodeEncodeError, UnicodeDecodeError) as exc:
+            # google-genai SDK serialization bug with inline PDF bytes on some versions.
+            # Degrade to "" so the caller falls back to page-by-page vision.
+            self.last_error = f"transcribe_pdf encoding error (SDK bug): {exc}"
+            logger.warning("transcribe_pdf failed with encoding error, falling back: %s", exc)
+            return ""
         return _clean_transcription_text(raw_text)
 
     def extract_concepts(

@@ -7,23 +7,36 @@ from typing import Any
 
 try:
     from google import genai
-    from google.api_core import exceptions as google_exceptions
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover
     genai = None  # type: ignore[assignment]
-    google_exceptions = None  # type: ignore[assignment]
     genai_types = None  # type: ignore[assignment]
+
+# New google-genai SDK error types (invalid key, quota, bad model all subclass APIError).
+try:
+    from google.genai import errors as genai_errors
+except Exception:  # pragma: no cover
+    genai_errors = None  # type: ignore[assignment]
+
+# Old google.api_core exceptions — kept for backward compatibility if that SDK is present.
+try:
+    from google.api_core import exceptions as google_exceptions
+except Exception:  # pragma: no cover
+    google_exceptions = None  # type: ignore[assignment]
 
 logger = logging.getLogger("adaptlearn.gemini")
 
-# Specific exceptions we expect from the Gemini API
-_API_ERRORS: tuple[type[Exception], ...] = ()
+# Specific exceptions we expect from the Gemini API. Anything listed here is caught in
+# _generate_content and turned into graceful degradation (last_error set, "" returned)
+# instead of propagating as an HTTP 500.
+_API_ERRORS: tuple[type[Exception], ...] = (TimeoutError, ConnectionError)
+if genai_errors is not None:
+    # APIError is the base of ClientError (4xx: invalid key, quota) and ServerError (5xx).
+    _API_ERRORS += (genai_errors.APIError,)
 if google_exceptions is not None:
-    _API_ERRORS = (
+    _API_ERRORS += (
         google_exceptions.GoogleAPIError,
         google_exceptions.RetryError,
-        TimeoutError,
-        ConnectionError,
     )
 
 

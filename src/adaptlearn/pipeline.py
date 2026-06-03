@@ -6,6 +6,7 @@ import re
 from collections import defaultdict
 from datetime import datetime
 
+from .chandra_client import ChandraClient
 from .class_heatmap import compute_class_heatmap, get_weak_concepts
 from .config import Settings
 from .cross_course_linker import find_cross_course_links
@@ -31,6 +32,10 @@ class AdaptLearnService:
         self.repo.initialize()
 
         self.gemini = GeminiClient(api_key=key, model=settings.gemini_model)
+        self.chandra = ChandraClient(
+            method=settings.chandra_method,
+            vllm_url=settings.chandra_vllm_url,
+        )
         self.vector_store = ConceptVectorStore(settings.chroma_path)
 
     def close(self) -> None:
@@ -54,6 +59,7 @@ class AdaptLearnService:
             file_name=file_name,
             file_bytes=file_bytes,
             gemini_client=self.gemini,
+            chandra_client=self.chandra,
             ocr_context=course_name,
             max_ocr_pages=self.settings.max_ocr_pages,
         )
@@ -66,11 +72,25 @@ class AdaptLearnService:
         # Reset LLM error state so we can detect failures during this ingest.
         self.gemini.last_error = ""
 
+        ocr_failed = False
+        ocr_message = ""
         if low_text_mode:
             if used_seed_template:
                 concepts = list(seed_concepts)
                 edges = _build_edges_from_concepts(concepts)
                 ingest_mode = "template-fallback"
+                # OCR produced nothing usable, so these are generic template concepts —
+                # NOT the student's actual material. Flag it loudly (Bug 1).
+                ocr_failed = True
+                ocr_message = (
+                    "未能轉寫手寫／掃描內容，目前顯示的是課程模板概念，"
+                    "並非你上傳教材的實際內容。請改用更清晰的檔案、提供可用的 Gemini API 金鑰，"
+                    "或先做外部 OCR 後再上傳。"
+                )
+                logger.warning(
+                    "OCR yielded <%d chars; falling back to seed template (course=%s, source=%s)",
+                    40, course_name, extracted_material.source_type,
+                )
             else:
                 raise ValueError(
                     "這份檔案幾乎沒有可讀文字。"
@@ -144,6 +164,9 @@ class AdaptLearnService:
             "template_mode": template_mode,
             "ingest_mode": ingest_mode,
             "llm_degraded": llm_degraded,
+            "ocr_failed": ocr_failed,
+            "ocr_message": ocr_message,
+            "llm_last_error": self.gemini.last_error,
         }
 
     def generate_diagnostics(self, question_count: int = 9) -> list[Question]:

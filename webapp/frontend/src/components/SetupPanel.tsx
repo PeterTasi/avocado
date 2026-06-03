@@ -47,16 +47,21 @@ export function SetupPanel({
     await ingestMaterial.mutateAsync(formData);
   }, [materialFile, courseName, templateMode, apiKey, ingestMaterial]);
 
+  const ingestData = ingestMaterial.data as
+    | { llm_degraded?: boolean; ocr_failed?: boolean; ocr_message?: string; llm_last_error?: string }
+    | undefined;
+  const llmDegraded = ingestMaterial.isSuccess && ingestData?.llm_degraded === true;
+  const ocrFailed = ingestMaterial.isSuccess && ingestData?.ocr_failed === true;
+
   const status = ingestMaterial.isPending
     ? "正在解析教材並建立知識圖譜..."
+    : ocrFailed
+    ? "已建立，但未能轉寫你的教材內容（見下方警告）。"
     : ingestMaterial.isSuccess
     ? "建立完成。"
     : ingestMaterial.error instanceof Error
     ? ingestMaterial.error.message
     : "";
-
-  const ingestData = ingestMaterial.data as { llm_degraded?: boolean } | undefined;
-  const llmDegraded = ingestMaterial.isSuccess && ingestData?.llm_degraded === true;
 
   const templateLabel =
     templateMode === "generic" ? "通用抽取" : templateMode === "auto" ? "自動偵測" : "線性代數";
@@ -155,10 +160,24 @@ export function SetupPanel({
         <span className="text-xs text-white/68">{status}</span>
       </div>
 
-      {llmDegraded && (
+      {ocrFailed && (
+        <div className="mt-3 rounded-[18px] border border-red-400/40 bg-red-500/12 px-4 py-3 text-sm text-red-300">
+          <span className="font-semibold">⚠ 未能轉寫教材：</span>
+          {ingestData?.ocr_message ??
+            "未能轉寫手寫／掃描內容，目前顯示的是課程模板概念，並非你上傳教材的實際內容。"}
+          {ingestData?.llm_last_error ? (
+            <span className="mt-1 block text-xs text-red-300/70">原因：{ingestData.llm_last_error}</span>
+          ) : null}
+        </div>
+      )}
+
+      {llmDegraded && !ocrFailed && (
         <div className="mt-3 rounded-[18px] border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           <span className="font-semibold">⚠ AI 降級警告：</span>
           Gemini API 呼叫失敗，概念圖譜已改用啟發式規則建立，品質可能較低。請確認 API 金鑰是否正確並重新匯入。
+          {ingestData?.llm_last_error ? (
+            <span className="mt-1 block text-xs text-amber-300/70">原因：{ingestData.llm_last_error}</span>
+          ) : null}
         </div>
       )}
 

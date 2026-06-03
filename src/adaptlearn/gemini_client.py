@@ -122,6 +122,40 @@ class GeminiClient:
 
         return "\n\n".join(transcripts).strip()
 
+    def transcribe_pdf(
+        self,
+        pdf_bytes: bytes,
+        course_name: str = "",
+    ) -> str:
+        """Transcribe a whole PDF in a single Gemini call using native document vision.
+
+        Sends the PDF inline as application/pdf (no per-page rendering, no page cap),
+        so multi-page scanned/handwritten documents are handled in one request.
+        Inline requests must stay under ~20 MB; larger files would need the Files API.
+        """
+        if not self.enabled or not self._client or genai_types is None or not pdf_bytes:
+            return ""
+
+        context = course_name.strip() or "General study notes"
+        prompt = (
+            "You are transcribing a multi-page document of study notes "
+            "(it may be handwritten or scanned).\n"
+            "Return plain text only.\n"
+            "Rules:\n"
+            "- Transcribe all legible text faithfully in reading order, page by page.\n"
+            "- Preserve line breaks, bullets, short tables, and formulas when possible.\n"
+            "- Keep Chinese, English, numbers, and symbols as written.\n"
+            "- Do not summarize, explain, or add headings.\n"
+            "- If a short span is unreadable, write [illegible].\n"
+            f"Course context: {context}."
+        )
+        parts = [
+            genai_types.Part.from_text(text=prompt),
+            genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
+        ]
+        raw_text = self._generate_content(genai_types.UserContent(parts=parts))
+        return _clean_transcription_text(raw_text)
+
     def extract_concepts(
         self,
         text: str,

@@ -142,7 +142,9 @@ Supported formats: `.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.t
 
 Flow:
 1. Extract text from file (PyMuPDF for PDF, direct decode for TXT, bytes for images)
-2. If text is too sparse (`< 40 chars`) → OCR fallback chain: **Chandra OCR first → Gemini vision OCR second**
+2. If text is too sparse (`< 40 chars`) → OCR fallback chain:
+   - **PDF:** Chandra OCR first (per-page images, handwriting-aware, subject to `MAX_OCR_PAGES`) → **Gemini native PDF second** (`GeminiClient.transcribe_pdf` sends the whole document inline as `application/pdf` in ONE call, no page cap). The `MAX_OCR_PAGES` limit now only gates the Chandra image path; the Gemini path handles arbitrarily long PDFs.
+   - **Image:** Chandra OCR first → Gemini vision OCR second (`transcribe_images`).
 3. Build knowledge graph via `knowledge_graph.py` (LLM extracts concepts + edges)
 4. Optionally merge with domain seed templates (`domain_templates.py`)
 5. Save to PostgreSQL + ChromaDB; discover cross-course links

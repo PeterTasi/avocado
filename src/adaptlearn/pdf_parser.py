@@ -83,37 +83,48 @@ def _extract_pdf_material(
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
 ) -> ExtractedMaterial:
+    chandra_ok = _ocr_available(chandra_client)
+    gemini_ok = _ocr_available(gemini_client)
+    gemini_pdf_ok = gemini_ok and callable(getattr(gemini_client, "transcribe_pdf", None))
+    resolved_max_ocr_pages = max(1, int(max_ocr_pages))
+
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         page_text = [page.get_text("text") for page in doc]
         extracted_text = "\n".join(text.strip() for text in page_text if text and text.strip())
-        any_ocr = _ocr_available(chandra_client) or _ocr_available(gemini_client)
-        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not any_ocr:
+        if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not (chandra_ok or gemini_ok):
             return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
 
-        resolved_max_ocr_pages = max(1, int(max_ocr_pages))
-        if len(doc) > resolved_max_ocr_pages:
-            raise ValueError(
-                f"這份掃描 PDF 共有 {len(doc)} 頁，超過目前 OCR 上限 {resolved_max_ocr_pages} 頁。"
-                "請先拆分重點頁面、在 .env 調高 MAX_OCR_PAGES，或先做外部 OCR 後再上傳。"
-            )
-
-        images = _pdf_pages_to_images(doc)
-
-    ocr_text, source_type = _transcribe_with_fallback(
-        images=images,
-        chandra_client=chandra_client,
-        gemini_client=gemini_client,
-        ocr_context=ocr_context,
-        chandra_source="pdf-chandra-ocr",
-        gemini_source="pdf-ocr",
-    )
-    if not ocr_text.strip():
-        raise ValueError(
-            "已嘗試辨識這份掃描 PDF，但可讀文字仍然太少。"
-            "請提高掃描清晰度、對比度，或先做外部 OCR。"
+        page_count = len(doc)
+        # Chandra is image-based, so it needs per-page renders and respects the page cap.
+        # Only render when we'll actually use Chandra and the doc fits the cap.
+        chandra_images = (
+            _pdf_pages_to_images(doc)
+            if chandra_ok and page_count <= resolved_max_ocr_pages
+            else None
         )
 
-    return ExtractedMaterial(text=ocr_text, source_type=source_type, ocr_used=True)
+    # 1) Chandra first (handwriting-aware), when available and within the page cap.
+    if chandra_images is not None:
+        text = _transcribe_images(chandra_client, chandra_images, ocr_context)
+        if text.strip():
+            return ExtractedMaterial(text=text, source_type="pdf-chandra-ocr", ocr_used=True)
+
+    # 2) Gemini native PDF — whole document in one call, no per-page cap.
+    if gemini_pdf_ok:
+        text = str(gemini_client.transcribe_pdf(pdf_bytes=file_bytes, course_name=ocr_context)).strip()
+        if text:
+            return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
+
+    # 3) Nothing produced usable text.
+    if page_count > resolved_max_ocr_pages and not gemini_pdf_ok:
+        raise ValueError(
+            f"這份掃描 PDF 共有 {page_count} 頁，超過目前 OCR 上限 {resolved_max_ocr_pages} 頁。"
+            "請先拆分重點頁面、在 .env 調高 MAX_OCR_PAGES，或提供可用的 Gemini API 金鑰以整份辨識。"
+        )
+    raise ValueError(
+        "已嘗試辨識這份掃描 PDF，但可讀文字仍然太少。"
+        "請提高掃描清晰度、對比度，或先做外部 OCR。"
+    )
 
 
 def _extract_image_material(

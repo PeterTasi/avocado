@@ -191,12 +191,18 @@ Known UI issues to fix during redesign:
 - `_API_ERRORS` was built only from `google.api_core.exceptions` (old SDK), so new-SDK failures (`google.genai.errors.APIError` / `ClientError` / `ServerError` — invalid key, quota, bad model) hit `except Exception: raise` and became HTTP 500 instead of degrading.
 - **Fix applied:** `gemini_client.py` now defensively imports `google.genai.errors` and includes `APIError` (base of `ClientError`/`ServerError`) in `_API_ERRORS`; the old `api_core` types are kept for backward compat. Verified with an invalid key: a 401 is caught, logged, `last_error` set, and `extract_concepts` returns `[]` instead of raising.
 
-### Bug 3: Handwritten PDF on Render produces template concepts instead of real OCR — ⚠️ PARTIALLY FIXED (verify on Render)
-- **Code fixes applied:** `requirements.txt` bumped `google-genai>=0.3.0 → >=1.20.0` (old pin likely didn't support the new `AQ.` key format / `gemini-flash-latest` alias); Bug 2 + Bug 1 fixes mean a Gemini failure is now caught and the template-fallback is loudly flagged instead of masquerading as success.
-- **Still to verify on Render (no code change):**
-  1. Run `curl "https://generativelanguage.googleapis.com/v1beta/models?key=<KEY>"` — if it returns 403/PERMISSION_DENIED, enable "Generative Language API" on the Google Cloud project.
-  2. Redeploy so Render reinstalls `google-genai>=1.20.0`, then check Render logs for the now-clear Gemini error reason during an upload.
-  3. Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work. If the model alias is rejected, set `GEMINI_MODEL=gemini-2.0-flash` (explicit ID).
+### Bug 3: Handwritten PDF on Render produces template concepts instead of real OCR — ⚠️ ROOT CAUSE CONFIRMED (it's the API key, not the SDK)
+- **Code fixes applied (good hygiene, but NOT the root cause):** `requirements.txt` bumped `google-genai>=0.3.0 → >=1.20.0`; Bug 1 + Bug 2 fixes mean a Gemini failure is now caught and the template-fallback is loudly flagged instead of masquerading as success.
+- **Confirmed root cause (2026-06-03, via curl tests against the live key):** the Render `GEMINI_API_KEY` is a new-format `AQ.`-prefixed AI Studio key, and it does NOT work:
+  - `?key=` (query param) and `x-goog-api-key` header (what the SDK uses) both return `401 ACCESS_TOKEN_TYPE_UNSUPPORTED` — this is Google's *acknowledged* compatibility bug with `AQ.` keys (see forum; Google's workaround is "generate a non-`AQ.` key").
+  - `Authorization: Bearer` returns `401 API_KEY_SERVICE_BLOCKED` — the key is recognized but blocked from the Generative Language API (API not enabled on its project, billing off, or key auto-blocked as leaked).
+  - Net: `AQ.` ≠ invalid format, but this specific key is both compat-broken (for the SDK path) and service-blocked. No SDK version fixes a blocked key.
+- **Fix (Google Cloud / Render, no code change):**
+  1. Enable **Generative Language API** + **billing** on the key's GCP project; ensure the key has no API restrictions.
+  2. Generate a fresh key (the old one was exposed in plaintext during debugging — treat as leaked). Prefer "Create API key in new project" which auto-enables the API.
+  3. Verify BEFORE deploying: `curl "https://generativelanguage.googleapis.com/v1beta/models?key=<NEWKEY>"` must return a `models` list. If a new `AQ.` key still 401s on `?key=`, regenerate until you get a non-`AQ.` key (Google's own workaround).
+  4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
+- Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
 
 ---
 

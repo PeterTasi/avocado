@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -170,16 +171,19 @@ class GeminiClient:
             "- If a short span is unreadable, write [illegible].\n"
             f"Course context: {context}."
         )
-        parts = [
-            genai_types.Part.from_text(text=prompt),
-            genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
-        ]
+        # Explicitly base64-encode the PDF bytes to avoid a UnicodeEncodeError bug in
+        # google-genai SDK ≥1.70 when Part.from_bytes serializes application/pdf data.
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+        contents = {
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": "application/pdf", "data": pdf_b64}},
+            ]
+        }
         try:
-            raw_text = self._generate_content(genai_types.UserContent(parts=parts))
+            raw_text = self._generate_content(contents)
         except (UnicodeEncodeError, UnicodeDecodeError) as exc:
-            # google-genai SDK serialization bug with inline PDF bytes on some versions.
-            # Degrade to "" so the caller falls back to page-by-page vision.
-            self.last_error = f"transcribe_pdf encoding error (SDK bug): {exc}"
+            self.last_error = f"transcribe_pdf encoding error: {exc}"
             logger.warning("transcribe_pdf failed with encoding error, falling back: %s", exc)
             return ""
         return _clean_transcription_text(raw_text)

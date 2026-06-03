@@ -206,6 +206,9 @@ Known UI issues to fix during redesign:
   4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
 - Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
 
+### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ⬜ NOT YET FIXED
+- `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` calls `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it fails with `TypeError: unexpected keyword argument 'database_path'`. Pre-existing, unrelated to the OCR/Gemini fixes. Most other unit tests also need a live PostgreSQL (`DATABASE_URL`) to run. Fix: update the test to use `database_url`.
+
 ---
 
 ## Key Algorithms

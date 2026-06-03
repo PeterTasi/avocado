@@ -95,11 +95,15 @@ def _extract_pdf_material(
             return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
 
         page_count = len(doc)
-        # Render page images if any image-based OCR path might use them
-        # (Chandra or Gemini page-by-page), subject to the page cap.
-        needs_page_images = (chandra_ok or gemini_ok) and page_count <= resolved_max_ocr_pages
-        page_images = _pdf_pages_to_images(doc) if needs_page_images else None
-        chandra_images = page_images if chandra_ok else None
+        # MAX_OCR_PAGES only caps Chandra (local GPU rendering).
+        # Gemini page-by-page is pure API calls — no local resource reason to cap it.
+        chandra_images = (
+            _pdf_pages_to_images(doc)[:resolved_max_ocr_pages]
+            if chandra_ok and page_count <= resolved_max_ocr_pages
+            else None
+        )
+        # Always render all pages for Gemini vision fallback when Gemini is available.
+        gemini_vision_images = _pdf_pages_to_images(doc) if gemini_ok else None
 
     # 1) Chandra first (handwriting-aware), when available and within the page cap.
     if chandra_images is not None:
@@ -107,17 +111,17 @@ def _extract_pdf_material(
         if text.strip():
             return ExtractedMaterial(text=text, source_type="pdf-chandra-ocr", ocr_used=True)
 
-    # 2) Gemini native PDF — whole document in one call, no per-page cap.
+    # 2) Gemini native PDF — whole document in one call, no page cap.
     if gemini_pdf_ok:
         text = str(gemini_client.transcribe_pdf(pdf_bytes=file_bytes, course_name=ocr_context)).strip()
         if text:
             return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
 
     # 3) Gemini page-by-page vision — fallback when native PDF returns too little text.
-    # Sends each page as an image separately; often more reliable for dense handwriting.
-    # Respects MAX_OCR_PAGES (page_images is None when over the cap).
-    if gemini_ok and page_images is not None:
-        text = _transcribe_images(gemini_client, page_images, ocr_context)
+    # Each page is sent as a separate image; more reliable for dense handwriting.
+    # No page cap: Gemini API calls have no local rendering cost.
+    if gemini_vision_images:
+        text = _transcribe_images(gemini_client, gemini_vision_images, ocr_context)
         if text.strip():
             return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
 

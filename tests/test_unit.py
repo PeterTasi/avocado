@@ -278,7 +278,7 @@ class TestAdaptLearnService:
         import fitz
 
         settings = Settings(
-            database_path=temp_dir / "test_limit.db",
+            database_url=_TEST_DB_URL,
             chroma_path=temp_dir / "chroma-limit",
             gemini_api_key="",
             gemini_model="gemini-flash-latest",
@@ -444,6 +444,68 @@ class TestKnowledgeGraphQuality:
 
         assert all(edge.relation != "next" for edge in edges)
         assert any(edge.relation == "prerequisite" for edge in edges)
+
+
+class TestNativePdfTranscription:
+    """Native PDF path (Gemini `transcribe_pdf`) must bypass MAX_OCR_PAGES.
+
+    Exercised at the `pdf_parser` level so it needs no database. The page cap
+    only gates the per-page image OCR path (Chandra); a client that exposes
+    `transcribe_pdf` sends the whole document in one call, no page limit.
+    """
+
+    def _blank_pdf(self, pages: int) -> bytes:
+        import fitz
+
+        doc = fitz.open()
+        for _ in range(pages):
+            doc.new_page()
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        return pdf_bytes
+
+    def test_native_pdf_bypasses_page_limit(self):
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeNativePdfGemini:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return ""
+
+            def transcribe_pdf(self, pdf_bytes, course_name=""):
+                return "matrix multiplication eigenvalues singular value decomposition"
+
+        # 28 pages, cap of 1 — would be blocked on the image path, but the
+        # native PDF path must accept it.
+        material = extract_material_text(
+            file_name="long_scan.pdf",
+            file_bytes=self._blank_pdf(28),
+            gemini_client=_FakeNativePdfGemini(),
+            max_ocr_pages=1,
+        )
+        assert material.ocr_used is True
+        assert material.source_type == "pdf-ocr"
+        assert "matrix" in material.text.lower()
+
+    def test_page_limit_still_blocks_without_native_pdf(self):
+        from adaptlearn.pdf_parser import extract_material_text
+
+        class _FakeImageOnlyGemini:
+            enabled = True
+
+            def transcribe_images(self, images, course_name=""):
+                return "matrix multiplication eigenvalues"
+            # No transcribe_pdf -> native bypass does not apply.
+
+        with pytest.raises(ValueError) as exc_info:
+            extract_material_text(
+                file_name="scan.pdf",
+                file_bytes=self._blank_pdf(2),
+                gemini_client=_FakeImageOnlyGemini(),
+                max_ocr_pages=1,
+            )
+        assert "上限 1 頁" in str(exc_info.value)
 
 
 class TestPdfSizeLimit:

@@ -210,8 +210,10 @@ Known UI issues to fix during redesign:
   4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
 - Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
 
-### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ⬜ NOT YET FIXED
-- `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` calls `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it fails with `TypeError: unexpected keyword argument 'database_path'`. Pre-existing, unrelated to the OCR/Gemini fixes. Most other unit tests also need a live PostgreSQL (`DATABASE_URL`) to run. Fix: update the test to use `database_url`.
+### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ✅ FIXED
+- `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` called `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it failed with `TypeError: unexpected keyword argument 'database_path'`.
+- **Fix applied:** the field was renamed to `database_url=_TEST_DB_URL` (consistent with the other fixtures). The `TypeError` is gone; the service-based test still needs a live PostgreSQL (`DATABASE_URL`) to run, like most unit tests.
+- **Test coverage added (`TestNativePdfTranscription`):** new regression tests at the `pdf_parser` level (no DB required) lock in the native-PDF behavior from commit `141a6bd`: a Gemini client exposing `transcribe_pdf` bypasses `MAX_OCR_PAGES` (28 pages, cap 1 → accepted, `source_type="pdf-ocr"`), while a client without it still enforces the cap. The page limit only gates the per-page image OCR path (Chandra), not native PDF transcription.
 
 ---
 

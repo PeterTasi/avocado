@@ -116,11 +116,31 @@ Google AI Studio 從 2026 年 4 月起確實會發 `AQ.` 新格式金鑰,且 Goo
 
 ---
 
-## 待辦(clear 後再處理)
+## 2026-06-03 — Bug 4:壞測試使用已移除的 `database_path` 欄位 ✅
 
-- [ ] **Bug 4**:既有壞測試 `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit`
-      使用已移除的 `Settings(database_path=...)` 欄位(SQLite→PostgreSQL 遷移後改名 `database_url`),
-      且需真實 PostgreSQL 才能跑。修法:更新為 `database_url`。
+- **症狀:** `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit`
+  以 `Settings(database_path=...)` 建構,SQLite→PostgreSQL 遷移後此欄位已改名,
+  直接 `TypeError: unexpected keyword argument 'database_path'`,連測試本體都進不去。
+- **根因:** 遷移時 `Settings.database_path` 改成 `database_url`,但這支舊測試沒同步更新。
+- **修法:** 把該欄位改為 `database_url=_TEST_DB_URL`(與檔內其他 fixture 一致)。
+- **驗證:**
+  - `TypeError` 已消失;現在只在無本機 PostgreSQL 時因 `AdaptLearnService.__init__`
+    連線失敗而中止(DEVLOG 既有備註:多數單元測試需真實 `DATABASE_URL`)。
+  - 為了在無 DB 環境確認斷言仍成立(141a6bd 原生 PDF 改動後),直接呼叫
+    `pdf_parser.extract_material_text`(繞過 service/DB):2 頁 PDF + 缺 `transcribe_pdf`
+    的 fake Gemini → 仍正確擋下並報「超過目前 OCR 上限 1 頁」,`"上限 1 頁"` 斷言為真 ✅。
+  - 關鍵點:`_FakeVisionGemini` 沒有 `transcribe_pdf`,故 `gemini_pdf_ok=False`,
+    原生 PDF 旁路不啟動,頁數上限照常生效——測試語意在原生 PDF 改動後依然有效。
+- **補強測試(新增 `TestNativePdfTranscription`):** 原本只覆蓋「沒有原生 PDF 能力 → 擋下」這一半,
+  現補上「**有 `transcribe_pdf` → 28 頁也放行**」的回歸測試,鎖住 141a6bd 的旁路行為:
+  - `test_native_pdf_bypasses_page_limit`:fake 提供 `transcribe_pdf`,28 頁 + 上限 1 頁,
+    斷言不報錯、`ocr_used=True`、`source_type=="pdf-ocr"`。
+  - `test_page_limit_still_blocks_without_native_pdf`:fake 缺 `transcribe_pdf`,2 頁 + 上限 1 頁 → 仍擋下。
+  - 兩支都在 `pdf_parser` 層直接呼叫 `extract_material_text`,**不需 PostgreSQL**,本機即可跑綠 ✅。
+
+---
+
+## 待辦(clear 後再處理)
 - [ ] **安全**:debug 過程中金鑰曾在對話明文出現,建議事後更換或對金鑰加上 API 限制。
 - [ ] **最終 end-to-end 驗證**:Render 換上新金鑰 + 設 `GEMINI_MODEL` + 重新部署後,
       重新上傳手寫 PDF 確認跑出真實概念。

@@ -1,4 +1,5 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
 import type { Concept } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
@@ -36,6 +37,14 @@ export function SetupPanel({
 }: Props) {
   const saveApiKey = useSaveApiKey();
   const ingestMaterial = useIngestMaterial();
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  // Show elapsed time while ingesting so the user knows it's still running.
+  useEffect(() => {
+    if (!ingestMaterial.isPending) { setElapsedSec(0); return; }
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [ingestMaterial.isPending]);
 
   const handleSaveApiKey = useCallback(async () => {
     await saveApiKey.mutateAsync(apiKey.trim());
@@ -164,12 +173,21 @@ export function SetupPanel({
           type="button"
           onClick={handleIngest}
           disabled={ingestMaterial.isPending || !materialFile}
-          className="glass-button-primary rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:opacity-60"
+          className="glass-button-primary inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:opacity-60"
         >
+          {ingestMaterial.isPending && <Loader2 size={15} className="animate-spin" />}
           {ingestMaterial.isPending ? "建立中..." : "建立知識圖譜"}
         </button>
         <span className="text-xs text-white/68">{status}</span>
       </div>
+
+      {ingestMaterial.isPending && (
+        <div className="mt-3 rounded-[18px] border border-white/12 bg-white/6 px-4 py-3 text-sm text-white/72">
+          <span className="font-medium text-white">正在處理教材</span>
+          　掃描 / 手寫 PDF 需要 OCR，通常需要 1–2 分鐘，請耐心等待。
+          <span className="ml-2 tabular-nums text-white/50">（已等待 {elapsedSec} 秒）</span>
+        </div>
+      )}
 
       {ocrFailed && (
         <div className="mt-3 rounded-[18px] border border-red-400/40 bg-red-500/12 px-4 py-3 text-sm text-red-300">

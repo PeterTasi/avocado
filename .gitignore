@@ -23,3 +23,10 @@ gemini_arch_pack.zip
 *.swp
 *.swo
 *~
+
+# Claude Code tooling
+.claude/
+.agents/
+skills-lock.json
+prompt.txt
+LibreUIUX-Claude-Code/

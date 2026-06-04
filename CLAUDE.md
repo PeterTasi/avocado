@@ -193,6 +193,18 @@ Known UI issues to fix during redesign:
 - Track attempt history timelines; surface trend signals (improving / declining / plateaued)
 - Extend `models.py` and `database.py` as needed; expose via new API routes
 
+### 4. LaTeX 數學式渲染（待實作，見 plan.md 任務 1）
+- 測驗題目目前以純文字顯示數學式（如 `a_1, a_2`, `C = AB + 3A - I`），需 KaTeX 渲染
+- 方案：新增 `components/MathRenderer.tsx`，用 regex 切出 `$...$` 區段，KaTeX renderToString
+- QuizPanel 的題目、feedback、expected_answer 都套用
+- 可加 KaTeX npm 套件（例外允許，build 後 commit 到 static/）
+
+### 5. Emil 動效升級 + 像素風格強化（待實作，見 plan.md 任務 3）
+- 使用者回饋：按按鈕的轉場太平，像素風格不夠強烈
+- 參考 `.agents/skills/emil-design-eng/SKILL.md`
+- 具體：題目出現滑入動畫、評分結果彈跳、答對粒子增量（6~8 顆，角度分散）、概念 pill hover 像素閃框
+- 詳見 plan.md 任務 3-A（動效）和 3-B（像素）
+
 ### 3. Mind Map Visualization ✅ DONE (frontend)
 - The 圖譜 (Graph) view now renders a **radial SVG mind map** instead of the old force-directed graph.
 - Components: `MindMapCanvas.tsx` + `MindMapLegend` (replace `ForceGraphCanvas.tsx`).
@@ -227,6 +239,16 @@ Known UI issues to fix during redesign:
   3. Verify BEFORE deploying: `curl "https://generativelanguage.googleapis.com/v1beta/models?key=<NEWKEY>"` must return a `models` list. If a new `AQ.` key still 401s on `?key=`, regenerate until you get a non-`AQ.` key (Google's own workaround).
   4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
 - Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
+
+### Bug 5: 跨 Session 概念殘留 — 測驗產生使用前次教材（待修）
+
+- **症狀（2026-06-04）：** 使用者重整頁面後點「產生題目」，仍用前次 session 上傳教材建立的概念出題，即使本 session 尚未上傳任何教材。
+- **根因：** `/api/diagnostics/generate` 從 DB 取全部概念，不區分 session；前端 `sessionUploaded` gate 只保護首頁顯示，不阻擋 quiz 產生。
+- **修法選項（在 plan.md 第三批任務 2 有詳細分析）：**
+  - 方案 A（推薦，非破壞性）：`handleGenerate` 若 `!sessionUploaded` 先跳出確認 modal 告知使用者目前使用的是舊資料。
+  - 方案 B（需 schema migration）：後端加 `session_id` 欄位，quiz generation 只取最新 session 的 concepts。
+  - 方案 C：提供「清除課程資料」按鈕。
+- **詳細計畫：** 見 `plan.md` 任務 2。
 
 ### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ✅ FIXED
 - `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` called `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it failed with `TypeError: unexpected keyword argument 'database_path'`.

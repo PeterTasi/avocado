@@ -285,7 +285,7 @@ export default function App() {
       return;
     }
     document.title = activeView === "home"
-      ? "avocado 自適應學習儀表板"
+      ? "avocado"
       : `avocado｜${VIEW_ITEMS.find((item) => item.key === activeView)?.label ?? "儀表板"}`;
   }, [activeView]);
 

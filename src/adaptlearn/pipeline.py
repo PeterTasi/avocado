@@ -420,7 +420,8 @@ class AdaptLearnService:
         return self.repo.list_cross_course_edges()
 
     def get_metrics(self) -> dict[str, float]:
-        metrics = self.repo.get_metrics()
+        active_course_id = self.repo.get_active_course_id()
+        metrics = self.repo.get_metrics(course_id=active_course_id)
         return {
             "concept_count": metrics["concept_count"],
             "attempt_count": metrics["attempt_count"],

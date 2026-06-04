@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   ArrowRight,
-  BookOpen,
-  CalendarClock,
   ChevronLeft,
   ChevronRight,
-  LayoutDashboard,
-  Network,
-  Sparkles,
-  TrendingUp,
   UserCircle2,
 } from "lucide-react";
+import {
+  PixelHome,
+  PixelUpload,
+  PixelStar,
+  PixelCalendar,
+  PixelGraph,
+  PixelBook,
+  PixelChart,
+} from "./components/PixelIcons";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DailyProgressRing } from "./components/DailyProgressRing";
 import { LandingScreen } from "./components/LandingScreen";
@@ -38,11 +40,11 @@ import type { Question, TonightDashboard } from "./hooks/useApi";
 import { safeNumber } from "./utils/helpers";
 
 const VIEW_ITEMS = [
-  { key: "home", label: "首頁", icon: LayoutDashboard },
-  { key: "setup", label: "教材", icon: Activity },
-  { key: "quiz", label: "測驗", icon: Sparkles },
-  { key: "review", label: "複習", icon: CalendarClock },
-  { key: "graph", label: "圖譜", icon: Network },
+  { key: "home", label: "首頁", icon: PixelHome },
+  { key: "setup", label: "教材", icon: PixelUpload },
+  { key: "quiz", label: "測驗", icon: PixelStar },
+  { key: "review", label: "複習", icon: PixelCalendar },
+  { key: "graph", label: "圖譜", icon: PixelGraph },
 ] as const;
 
 type ViewKey = (typeof VIEW_ITEMS)[number]["key"];
@@ -187,7 +189,7 @@ export default function App() {
       hint: "從教材中萃取的知識概念總數",
       trend: sessionConceptCount > 0 ? "up" : "flat",
       trendLabel: sessionConceptCount > 0 ? "已建立圖譜" : "等待上傳",
-      icon: BookOpen,
+      icon: PixelBook,
       accentColor: "var(--accent)",
     },
     {
@@ -197,7 +199,7 @@ export default function App() {
       hint: "本次作答的即時正確率",
       trend: accuracyPct >= 70 ? "up" : accuracyPct >= 40 ? "flat" : "down",
       trendLabel: accuracyPct >= 70 ? "表現良好" : accuracyPct >= 40 ? "持續進步" : "需要補強",
-      icon: TrendingUp,
+      icon: PixelChart,
       accentColor: accuracyPct >= 70 ? "var(--high)" : accuracyPct >= 40 ? "var(--medium)" : "var(--low)",
     },
     {
@@ -207,7 +209,7 @@ export default function App() {
       hint: reviewPlanLoading ? "複習資料同步中…" : "間隔重複排入的複習項目數",
       trend: sessionReviewCount > 0 ? "up" : "flat",
       trendLabel: sessionReviewCount > 0 ? `${sessionReviewCount} 項待複習` : "完成測驗後排程",
-      icon: CalendarClock,
+      icon: PixelCalendar,
       accentColor: sessionReviewCount > 0 ? "var(--medium)" : "var(--text-muted)",
     },
   ];
@@ -226,7 +228,7 @@ export default function App() {
       title: "匯入教材",
       description: "上傳 PDF / TXT / 圖片，建立概念、章節與課程基礎。",
       status: selectedFileLabel === "尚未選擇教材檔案" ? `${concepts.length} 個概念已同步` : selectedFileLabel,
-      icon: Activity,
+      icon: PixelUpload,
     },
     {
       key: "quiz",
@@ -234,7 +236,7 @@ export default function App() {
       title: "產生測驗",
       description: "用自適應題目快速找出不熟的概念與理解落差。",
       status: questions.length > 0 ? `已產生 ${questions.length} 題測驗` : "尚未產生診斷題目",
-      icon: Sparkles,
+      icon: PixelStar,
     },
     {
       key: "review",
@@ -242,7 +244,7 @@ export default function App() {
       title: "查看複習",
       description: "直接看到今晚先攻內容與下次複習的排程。",
       status: sessionReviewCount > 0 ? `下一個重點：${topFocus}` : "先完成測驗後會自動排程",
-      icon: CalendarClock,
+      icon: PixelCalendar,
     },
     {
       key: "graph",
@@ -250,7 +252,7 @@ export default function App() {
       title: "理解圖譜",
       description: "檢視概念的先修關係、進展順序與班級熱點。",
       status: graphLoading ? "圖譜載入中" : `主要章節：${topChapter}`,
-      icon: Network,
+      icon: PixelGraph,
     },
   ];
 
@@ -283,8 +285,8 @@ export default function App() {
       return;
     }
     document.title = activeView === "home"
-      ? "AdaptLearn 自適應學習儀表板"
-      : `AdaptLearn｜${VIEW_ITEMS.find((item) => item.key === activeView)?.label ?? "儀表板"}`;
+      ? "avocado 自適應學習儀表板"
+      : `avocado｜${VIEW_ITEMS.find((item) => item.key === activeView)?.label ?? "儀表板"}`;
   }, [activeView]);
 
   const pageMeta = activeView === "home" ? null : PAGE_META[activeView];
@@ -360,6 +362,7 @@ export default function App() {
               setQuestions={setQuestions}
               questionIndex={questionIndex}
               setQuestionIndex={setQuestionIndex}
+              sessionUploaded={sessionUploaded}
             />
           </ErrorBoundary>
 
@@ -451,7 +454,7 @@ export default function App() {
             className="flex items-center gap-2.5"
           >
             <PixelAvocadoLogo size={30} />
-            <span className="font-display text-[17px] font-extrabold text-[color:var(--text-primary)]">AdaptLearn</span>
+            <span className="font-display text-[17px] font-extrabold text-[color:var(--text-primary)]">avocado</span>
           </button>
 
           {/* Nav tabs */}
@@ -540,11 +543,11 @@ export default function App() {
                   {/* Date + badge row */}
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <span className="date-pill">
-                      <CalendarClock size={11} />
+                      <PixelCalendar size={11} />
                       {new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" })}
                     </span>
                     <span className="pill">
-                      <Sparkles size={12} className="text-[color:var(--accent)]" />
+                      <PixelStar size={12} className="text-[color:var(--accent)]" />
                       AI 學習助理
                     </span>
                   </div>
@@ -570,7 +573,7 @@ export default function App() {
                     className="btn-primary gap-2 px-5 py-2.5 text-sm shadow-md"
                     style={{ boxShadow: "0 4px 14px rgba(79,70,229,0.25)" }}
                   >
-                    <Activity size={16} />
+                    <PixelUpload size={16} />
                     匯入教材
                   </button>
                   <button
@@ -578,7 +581,7 @@ export default function App() {
                     onClick={() => navigateTo("quiz")}
                     className="btn-secondary gap-2 px-5 py-2.5 text-sm"
                   >
-                    <Sparkles size={15} />
+                    <PixelStar size={15} />
                     開始測驗
                   </button>
                   <button
@@ -586,7 +589,7 @@ export default function App() {
                     onClick={() => navigateTo("graph")}
                     className="btn-ghost gap-1.5 px-3 py-2 text-xs"
                   >
-                    <Network size={13} />
+                    <PixelGraph size={13} />
                     知識圖譜
                     <ChevronRight size={12} className="opacity-60" />
                   </button>
@@ -741,7 +744,7 @@ export default function App() {
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
                       style={{ background: "var(--accent)", boxShadow: "0 2px 8px rgba(79,70,229,0.25)" }}
                     >
-                      <CalendarClock size={16} color="#fff" />
+                      <PixelCalendar size={16} style={{ color: "#fff" }} />
                     </div>
                   </div>
                   <button

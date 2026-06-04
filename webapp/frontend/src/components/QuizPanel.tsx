@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useGenerateDiagnostics, useGradeQuestion } from "../hooks/useApi";
 import type { Question } from "../hooks/useApi";
 import { safeNumber } from "../utils/helpers";
+import { MathRenderer } from "./MathRenderer";
 
 interface GradeResult {
   score: number;
@@ -16,6 +17,7 @@ interface Props {
   setQuestions: (q: Question[]) => void;
   questionIndex: number;
   setQuestionIndex: React.Dispatch<React.SetStateAction<number>>;
+  sessionUploaded?: boolean;
 }
 
 function formatDifficulty(value: string): string {
@@ -84,28 +86,25 @@ function PixelEmptyBox() {
   );
 }
 
-/** 答對時噴出像素方塊粒子 */
+/** 答對時噴出像素方塊粒子 (6–8 顆，角度分散) */
 function PixelParticles({ active }: { active: boolean }) {
   if (!active) return null;
-  const particles = [
-    { left: "30%", color: "var(--high)",   delay: "0ms" },
-    { left: "50%", color: "var(--accent)", delay: "80ms" },
-    { left: "70%", color: "var(--high)",   delay: "160ms" },
-  ];
+  const colors = ["var(--high)", "var(--accent)", "var(--medium)", "var(--high)", "var(--accent)", "var(--high)", "var(--medium)", "var(--accent)"];
+  const positions = ["18%", "28%", "38%", "50%", "62%", "72%", "80%", "88%"];
   return (
     <>
-      {particles.map((p, i) => (
+      {positions.map((left, i) => (
         <span
           key={i}
           className="pixel-particle"
-          style={{ left: p.left, bottom: "100%", background: p.color, animationDelay: p.delay }}
+          style={{ left, bottom: "100%", background: colors[i % colors.length], animationDelay: `${i * 40}ms` }}
         />
       ))}
     </>
   );
 }
 
-export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionIndex }: Props) {
+export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionIndex, sessionUploaded }: Props) {
   const generateDiagnostics = useGenerateDiagnostics();
   const gradeQuestion = useGradeQuestion();
 
@@ -113,17 +112,26 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
   const [answerText, setAnswerText] = useState("");
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
   const [showParticles, setShowParticles] = useState(false);
+  const [showStaleModal, setShowStaleModal] = useState(false);
   const particleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const currentQuestion = questions[questionIndex] ?? null;
 
-  const handleGenerate = useCallback(async () => {
+  const doGenerate = useCallback(async () => {
     const result = await generateDiagnostics.mutateAsync(questionCount);
     setQuestions(result.items ?? []);
     setQuestionIndex(0);
     setAnswerText("");
     setGradeResult(null);
   }, [questionCount, generateDiagnostics, setQuestions, setQuestionIndex]);
+
+  const handleGenerate = useCallback(() => {
+    if (!sessionUploaded) {
+      setShowStaleModal(true);
+      return;
+    }
+    doGenerate();
+  }, [sessionUploaded, doGenerate]);
 
   const handleGrade = useCallback(async () => {
     if (!currentQuestion || !answerText.trim()) return;
@@ -163,6 +171,34 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
     : "";
 
   return (
+    <>
+    {/* Stale-data confirmation modal */}
+    {showStaleModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div className="card mx-4 max-w-sm p-6 shadow-xl">
+          <p className="text-base font-semibold text-[color:var(--text-primary)]">使用舊教材出題？</p>
+          <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
+            本次 session 尚未上傳新教材，題目將根據上次上傳的課程概念產生。
+          </p>
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowStaleModal(false)}
+              className="btn-ghost px-4 py-2 text-sm"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowStaleModal(false); doGenerate(); }}
+              className="btn-primary px-4 py-2 text-sm"
+            >
+              確認繼續
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <article className="card p-6">
       {/* Header row */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -215,7 +251,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
 
       {/* Question card */}
       {currentQuestion && (
-        <div className="mt-5 card-subtle rounded-2xl p-5">
+        <div key={questionIndex} className="mt-5 card-subtle rounded-2xl p-5 question-enter">
           {/* Meta row */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="font-mono-data text-xs text-[color:var(--text-muted)]">
@@ -229,7 +265,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
 
           {/* Question text */}
           <p className="text-[15px] font-medium leading-7 text-[color:var(--text-primary)]">
-            {currentQuestion.question_text}
+            <MathRenderer text={currentQuestion.question_text} />
           </p>
 
           {/* Answer textarea */}
@@ -278,7 +314,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
           {/* Grade result */}
           {gradeResult && (
             <div
-              className={`mt-4 rounded-xl border p-4 text-sm ${
+              className={`mt-4 rounded-xl border p-4 text-sm grade-enter ${gradeResult.is_correct ? "correct" : ""} ${
                 gradeResult.is_correct
                   ? "border-[color:var(--high)] bg-[color:var(--high-soft)]"
                   : "border-[color:var(--low)] bg-[color:var(--low-soft)]"
@@ -290,14 +326,17 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
                   {(safeNumber(gradeResult.score) * 100).toFixed(1)}%
                 </span>
               </p>
-              <p className="mt-2 text-[color:var(--text-secondary)]">{gradeResult.feedback}</p>
+              <p className="mt-2 text-[color:var(--text-secondary)]">
+                <MathRenderer text={gradeResult.feedback} />
+              </p>
               <p className="mt-1.5 text-xs text-[color:var(--text-muted)]">
-                參考答案：{gradeResult.expected_answer}
+                參考答案：<MathRenderer text={gradeResult.expected_answer} />
               </p>
             </div>
           )}
         </div>
       )}
     </article>
+    </>
   );
 }

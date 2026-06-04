@@ -2,28 +2,78 @@ import { clamp } from "../utils/helpers";
 
 interface Props {
   value?: number;
+  compact?: boolean;
 }
 
-export function DailyProgressRing({ value = 0 }: Props) {
+export function DailyProgressRing({ value = 0, compact = false }: Props) {
   const clamped = clamp(value);
-  const angle = Math.round((clamped / 100) * 360);
-  const statusText = clamped >= 70 ? "穩定前進" : "需要補強";
+
+  // SVG arc parameters
+  const size = 40;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = 15;
+  const circumference = 2 * Math.PI * radius;
+  const filled = (clamped / 100) * circumference;
+  const gap = circumference - filled;
+
+  // Colour transitions by performance band
+  const ringColor =
+    clamped >= 70
+      ? "var(--high)"
+      : clamped >= 40
+        ? "var(--medium)"
+        : "var(--low)";
+
+  const statusText = clamped >= 70 ? "穩定前進" : clamped >= 40 ? "持續進步" : "需要補強";
 
   return (
-    <div className="flex items-center gap-3">
-      <div
-        className="relative h-12 w-12 rounded-full shadow-[0_12px_30px_rgba(15,23,42,0.18)]"
-        style={{ background: `conic-gradient(rgba(255,255,255,0.95) ${angle}deg, rgba(255,255,255,0.16) ${angle}deg 360deg)` }}
-      >
-        <div className="absolute inset-[5px] rounded-full bg-[rgba(18,27,52,0.6)] backdrop-blur-xl" />
-        <div className="absolute inset-0 grid place-items-center text-[11px] font-semibold text-white">
+    <div className="flex items-center gap-2.5">
+      {/* SVG ring — smoother antialiased arc vs. conic-gradient */}
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          style={{ display: "block", transform: "rotate(-90deg)" }}
+        >
+          {/* Track */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke="var(--bg-sunken)"
+            strokeWidth={3.5}
+          />
+          {/* Progress arc */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={ringColor}
+            strokeWidth={3.5}
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${gap}`}
+            style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.34,1.56,0.64,1), stroke 0.3s ease" }}
+          />
+        </svg>
+        {/* Centre label */}
+        <div
+          className="font-mono-data absolute inset-0 grid place-items-center text-[9px] font-semibold"
+          style={{ color: "var(--text-primary)" }}
+        >
           {Math.round(clamped)}%
         </div>
       </div>
-      <div>
-        <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">今日進度</p>
-        <p className="text-sm font-medium text-white">{statusText}</p>
-      </div>
+
+      {!compact && (
+        <div className="hidden sm:block">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">今日進度</p>
+          <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{statusText}</p>
+        </div>
+      )}
     </div>
   );
 }

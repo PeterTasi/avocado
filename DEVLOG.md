@@ -82,7 +82,7 @@
   3. `QuizPanel.tsx`：SVG 半圓弧進度（`QuizArc`）+ 題目元信息用 `.pill`/難度 tag；答對噴 `.pixel-particle` 方塊粒子（3 顆，stagger 0/80/160ms）；像素風空箱插圖。
   4. `StudyPanels.tsx`：TonightPanel 大數字前/提升/後三欄；StudyPlansPanel 用 `.mastery-bar-track/fill` 漸層條顯示優先度。
   5. `MasteryTable.tsx`：`.mastery-bar-track/fill` 漸層條取代舊 table；100% 掌握概念旁顯示 ★ 彩蛋。
-  6. `MindMapCanvas.tsx`：畫布換亮底 `var(--bg-subtle)`；中心節點改 pixel-border 方塊（`rx=2` + 偏移矩形模擬像素邊框）；concept pill 換白底深字；zoom 控制改 `.btn-secondary`；detail panel 改 `.card` 光色；`MindMapLegend` 換亮色。
+  6. `MindMapCanvas.tsx`：畫布換亮底 `var(--bg-subtle)`；中心節點改 pixel-border 方塊（`rx=2` + 偏移矩形模擬像素邊框）；concept pill 換白底深字；zoom 控制改 `.btn-secondary`；detail panel 改 `.card` 光色；`MindMapLegend` 換亮色。**同次修復 Mac 觸控板 Bug：** `onWheel` 加 `ctrlKey` 判斷 — `ctrlKey=true`（Mac pinch 縮放）→ scale factor 1.04/0.96；`ctrlKey=false`（雙指捲動）→ setPan 平移（deltaX/deltaY）。修前：雙指捲動觸發飛速縮放。
   7. `KnowledgeGraphPanel.tsx`：`.card` + `.btn-secondary` 控制鈕。
   8. `ClassHeatmapPanel.tsx`：GitHub 貢獻圖風熱力格子（`2px gap`、`border-radius: 0`、頂部 `3px solid` 顏色條）+ hover tooltip + 圖例。
   9. `LoadingSkeleton.tsx`：Skeleton 換 `--bg-sunken`，cardSkeleton 等換 `.card`。

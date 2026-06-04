@@ -209,7 +209,7 @@ From the material below, extract at most {max_concepts} core concepts.
     - Prefer concept names as canonical noun phrases (typically 2-5 words). Single-word concepts are allowed only if technically standard (e.g., Rank, Nullity).
     - "chapter" should be a real topic/chapter label, not week number.
     - "prerequisites" should include only genuine conceptual dependencies that are likely also in the extracted list.
-    - IMPORTANT: Match the language of the source material. If the material is primarily in Traditional Chinese, output concept names, chapters, and descriptions in Traditional Chinese. If primarily in English, use English.
+    - IMPORTANT: Always output concept names, chapters, and descriptions in Traditional Chinese (繁體中文), regardless of the source material language. Technical terms that are universally written in English (e.g., "Self-Reference", "Naive Set Theory", "Boolean Algebra") should be kept in English only when there is no standard Chinese translation; otherwise prefer the Chinese term.
 
 Course: {course_name}
 
@@ -263,17 +263,18 @@ Material:
 
         concept_json = json.dumps(concepts, ensure_ascii=False)
         prompt = f"""
-You are an adaptive tutor.
-Generate {per_concept} diagnostic questions per concept across difficulty levels.
+You are an adaptive tutor. Generate {per_concept} diagnostic questions per concept across difficulty levels.
+Write questions, answers, and rationale in Traditional Chinese (繁體中文).
+For any mathematical expressions, wrap them in $...$ (e.g. $A^{{-1}}$, $\\lambda_1$).
 
 Return ONLY valid JSON array with schema:
 [
   {{
     "concept": "concept name",
     "difficulty": "basic|intermediate|advanced",
-    "question": "question text",
-    "answer": "reference answer",
-    "rationale": "how to solve and why"
+    "question": "question text in Traditional Chinese",
+    "answer": "reference answer in Traditional Chinese",
+    "rationale": "how to solve and why, in Traditional Chinese"
   }}
 ]
 
@@ -317,14 +318,14 @@ Concepts:
             return {
                 "score": 0.0,
                 "is_correct": False,
-                "feedback": "Answer is empty. Provide your reasoning and final result.",
+                "feedback": "作答為空，請說明你的推理過程並寫出最終答案。",
             }
 
         if not self.enabled or not self._client:
             return _heuristic_grade(expected_answer, user_answer)
 
         prompt = f"""
-You are grading a student's answer.
+You are grading a student's answer. Respond in Traditional Chinese (繁體中文).
 
 Question:
 {question_text}
@@ -339,7 +340,7 @@ Return ONLY valid JSON object:
 {{
   "score": 0.0 to 1.0,
   "is_correct": true or false,
-  "feedback": "short actionable feedback"
+  "feedback": "簡短可行的繁體中文回饋，說明優缺點並給出改進建議。若有數學式請用 $...$ 包住。"
 }}
 """.strip()
 
@@ -354,7 +355,7 @@ Return ONLY valid JSON object:
         score = min(max(score, 0.0), 1.0)
 
         is_correct = bool(payload.get("is_correct", score >= 0.6))
-        feedback = str(payload.get("feedback", "Review key definitions and retry.")).strip() or "Review key definitions and retry."
+        feedback = str(payload.get("feedback", "請複習關鍵定義後再試一次。")).strip() or "請複習關鍵定義後再試一次。"
         return {"score": score, "is_correct": is_correct, "feedback": feedback}
 
 
@@ -369,9 +370,9 @@ def _heuristic_grade(expected_answer: str, user_answer: str) -> dict[str, Any]:
     score = min(max(score, 0.0), 1.0)
     is_correct = score >= 0.6
     feedback = (
-        "Good coverage of key terms. Keep answers structured with assumptions and final conclusion."
+        "關鍵詞涵蓋良好，繼續保持有條理的作答，記得列出假設與最終結論。"
         if is_correct
-        else "Some critical ideas are missing. Compare your logic with the reference answer."
+        else "部分重要概念遺漏，請對照參考答案檢查你的推理邏輯。"
     )
     return {"score": score, "is_correct": is_correct, "feedback": feedback}
 

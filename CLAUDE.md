@@ -7,6 +7,7 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 **Competition context:** This is a student learning website competition project. Correctness and feature completeness matter more than perfect abstraction.
 
 > **DevLog:** chronological development & debugging history lives in `DEVLOG.md` (kept for the poster/report). Append a dated entry there when you finish notable work.
+> **CLAUDE.md 精簡規則：** 完成的功能和修復的 bug 移到 DEVLOG.md；CLAUDE.md 只保留「目前狀態」與「未完成事項」。超過 400 行時主動瘦身。
 
 ---
 
@@ -81,13 +82,13 @@ See `.env.example`. Required:
 
 Optional:
 - `GEMINI_MODEL` — defaults to `gemini-flash-latest`
-- `MAX_OCR_PAGES` — cap on scanned PDF pages sent to Gemini (default 12)
+- `MAX_OCR_PAGES` — cap on scanned PDF pages sent to local OCR (default 12); Gemini paths are uncapped
 - `ALLOWED_ORIGINS` — comma-separated CORS origins
 - `API_ACCESS_KEY` — if set, all `/api/*` routes require `X-API-Key` header
 - `HEATMAP_UPLIFT_CAP`, `HEATMAP_UPLIFT_RATIO` — heatmap tuning
 - `CHANDRA_METHOD` — `"vllm"` (default, needs running server) or `"hf"` (local model, ~10 GB download)
 - `CHANDRA_VLLM_URL` — vLLM server URL for Chandra (default `http://localhost:8000/v1`)
-- `OLLAMA_OCR_MODEL` — local Ollama vision model for primary on-device OCR (e.g. `qwen2.5vl:7b`); empty = disabled (so it is skipped on Render). Best for local demos: strong handwriting, no API cost, no proxy 502
+- `OLLAMA_OCR_MODEL` — local Ollama vision model for primary on-device OCR (e.g. `qwen2.5vl:7b`); empty = disabled. Best for local demos: strong handwriting, no API cost, no proxy 502
 - `OLLAMA_URL` — Ollama server URL (default `http://localhost:11434`)
 
 ---
@@ -129,14 +130,15 @@ cd webapp/frontend && npm run build
 | GET | `/api/cross-course-edges` | Semantic cross-course links |
 | GET | `/api/heatmap/{course_id}` | Class error-rate heatmap |
 | GET | `/api/heatmap/{course_id}/weak` | Top weak concepts |
+| GET | `/api/progress/concepts?days=30` | Per-concept progress trend (improving/declining/plateaued) |
 
 ---
 
 ## Database Schema (PostgreSQL)
 
-Tables: `courses`, `concepts`, `concept_edges`, `cross_course_edges`, `questions`, `attempts`, `review_plan`, `class_node_stats`.
+Tables: `courses`, `concepts`, `concept_edges`, `cross_course_edges`, `questions`, `attempts`, `review_plan`, `class_node_stats`, `schema_version`.
 
-`StudyRepository` (`database.py`) manages all queries. Uses `ThreadedConnectionPool(minconn=1, maxconn=10)`. Schema is auto-created on startup via `initialize()`.
+`StudyRepository` (`database.py`) manages all queries. Uses `ThreadedConnectionPool(minconn=1, maxconn=10)`. Schema is auto-created on startup via `initialize()`; migrations run via `_run_migrations()`.
 
 ---
 
@@ -149,152 +151,21 @@ Supported formats: `.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.t
 Flow:
 1. Extract text from file (PyMuPDF for PDF, direct decode for TXT, bytes for images)
 2. If text is too sparse (`< 40 chars`) → OCR fallback chain (first non-empty result wins):
-   - **PDF:** **Ollama local vision OCR** (per-page images, on-device, opt-in via `OLLAMA_OCR_MODEL`, capped by `MAX_OCR_PAGES`) → **Chandra** (per-page images, also `MAX_OCR_PAGES`-capped) → **Gemini native PDF** (`GeminiClient.transcribe_pdf`, whole doc in ONE `application/pdf` call, no page cap) → **Gemini page-by-page vision** (`transcribe_images`, no cap).
-   - **Image:** Ollama → Chandra → Gemini vision OCR.
-   - `MAX_OCR_PAGES` only caps the **local** image paths (Ollama + Chandra, which render + infer on-device — they share one rendered page set). The Gemini paths are uncapped (pure API). When a doc exceeds the cap, local OCR is skipped (logged) and Gemini handles the full document.
-3. Build knowledge graph via `knowledge_graph.py` (LLM extracts concepts + edges)
-4. Optionally merge with domain seed templates (`domain_templates.py`)
-5. Save to PostgreSQL + ChromaDB; discover cross-course links
-
-OCR `source_type` values: `pdf-text` (native), `pdf-ollama-ocr` (local Ollama), `pdf-chandra-ocr`, `pdf-ocr` (Gemini native/vision), `image-ollama-ocr`, `image-chandra-ocr`, `image-ocr` (Gemini), `txt`.
+   - **PDF:** Ollama → Chandra → Gemini native PDF (whole doc, no page cap) → Gemini page-by-page vision
+   - **Image:** Ollama → Chandra → Gemini vision OCR
+   - `MAX_OCR_PAGES` only caps local paths (Ollama + Chandra). Gemini paths are uncapped.
+3. Build knowledge graph via `knowledge_graph.py` (LLM extracts concepts + edges, scoped to `course_id`)
+4. Save to PostgreSQL + ChromaDB; discover cross-course links
 
 ### OCR internals (quick map — check here before re-opening the files)
 
-- **Entry:** `pdf_parser.extract_material_text(file_name, file_bytes, gemini_client, chandra_client, ollama_client, ocr_context, max_ocr_pages)` → `ExtractedMaterial(text, source_type, ocr_used)`.
-- **PDF order** (`pdf_parser._extract_pdf_material`): native text (PyMuPDF) if ≥ 40 chars, else Ollama → Chandra → Gemini native PDF → Gemini vision. Ollama + Chandra share one rendered page set and the `MAX_OCR_PAGES` cap; over-cap → local skipped (logged) → Gemini.
-- **Image order** (`pdf_parser._transcribe_with_fallback`): Ollama → Chandra → Gemini.
-- **Clients** (all expose `enabled` + `transcribe_images`): `ollama_client.OllamaClient` (stdlib `urllib` → Ollama `/api/generate`; opt-in via `OLLAMA_OCR_MODEL`; errors → `""` so it falls back), `chandra_client.ChandraClient` (vllm/hf — needs GPU, can't run in-process on Render free), `gemini_client.GeminiClient` (also `transcribe_pdf` for native PDF; 120 s `HttpOptions` timeout; API errors degrade to `""` via `_API_ERRORS`).
-- **Wiring:** `pipeline.AdaptLearnService.__init__` builds `self.gemini/chandra/ollama`; `ingest_material` calls `extract_material_text` then `build_knowledge_graph`.
-- **502 fix (only live after a push redeploy):** route `ingest_material` runs the sync ingest via `run_in_threadpool` (event loop stays free for health checks); Gemini calls capped at 120 s; frontend `useApi.ts errorMessage()` shows clean status-code messages instead of leaking proxy HTML.
-- **Render reality:** no GPU / no Ollama → Chandra + Ollama disabled → Gemini is the only working OCR. Local demo → set `OLLAMA_OCR_MODEL` for best handwriting.
+- **Entry:** `pdf_parser.extract_material_text(...)` → `ExtractedMaterial(text, source_type, ocr_used)`
+- **Clients** (all expose `enabled` + `transcribe_images`): `OllamaClient` (opt-in via `OLLAMA_OCR_MODEL`; errors → `""` fallback), `ChandraClient` (needs GPU), `GeminiClient` (also `transcribe_pdf`; 120s timeout; API errors degrade to `""`)
+- **Wiring:** `pipeline.AdaptLearnService.__init__` builds `self.gemini/chandra/ollama`; `ingest_material` calls `extract_material_text` then `build_knowledge_graph`
+- **Render reality:** no GPU / no Ollama → Gemini is the only working OCR. Local demo → set `OLLAMA_OCR_MODEL=qwen2.5vl:7b`
+- **ingest is async-safe:** runs sync work via `run_in_threadpool` (event loop stays free for health checks)
 
 ---
-
-## UI Redesign (pending)
-
-The entire frontend UI needs a full redesign. Current UI is functional but not polished enough for competition. When the user asks to redesign the UI, do a complete overhaul of all views (home, setup/教材, quiz/測驗, review/複習, graph/圖譜) with a more modern, visually appealing design.
-
-Known UI issues to fix during redesign:
-- Setup page text incorrectly says "手寫圖片與掃描 PDF 需要可用的 Gemini API 金鑰，否則請先做 OCR" — should reflect actual priority: Chandra OCR first, Gemini vision as fallback
-
----
-
-## Planned Features (in-progress)
-
-### 1. Handwritten Note Recognition ✅ DONE
-- **Local demo (recommended): `ollama_client.OllamaClient`** runs a local Ollama vision model (e.g. `qwen2.5vl:7b`, same Qwen-VL family as Chandra) as the **primary** OCR — strongest handwriting, zero API cost, no proxy 502, offline. Opt-in via `OLLAMA_OCR_MODEL` (`ollama pull qwen2.5vl:7b` first). For OCR-ing a long doc fully on-device, raise `MAX_OCR_PAGES` (else over-cap docs fall through to Gemini).
-- Integrated `chandra-ocr` (datalab-to/chandra on GitHub) — handwriting-aware document intelligence
-- `src/adaptlearn/chandra_client.py` wraps `InferenceManager`; supports `vllm` and `hf` backends. **Needs a GPU** (HF backend ≈ 16–24 GB VRAM for Qwen3-VL; vllm needs a server) so it can't run in-process on Render free. The Datalab **hosted Chandra API** (datalab.to, ~$5 free credits) is the no-GPU cloud alternative if you ever want managed Chandra.
-- `pdf_parser.py` OCR order is Ollama → Chandra → Gemini; `source_type` values include `image-chandra-ocr`, `pdf-chandra-ocr`, `image-ollama-ocr`, `pdf-ollama-ocr`
-- Configure via `OLLAMA_OCR_MODEL` / `OLLAMA_URL`, or `CHANDRA_METHOD` / `CHANDRA_VLLM_URL` in `.env`
-
-### 2. Learning Progress Tracking Algorithm（未實作，非競賽優先）
-- New endpoint(s) to expose per-concept progress over time (not just current mastery)
-- Track attempt history timelines; surface trend signals (improving / declining / plateaued)
-- Extend `models.py` and `database.py` as needed; expose via new API routes
-
-### 4. LaTeX 數學式渲染 ✅ DONE (2026-06-04)
-- 新增 `components/MathRenderer.tsx`（KaTeX renderToString，`$...$` 和 `\(...\)` 支援）
-- QuizPanel 題目、feedback、expected_answer 都套用 MathRenderer
-- 後端 `gemini_client.py` generate_questions prompt 加入「數學式用 $...$ 包住」指示
-- `npm install katex @types/katex`，build 產物 commit 到 `webapp/static/`
-
-### 5. Emil 動效升級 + 像素風格強化 ✅ DONE (2026-06-04)
-- 題目卡片入場：`.question-enter`（`translateY(12px)→0`，240ms，key=questionIndex 觸發重播）
-- 評分結果：`.grade-enter`（scale 0.97→1）+ 答對時 `.correct`（scale 彈跳到 1.02）
-- 答對粒子從 3 顆擴充為 8 顆（角度分散 18%~88%，混色 high/accent/medium）
-- 概念 pill hover：`.pill:hover` pixel-flash keyframe（border-color 閃 indigo）
-
-### 6. 跨 Session 確認 Modal ✅ DONE (2026-06-04)
-- QuizPanel 加 `sessionUploaded` prop；本 session 未上傳時點「產生題目」先彈出確認 modal
-- 方案 A（非破壞性）已完成；方案 B（DB session_id）/ 方案 C（清除按鈕）為選配，見 plan.md
-
-### 7. 測驗詳解改繁體中文 ✅ DONE (2026-06-04)
-- `grade_answer` prompt 要求繁體中文 feedback；fallback heuristic 訊息、空答案提示全改繁中
-- `generate_questions` prompt 改繁體中文出題，加數學式 `$...$` 指示
-
-### 3. Mind Map Visualization ✅ DONE (frontend)
-- The 圖譜 (Graph) view now renders a **radial SVG mind map** instead of the old force-directed graph.
-- Components: `MindMapCanvas.tsx` + `MindMapLegend` (replace `ForceGraphCanvas.tsx`).
-- Layout: centre node = course name → first ring = chapters (coloured by hue) → outer ring = concept pills (coloured by mastery status).
-- Edges: trunk lines (centre→chapter), branch lines (chapter→concept), prerequisite/progression curved Bezier arrows between concepts.
-- Interaction: mouse-drag pan, scroll-wheel zoom, click concept pill to see detail panel.
-- No new npm dependencies — pure SVG + React. `react-force-graph-2d` still in package.json but no longer used in the main graph view.
-
----
-
-## Known Bugs
-
-### Bug 1: OCR failure silently falls back to a generic template ✅ FIXED
-- When a handwritten/scanned upload yielded `< 40` chars AND OCR produced nothing, `pipeline.ingest_material` quietly substituted the linear-algebra seed template, so the student saw 16 canned concepts and assumed their notes were processed — they weren't.
-- **Fix applied:** in the `template-fallback` branch, `pipeline.ingest_material` now sets `ocr_failed: true` plus a clear Chinese `ocr_message`, and also surfaces `llm_last_error`. `SetupPanel.tsx` renders a distinct **red** warning (separate from the amber `llm_degraded` notice) and the success status line turns neutral when `ocr_failed` is true, so template-fallback no longer looks like a successful ingest.
-
-### Bug 2: Gemini error handling doesn't match the new `google-genai` SDK ✅ FIXED
-- `_API_ERRORS` was built only from `google.api_core.exceptions` (old SDK), so new-SDK failures (`google.genai.errors.APIError` / `ClientError` / `ServerError` — invalid key, quota, bad model) hit `except Exception: raise` and became HTTP 500 instead of degrading.
-- **Fix applied:** `gemini_client.py` now defensively imports `google.genai.errors` and includes `APIError` (base of `ClientError`/`ServerError`) in `_API_ERRORS`; the old `api_core` types are kept for backward compat. Verified with an invalid key: a 401 is caught, logged, `last_error` set, and `extract_concepts` returns `[]` instead of raising.
-
-### Bug 3: Handwritten PDF on Render produces template concepts instead of real OCR — ✅ RESOLVED (was a blocked API key)
-- **Resolution (2026-06-03):** the original Render key was service-blocked because the Generative Language API was not enabled on its project. Enabling the API on a project (`my-project-avocado-498303`) and generating a fresh AI Studio key fixed it — the new `AQ.` key now lists models successfully via the `google-genai` SDK (`x-goog-api-key` path), so the raw-curl `ACCESS_TOKEN_TYPE_UNSUPPORTED` quirk does not affect the actual app. Action items: paste the working key into Render `GEMINI_API_KEY`, optionally set `GEMINI_MODEL=gemini-2.5-flash`, redeploy, and re-test the handwritten PDF. Investigation detail kept below.
-
-- **Code fixes applied (good hygiene, but NOT the root cause):** `requirements.txt` bumped `google-genai>=0.3.0 → >=1.20.0`; Bug 1 + Bug 2 fixes mean a Gemini failure is now caught and the template-fallback is loudly flagged instead of masquerading as success.
-- **Confirmed root cause (2026-06-03, via curl tests against the live key):** the Render `GEMINI_API_KEY` is a new-format `AQ.`-prefixed AI Studio key, and it does NOT work:
-  - `?key=` (query param) and `x-goog-api-key` header (what the SDK uses) both return `401 ACCESS_TOKEN_TYPE_UNSUPPORTED` — this is Google's *acknowledged* compatibility bug with `AQ.` keys (see forum; Google's workaround is "generate a non-`AQ.` key").
-  - `Authorization: Bearer` returns `401 API_KEY_SERVICE_BLOCKED` — the key is recognized but blocked from the Generative Language API (API not enabled on its project, billing off, or key auto-blocked as leaked).
-  - Net: `AQ.` ≠ invalid format, but this specific key is both compat-broken (for the SDK path) and service-blocked. No SDK version fixes a blocked key.
-- **Fix (Google Cloud / Render, no code change):**
-  1. Enable **Generative Language API** + **billing** on the key's GCP project; ensure the key has no API restrictions.
-  2. Generate a fresh key (the old one was exposed in plaintext during debugging — treat as leaked). Prefer "Create API key in new project" which auto-enables the API.
-  3. Verify BEFORE deploying: `curl "https://generativelanguage.googleapis.com/v1beta/models?key=<NEWKEY>"` must return a `models` list. If a new `AQ.` key still 401s on `?key=`, regenerate until you get a non-`AQ.` key (Google's own workaround).
-  4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
-- Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
-
-### Bug 5: 跨 Session 概念殘留 — 測驗產生使用前次教材（方案 A 已修，選配方案待定）
-
-- **症狀（2026-06-04）：** 使用者重整頁面後點「產生題目」，仍用前次 session 上傳教材建立的概念出題，即使本 session 尚未上傳任何教材。
-- **根因：** `/api/diagnostics/generate` 從 DB 取全部概念，不區分 session；前端 `sessionUploaded` gate 只保護首頁顯示，不阻擋 quiz 產生。
-- **方案 A ✅ 已實作（2026-06-04）：** QuizPanel 加 `sessionUploaded` prop；若本 session 未上傳，點「產生題目」先彈出確認 modal（「使用舊教材出題？」），確認後才呼叫 API。非破壞性，競賽夠用。
-- **方案 B（選配，需 schema migration）：** 後端加 `session_id` 欄位，quiz generation 只取最新 session 的 concepts。
-- **方案 C（選配）：** 提供「清除課程資料」按鈕，呼叫新後端 DELETE endpoint。
-- **詳細計畫：** 見 `plan.md`。
-
-### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ✅ FIXED
-- `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` called `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it failed with `TypeError: unexpected keyword argument 'database_path'`.
-- **Fix applied:** the field was renamed to `database_url=_TEST_DB_URL` (consistent with the other fixtures). The `TypeError` is gone; the service-based test still needs a live PostgreSQL (`DATABASE_URL`) to run, like most unit tests.
-- **Test coverage added (`TestNativePdfTranscription`):** new regression tests at the `pdf_parser` level (no DB required) lock in the native-PDF behavior from commit `141a6bd`: a Gemini client exposing `transcribe_pdf` bypasses `MAX_OCR_PAGES` (28 pages, cap 1 → accepted, `source_type="pdf-ocr"`), while a client without it still enforces the cap. The page limit only gates the per-page image OCR path (Chandra), not native PDF transcription.
-
----
-
-## 架構限制與技術債（Architecture Debt — 2026-06-04 Opus 評估）
-
-> 完整評估、證據行號、建議與實作順序見 `plan.md`「🔵 架構改善建議」。這裡只留速查地圖。
-> 動手改任何一項前先讀 plan.md 該段，並切回 Sonnet 實作。
-
-| # | 狀態 | 限制 | 一句話 | 連帶影響 |
-|---|------|------|--------|---------|
-| **P1** ⭐ | ✅ 已修 | ingest 每次全域清空 DB | 改 `reset_course_state(course_id)`；`_concept_id` 加 course 維度；讀寫全部 course-scope | Bug 5 根因已解；多課程可並存；attempts 歷史保留 |
-| **P2** ⭐ | ✅ 後端已修 | 時間欄位全 TEXT（naive 本地時間） | 5 欄改 TIMESTAMPTZ；寫入 UTC；新增 `/api/progress/concepts` | 進度趨勢 API 完成；前端 ProgressPanel 待做 |
-| **P3** | 待做 | `_service_lock` 宣告卻沒 acquire；換 key 重建整個 service | 併發換 key 競態 + 重建過重 | 真 bug，單人 demo 風險低 |
-| **P4** | 待做 | mastery 聚合在 Python 端，每次 `list_attempts(limit=5000)` | 該用 SQL `GROUP BY` | 效能/整潔，行為不變 |
-| **P5** | ✅ 已修 | 無 migration 機制 | 加 `schema_version` 表 + `_run_migrations()` | P1/P2 的前置地基已建立 |
-| **P6** | 待做 | ChromaDB 存本地碟，Render free 無持久碟 | redeploy 後向量庫歸零 | 跨課程連結與 PG 不一致；賽後再處理 |
-
-**最高槓桿一包：** ~~P5 → P1 → P2~~ ✅ 已全部完成（2026-06-04）。多課程、進度追蹤功能已解鎖。
-
-### P1/P2 解法摘要（完整步驟與小工單見 plan.md）
-
-**P1 — 停止全域 wipe，改 course-scope ✅ 已完成（2026-06-04）**
-- `_concept_id(name, chapter, course_id)` hash 加入 course 維度，多課程同名概念不撞 PK。
-- `build_knowledge_graph` 新收 `course_id` 參數（`knowledge_graph.py`）。
-- `pipeline.ingest_material`：course_id 提前計算（在建圖前），改呼叫 `reset_course_state(course_id)` 取代全域 wipe（保留 attempts）。
-- `database.get_active_course_id()`：in-memory cache（`set_active_course()`）+ DB fallback（`WHERE uploaded_at <= now()` 防 migration 產生未來時間戳）。
-- `list_concepts(course_id=None)`、`list_edges(course_id=None)` 加可選過濾；下游（mastery/diagnostics/review/graph）全部 scope 到 active course。
-
-**P2 — TIMESTAMPTZ + 進度趨勢 API ✅ 後端已完成（2026-06-04）**
-- Migration 001：5 個時間欄 TEXT→TIMESTAMPTZ（`attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、`review_plan.next_review_at`、`class_node_stats.updated_at`）。
-- 寫入全改 `datetime.now(timezone.utc)`，不再 `.isoformat()` 存字串。
-- 讀取移除所有 `datetime.fromisoformat(row[...])`（5 處）— psycopg2 直接回傳 datetime 物件。
-- `GET /api/progress/concepts?days=30`：`database.concept_progress()`（`date_trunc('day')` 分組）→ `pipeline.get_concept_progress()`（趨勢判 improving/declining/plateaued，±0.05）。
-- Step 5（選配）`ProgressPanel.tsx` Recharts 折線 + 趨勢徽章 — 待前端實作。
 
 ## Key Algorithms
 
@@ -311,10 +182,7 @@ Known UI issues to fix during redesign:
 
 ## Frontend Views (App.tsx)
 
-> **入口 gate（第二批規劃中）：** app 啟動先顯示全螢幕 `LandingScreen`（`showLanding` 預設 true，不渲染頂欄），
-> 點「開始學習」後才淡入下方 5-view 主儀表板。詳見 plan.md 第二批。
-
-SPA with 5 views routed via `window.history`:
+SPA with 5 views + landing screen (`showLanding` gate, default true — replays each page load):
 
 | Key | Path | Component |
 |---|---|---|
@@ -323,6 +191,8 @@ SPA with 5 views routed via `window.history`:
 | `quiz` | `/quiz` | QuizPanel — adaptive quiz |
 | `review` | `/review` | StudyPlansPanel + TonightPanel |
 | `graph` | `/graph` | KnowledgeGraphPanel + ClassHeatmapPanel |
+
+`LandingScreen.tsx` (full-screen, stagger entry) renders before the nav. `PixelAvocadoLogo.tsx` used in landing and top-nav (`size={104}` / `size={30}`).
 
 ---
 
@@ -357,113 +227,72 @@ Frontend assets must be built locally (`npm run build`) and committed to `webapp
 
 ---
 
-## UI/UX Redesign — 明亮專業（LeetCode-inspired）(2026-06)
+## UI/UX Design Language — 明亮專業（LeetCode-inspired）
 
-> **方向轉折（2026-06-04）：** 初版走深色「Synaptic」科技風，使用者回饋仍有「廉價科技感」+ 版面問題。
-> 改採 **LeetCode 式明亮專業** 主題：白底中性灰 + 釘住頂欄 + 結構化網格 + 顏色只用在有意義的狀態。
-> 廉價感根源已定位並移除：霓虹漸層大字、過度毛玻璃、超大圓角浮島、行銷式 Hero。
->
-> **像素風點綴方向（2026-06-04）：** 明亮專業底 + 少量像素裝飾，讓競賽作品有記憶點。
-> 像素元素只用在「裝飾性位置」（空狀態插圖、答對粒子、圖譜中心節點、熱力格子），不改正文字型。
-> 每頁最多 1~2 個像素元素。技術手法：純 SVG `<rect>` 格子圖、`box-shadow` 階梯邊框、4×4 方塊粒子。
+設計方向：白底中性灰 + 釘住頂欄 + 結構化網格 + 顏色只用在有意義的狀態。像素裝飾（酪梨 logo、答對粒子、圖譜中心節點、熱力格子）保留記憶點，每頁最多 1~2 個。
 
-### 設計語言規範（定義於 `index.css`）
+### 色彩系統（定義於 `index.css`）
 
-**色彩系統（light tokens）：**
 ```
 背景：--bg-app #f5f6f8 / --bg-surface #ffffff / --bg-subtle #f7f8fa / --bg-sunken #f0f1f4
 邊框：--border #e6e8ec / --border-strong #d7dade / --border-hover #c2c7cf
 文字：--text-primary #16181d / --text-secondary #5a616b / --text-muted #8b929c
-品牌強調（節制使用）：--accent #4f46e5（indigo）/ --accent-soft #eef0fe
-語意色（只用於掌握度/難度）：--high #0ea472（綠）/ --medium #d98a04（琥珀）/ --low #e11d48（玫紅）
-陰影：--shadow-sm / --shadow-card / --shadow-pop（light 適用，極淡）
+品牌強調：--accent #4f46e5（indigo）/ --accent-soft #eef0fe
+語意色：--high #0ea472（綠）/ --medium #d98a04（琥珀）/ --low #e11d48（玫紅）
+Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil 推薦）
 ```
 
-**字型：**
-- UI / 標題：`Plus Jakarta Sans`（`.font-display` letter-spacing -0.02em）
-- 數字/統計：`DM Mono`（`.stat-value` / `.font-mono-data`，tabular-nums）
-- 中文：`Noto Sans TC`
-- （已移除 Syne — 對亮色乾淨風格過於 display）
+### 字型
 
-**核心 utility classes：**
-- 卡片：`.card` / `.card-flat` / `.card-subtle` / `.card-interactive`（hover 上浮）
-- 按鈕：`.btn-primary`（indigo）/ `.btn-secondary` / `.btn-ghost`
-- 輸入：`.input`（focus 有 accent ring）
-- 標籤/狀態：`.pill` / `.tag-high|medium|low` / `.status-dot(.live/.signal/.weak/.neural)`
+- UI / 標題：`Plus Jakarta Sans`（`.font-display`，letter-spacing -0.02em）
+- 數字/統計：`DM Mono`（`.stat-value`，tabular-nums）
+- 中文：`Noto Sans TC`
+
+### 核心 utility classes
+
+- 卡片：`.card` / `.card-flat` / `.card-subtle` / `.card-interactive`（hover 上浮，`@media (hover:hover)`）
+- 按鈕：`.btn-primary` / `.btn-secondary` / `.btn-ghost`（`:active` scale(0.97)）
+- 輸入：`.input`（focus accent ring）
+- 標籤/狀態：`.pill` / `.tag-high|medium|low` / `.status-dot`
 - 統計卡：`.stat-card`（左側 3px accent-bar）
 - 掌握度條：`.mastery-bar-track` / `.mastery-bar-fill`（紅→琥珀→綠漸層）
+- 像素裝飾：`.pixel-border` / `.pixel-grid-bg` / `.pixel-particle`
 
-### 結構：釘住頂欄（取代浮島 nav）
+### 頂欄結構
 
-- `top-nav`：sticky、全寬、白底半透明 + 1px 下邊框 + backdrop blur
-- 左 Logo+wordmark、中 nav tabs（active 有底部 2px indigo indicator）、右 狀態 pill + 進度環 + 學生模式
-- 內容容器：`max-w-[1200px] mx-auto px-6`，響應式 mobile 另有橫向 tab bar
+`top-nav`：sticky、白底半透明 + backdrop blur + 1px 下邊框。左 `PixelAvocadoLogo(size=30)` + wordmark、中 nav tabs（active 底部 2px indigo indicator）、右狀態 pill。內容容器：`max-w-[1200px] mx-auto px-6`。
 
-### ⚠️ 遷移機制：`.legacy-surface`（暫時性）
+---
 
-未改造的子頁面（setup/quiz/review/graph 內的舊元件）仍用 `text-white`，在白底會看不見。
-過渡期把這些子頁面內容包在 `.legacy-surface`（暗色包裹層，局部還原舊深色 glass 樣式）保持可讀。
-**每個子頁面改造成亮色元件後，就移除它外層的 `.legacy-surface` 包裹。** 全部完成後可刪掉這段 CSS。
+## 待處理事項
 
-### 各頁面重設計方向
+### 未實作功能
 
-| 頁面 | 主要改動 |
-|------|---------|
-| **Home** ✅ | 亮色儀表板：問候卡（date pill + blob 裝飾）+ 動態統計卡（text-5xl + trend badge）+ 工作流程 timeline + next-up 卡 + AI 洞察（左側彩色 border + SVG 空狀態插圖） |
-| **Setup** | 大型拖曳上傳區（`.upload-zone`）+ 3 步驟進度條 + **🎮 像素風上傳空狀態插圖** |
-| **Quiz** | 圓弧進度（`.quiz-arc-*`）+ **🎮 `.pixel-particle` 方塊答對特效** + 空測驗像素插圖 |
-| **Review** | 三節點保留率視覺 + 掌握度漸層條（`.mastery-bar-*`）+ **🎮 掌握度 100% 像素星星彩蛋** |
-| **Graph** | SVG edge 電流動畫 + **🎮 中心節點 `.pixel-border`（方塊感）** + 熱力格子（無圓角，GitHub 貢獻圖風） |
+- **學習進度追蹤前端（P2 Step 5）：** `ProgressPanel.tsx` — Recharts 折線圖 + 趨勢徽章。後端 `GET /api/progress/concepts?days=30` 已完成。
 
-### 競賽加分視覺細節（CSS 已備好）
+### 未修 Bug
 
-1. 首頁統計數字 `CountUp`（easeOutCubic，0→真實值，0.8s）✅
-2. Nav active 底部 indigo indicator
-3. 上傳 `.scan-line` 處理掃描線 + `.upload-zone` hover
-4. 測驗答對 `.pixel-particle`（4×4 方塊，向上飄散）— 替代圓形 `.particle`
-5. 圖譜 `.graph-edge-animated`（stroke-dashoffset 流動）
-6. 頁面切換 `.view-enter`（opacity + translateY）✅
-7. 卡片 hover 上浮（`.card-interactive` / `.stat-card`）✅
-8. **🎮 像素風空狀態插圖**（Setup / Quiz 空狀態，純 SVG `<rect>` 格子畫法）
-9. **🎮 圖譜中心節點 `.pixel-border`**（box-shadow 模擬階梯邊框，無圓角）
-10. **🎮 熱力格子**（ClassHeatmapPanel，2px gap 無圓角，hover tooltip）
+- **Bug 5 方案 B/C（選配）：** 後端加 `session_id` 欄位限制出題範圍（方案 B）；或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端確認 modal）已完成，競賽夠用。
+- **班級熱力圖課程 tab 重複（Bug 7）：** `ClassHeatmapPanel` 的課程 tab 列表出現重複課程名稱（e.g. Linear Algebra × 3、通用課程 × 2）。需查 `GET /api/heatmap/{course_id}` 或前端取得課程列表的邏輯是否對同一課程去重。
 
-### 實作進度追蹤
+### 架構技術債
 
-- [x] `index.css` — 全面改寫為 light 主題 + tokens + utility classes + `.legacy-surface` 過渡層（2026-06-04）
-- [x] `App.tsx` — 釘住頂欄 + 亮色首頁儀表板 + `CountUp` 元件 + date pill + 工作流程 timeline + next-up 卡（2026-06-04）
-- [x] `DailyProgressRing.tsx` — SVG arc 進度環（更平滑，帶 transition 動畫）（2026-06-04）
-- [x] `InsightFeed.tsx` — 左側彩色 border + SVG 空狀態插圖（2026-06-04）
-- [x] `SetupPanel.tsx` — 改亮色元件 + 上傳區 + 進度步驟條 + 🎮 像素風插圖 → 移除 legacy-surface（2026-06-04）
-- [x] `QuizPanel.tsx` — 改亮色 + 圓弧進度 + 🎮 `.pixel-particle` 答對方塊特效 → 移除 legacy-surface（2026-06-04）
-- [x] `StudyPanels.tsx` + `MasteryTable.tsx` — 改亮色 + 掌握度漸層條 + 🎮 100% 星星彩蛋 → 移除 legacy-surface（2026-06-04）
-- [x] `MindMapCanvas.tsx` + `KnowledgeGraphPanel.tsx` — 亮色 + edge 動畫 + 🎮 中心節點 pixel-border → 移除 legacy-surface（2026-06-04）
-- [x] `ClassHeatmapPanel.tsx` — 🎮 熱力格子（無圓角，2px gap，GitHub 貢獻圖風）（2026-06-04）
+| # | 狀態 | 說明 |
+|---|------|------|
+| P1 / P2 / P5 | ✅ 已修 | Course-scope + TIMESTAMPTZ + Migration — 見 DEVLOG 2026-06-04 |
+| **P3** | 待做 | `_service_lock` 宣告卻沒 acquire；換 key 重建整個 service（真 bug，單人 demo 風險低） |
+| **P4** | 待做 | mastery 聚合在 Python 端每次拉 5000 筆 attempts（該用 SQL `GROUP BY`，效能問題） |
+| **P6** | 待做 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零（賽後處理） |
 
-### 第二批：登入頁 + 像素酪梨 logo + Emil 級動效打磨（2026-06-04 規劃，待 Sonnet 實作）
-
-> 設計與逐任務步驟見 `plan.md`「🟢 本回合優先（第二批）」。依 Emil Kowalski 設計工程哲學
-> （`.agents/skills/emil-design-eng/SKILL.md`）：自訂 easing、按壓 `scale(0.97)`、絕不從 `scale(0)` 入場、
-> 進場慢/離場快、stagger、只動 `transform`/`opacity`、補 `prefers-reduced-motion`。
-
-- **新品牌資產 — 像素酪梨 logo**：`components/PixelAvocadoLogo.tsx`（純 SVG `<rect>`）。
-  ⚠️ **目前是 AI 暫時版，使用者將自行設計最終版本**（2026-06-04）。
-  替換時保持 `export function PixelAvocadoLogo({ size, className, withPulse })`，頂欄 `size={30}`、登入頁 `size={104}`。
-- **新入口頁 — 全螢幕極簡登入**：`components/LandingScreen.tsx`。`showLanding` gate（預設 true，**每次重整都顯示入場**）：
-  大酪梨 logo → 字標 → tagline → 單一「開始學習 →」按鈕 → 「已支援 PDF・手寫・圖片」。stagger 入場、離場較快後淡入主儀表板。
-  landing 期間不渲染頂欄。
-
-- [x] `index.css` — 加 `--ease-out/--ease-in-out/--ease-drawer` token；按鈕 `:active` 改 `scale(0.97)`；消滅 `transition: all`；hover 加 `@media (hover:hover)`；補 `prefers-reduced-motion`（2026-06-04）
-- [x] `PixelAvocadoLogo.tsx`（新）— AI 暫時版像素酪梨，使用者將替換為自製版（2026-06-04）
-- [x] `LandingScreen.tsx`（新）— 全螢幕極簡入口頁 + stagger 入場 + 快速離場（2026-06-04）
-- [x] `App.tsx` — `showLanding` gate（landing 不渲染頂欄）+ 頂欄換酪梨 logo + 首頁 stat-card stagger 入場（2026-06-04）
-- [x] `App.tsx` — fix: Landing 點「開始學習」改為導向首頁（而非上次 URL）；首頁 stat cards 用 `sessionUploaded` gate 防殘留資料（2026-06-04）
-- [ ] `PixelAvocadoLogo.tsx` — 使用者自製最終版 logo（待完成）
-- [ ] 子頁面遷移（第一批 5 項）維持原計畫，本回合不動
-
-
+---
 
 # 工作規則
+
+## CLAUDE.md 精簡規則
+
+- 完成的功能（✅ DONE）和修復的 Bug（✅ FIXED）→ 記錄到 DEVLOG.md，從 CLAUDE.md 刪除
+- CLAUDE.md 只保留「目前狀態」、「尚未完成事項」與「永久參考資料」（Tech Stack、API Routes 等）
+- 超過 400 行時主動瘦身，不要累積歷史紀錄
 
 ## 模型分工
 - 架構規劃、技術選型 → 用 Opus（/model opus）
@@ -479,7 +308,6 @@ Frontend assets must be built locally (`npm run build`) and committed to `webapp
 每當使用者說「開始做 X」「新增 X 功能」「來做 X」，
 在寫任何程式碼之前，先提醒使用者：
 「需要先切換到 Opus 規劃嗎？plan.md 還沒更新。」
-
 
 ## Git 工作流規則
 

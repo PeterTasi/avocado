@@ -201,9 +201,13 @@ class StudyRepository:
     # ── P1: Course-scoped state management ────────────────────────
 
     def reset_course_state(self, course_id: str) -> None:
-        """Delete all concept-derived data for a single course; preserve attempts history."""
+        """Delete all concept-derived data and attempts for a single course."""
         with self._connect() as cur:
-            # Delete edges first (they reference concept IDs)
+            # Delete attempts first (they reference concept IDs)
+            cur.execute("""
+                DELETE FROM attempts
+                WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+            """, (course_id,))
             cur.execute("""
                 DELETE FROM concept_edges
                 WHERE source_id IN (SELECT id FROM concepts WHERE course_id = %s)
@@ -536,13 +540,30 @@ class StudyRepository:
             )
         return review_items
 
-    def get_metrics(self) -> dict[str, float]:
+    def get_metrics(self, course_id: str | None = None) -> dict[str, float]:
         with self._connect() as cur:
-            cur.execute("SELECT COUNT(*) AS cnt FROM concepts")
+            if course_id:
+                cur.execute("SELECT COUNT(*) AS cnt FROM concepts WHERE course_id = %s", (course_id,))
+            else:
+                cur.execute("SELECT COUNT(*) AS cnt FROM concepts")
             concept_count = cur.fetchone()["cnt"]
-            cur.execute("SELECT COUNT(*) AS cnt FROM attempts")
+
+            if course_id:
+                cur.execute("""
+                    SELECT COUNT(*) AS cnt FROM attempts
+                    WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+                """, (course_id,))
+            else:
+                cur.execute("SELECT COUNT(*) AS cnt FROM attempts")
             attempt_count = cur.fetchone()["cnt"]
-            cur.execute("SELECT AVG(score) AS avg_score FROM attempts")
+
+            if course_id:
+                cur.execute("""
+                    SELECT AVG(score) AS avg_score FROM attempts
+                    WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+                """, (course_id,))
+            else:
+                cur.execute("SELECT AVG(score) AS avg_score FROM attempts")
             avg_score = cur.fetchone()["avg_score"]
 
         return {

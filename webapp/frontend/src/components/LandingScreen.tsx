@@ -36,7 +36,7 @@ export function LandingScreen({ onEnter }: Props) {
 
         <div className="landing-item">
           <h1 className="font-display text-4xl font-extrabold tracking-tight text-[color:var(--text-primary)] md:text-5xl">
-            AdaptLearn
+            avocado
           </h1>
         </div>
 

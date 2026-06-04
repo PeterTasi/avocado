@@ -204,9 +204,15 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.12 : 0.88;
-    setZoom(z => Math.min(3, Math.max(0.25, z * factor)));
-  }, []);
+    if (e.ctrlKey) {
+      // Mac pinch-to-zoom (ctrlKey=true on trackpad pinch) — slow factor
+      const factor = e.deltaY < 0 ? 1.04 : 0.96;
+      setZoom(z => Math.min(3, Math.max(0.25, z * factor)));
+    } else {
+      // Two-finger scroll → pan the canvas
+      setPan(p => ({ x: p.x - e.deltaX / zoom, y: p.y - e.deltaY / zoom }));
+    }
+  }, [zoom]);
 
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1); }, []);
 

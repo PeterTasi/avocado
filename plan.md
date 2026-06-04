@@ -28,16 +28,39 @@
 
 # 🟡 剩餘待辦
 
-## 待辦 1：像素酪梨 Logo 最終版（使用者自製）
+## 待辦 0：UI 像素圖示全站替換 ✅ (2026-06-04)
 
-**說明：** `PixelAvocadoLogo.tsx` 目前是 AI 暫時版。使用者將自行設計最終版本。
+**說明：** 所有 Lucide 主題圖示（LayoutDashboard / Activity / Sparkles / CalendarClock / Network / BookOpen / TrendingUp）已換成自製像素 SVG 圖示。
+新元件：`src/components/PixelIcons.tsx`（PixelHome / PixelUpload / PixelStar / PixelCalendar / PixelGraph / PixelBook / PixelChart）。
+保留 lucide：ArrowRight / ChevronLeft / ChevronRight / UserCircle2（純 UI 導覽用途）。
 
+Logo 部分：`PixelAvocadoLogo.tsx` 已改用 `<img>` 載入 `src/assets/bibilavocado.png`（使用者自製去背版）。
+
+---
+
+## 待辦 1：像素酪梨 Logo — 已更新為比比拉布角色版 ✅ (2026-06-04)
+
+**說明：** `PixelAvocadoLogo.tsx` 已從舊抽象酪梨更新為像素酪梨貓（比比拉布）。
+品牌名稱全站已從 "AdaptLearn" 改為 "avocado"（頂欄 + 登入頁 + document.title）。
+
+若使用者想再調整像素圖稿，直接改 `PixelAvocadoLogo.tsx` 元件，全站自動生效。
 **格式需求（保持相容）：**
 - export 名稱維持 `PixelAvocadoLogo`
 - props：`size?: number`（預設 32）、`className?`、`withPulse?: boolean`
 - 頂欄用 `size={30}`，登入頁用 `size={104}`
 
-替換時改 `PixelAvocadoLogo.tsx` 元件內容即可，全站自動生效。
+---
+
+## 待辦 1b：圖譜觸控板縮放 Bug ✅ 已修 (2026-06-04)
+
+**症狀：** Mac 觸控板雙指滑動觸發 wheel 事件 → `MindMapCanvas` 把它當縮放 → 飛速放大縮小。
+
+**根因：** `onWheel` 沒區分「pinch」vs「一般捲動」；Mac 上雙指捲動 `ctrlKey=false`，
+pinch 才是 `ctrlKey=true`。舊代碼不管哪種都縮放。
+
+**修復（`MindMapCanvas.tsx`）：**
+- `ctrlKey=true`（pinch）→ 縮放，factor 縮小為 1.04/0.96（原本 1.12/0.88 過快）
+- `ctrlKey=false`（一般雙指捲動）→ 平移（pan）
 
 ---
 
@@ -52,6 +75,22 @@
 - **方案 C：** 前端提供「清除課程資料」按鈕，呼叫新後端 DELETE endpoint 清空 concepts/questions。
 
 **目前方案 A 已足夠競賽使用，方案 B/C 為選配。**
+
+---
+
+## 待辦 3：Bug 7 — 班級熱力圖課程 tab 重複（2026-06-04 發現）
+
+**症狀：** `ClassHeatmapPanel` 的課程篩選 tab 出現同名課程多次（截圖見 2026-06-04 session）：
+Linear Algebra × 3、通用課程 × 2、General Course 單獨出現。
+
+**可能根因（待調查）：**
+1. 前端取得課程列表的 API 回傳了重複課程（`/api/courses` 或 `useHeatmap` hook 沒去重）。
+2. 後端 `courses` 表有重複 row（同名課程被多次 insert）。
+3. 前端 tab 渲染時沒做 `Array.from(new Set(...))`。
+
+**調查順序：** 先看 `ClassHeatmapPanel.tsx` 拿 courses 的邏輯 → 再看 `useApi.ts` hook → 最後查 DB。
+
+**修復目標：** tab 列表去重（以 `course_id` 為 key，不用名稱），不影響熱力圖資料本身。
 
 ---
 

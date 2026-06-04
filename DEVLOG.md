@@ -5,6 +5,74 @@
 
 ---
 
+## 2026-06-04 — P5/P1/P2 架構實作：Migration 系統 + Course Scope + TIMESTAMPTZ + 進度 API ✅
+
+- **P5 Migration 系統：** `database.py` 加 `schema_version` 表 + `_run_migrations()` 方法，用版本號追蹤 migration 狀態。Migration 001 把 5 個 TEXT 時間欄位轉 TIMESTAMPTZ（`attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、`review_plan.next_review_at`、`class_node_stats.updated_at`）。
+
+- **P1 — 概念 ID 加入 course 維度：** `knowledge_graph._concept_id(name, chapter, course_id)` hash 從 `chapter:name` 改成 `course_id:chapter:name`，跨課程同名概念不再撞 PK。`build_knowledge_graph` 新收 `course_id` 參數往下傳。
+
+- **P1 — 停止全域 wipe：** `pipeline.ingest_material` 把 course_id 計算提前到 `build_knowledge_graph` 之前，改呼叫 `repo.reset_course_state(course_id)`（只刪該課程的概念/邊/題目/複習計畫，**保留 attempts 歷史**）。`database.py` 新增 `reset_course_state(course_id)`。
+
+- **P1 — 讀取路徑全部 course-scope：** `list_concepts(course_id=None)`、`list_edges(course_id=None)` 加可選過濾；新增 `get_active_course_id()`（in-memory cache + DB fallback，過濾 `WHERE uploaded_at <= now()` 避免 migration 產生的未來時間戳干擾）；`generate_diagnostics`、`list_concepts`、`get_concept_mastery`、`get_tonight_study_dashboard`、`get_graphviz` 全部改用 active course。
+
+- **P1 隱藏地雷（migration timezone bug）：** 舊 TEXT 時間字串（本地時間如 `2026-06-04T16:11:27`）被 `::timestamptz` 解析為 UTC，在 UTC+8 環境會得到比現在早 8 小時的「未來時間戳」。解法：`get_active_course_id()` 加 `WHERE uploaded_at <= now()` + in-memory `set_active_course(course_id)` 在 ingest 後立即設定 active course，不依賴 DB 查詢順序。
+
+- **P2 — TIMESTAMPTZ 讀寫：** 所有 `datetime.now()` 改 `datetime.now(timezone.utc)`；`save_attempt`/`save_review_plan`/`save_course` 直接傳 datetime 物件（不再 `.isoformat()`）；`list_attempts`/`list_review_plan`/`list_courses`/`get_course`/`list_class_node_stats` 移除 `datetime.fromisoformat(row[...])`（psycopg2 已回傳 datetime 物件）。
+
+- **P2 — 進度趨勢 API：** `database.concept_progress(course_id, days)` SQL `date_trunc('day')` 分組；`pipeline.get_concept_progress(days)` 判趨勢（improving/declining/plateaued，±0.05 閾值）；`GET /api/progress/concepts?days=30` 新端點。
+
+- **回歸測試：** 40 通過，1 pre-existing 失敗（`test_scanned_pdf_uses_configurable_ocr_page_limit`，與本次修改無關）。
+
+---
+
+## 2026-06-04 — 架構評估 + P1/P2 解法設計（Opus 規劃，未動程式碼）📐
+
+- **背景：** 使用者要求評估系統架構可改善處，並把計畫寫進 `plan.md` / `CLAUDE.md`。
+  Opus 通讀 `main.py`、`pipeline.py`、`database.py`、`config.py`、`knowledge_graph.py`、`models.py`。
+- **找出 6 項架構債（P1–P6），寫進 plan.md「🔵 架構改善建議」+ CLAUDE.md「架構限制與技術債」速查表。**
+
+- **P1 ⭐ 根因發現 — 全域 wipe 摧毀所有歷史：**
+  `pipeline.ingest_material:146` 每次上傳都 `reset_learning_state(include_attempts=True)`
+  → `database.py:147` 直接 `DELETE FROM concepts/edges/questions/review_plan/attempts`。
+  schema 有 `course_id`，但寫入是「單課程覆蓋」。一個 bug 連帶炸三件：
+  ① **Bug 5 跨 Session 殘留的真正根因**（前端 modal 只是 OK 繃）；
+  ② 多課程不可能（第二份教材洗掉第一份）；
+  ③ 封死 Feature 2 進度追蹤（attempts 每次被刪）。
+
+- **P1 隱藏地雷（評估時挖出）：** `_concept_id = uuid5(chapter+name)`（`knowledge_graph.py:480`）
+  **沒有 course 維度**，目前靠「每次全清」才不會撞。**停止 wipe 前必須先把 course_id 併進 ID hash**，
+  否則跨課程同名同章概念撞同一 PK → upsert 互相覆蓋，且 A 的 attempts/questions 錯接到 B 的概念。
+  → 已在 plan.md P1 解法列為不可省的 Step 1。
+
+- **P2 ⭐ — 時間欄位全是 TEXT（naive 本地時間）：** 無法在 SQL 做日期區間運算，
+  成長曲線做不出來。解法：5 個時間欄改 `timestamptz`、寫入改 `datetime.now(timezone.utc)`、
+  新增 `GET /api/progress/concepts`（`date_trunc('day')` 分組 + 趨勢判定）。
+  **隱藏地雷：** 轉 timestamptz 後 psycopg2 回傳 datetime 物件不是字串，
+  所有 `datetime.fromisoformat(row[...])`（5 處）要拔掉，漏改 runtime crash。
+
+- **P3–P6（僅註記，本回合不動）：** P3 `_service_lock` 宣告卻沒 acquire（換 key 競態）；
+  P4 mastery 聚合在 Python 端每次拉 5000 筆 attempts（該用 SQL `GROUP BY`）；
+  P5 無 migration 機制；P6 ChromaDB 存本地碟、Render redeploy 歸零。
+
+- **建議實作順序：** P5（migration 地基）→ P1（course-scope + 停 wipe）→ P2（時間欄 + 進度 API）。
+  這三個一條線，同時解 Bug 5 根因、解鎖多課程、解鎖進度追蹤。
+
+- **產出：** plan.md 兩段「✅ 解法設計（細）」+ 拆解小工單（可當 Sonnet checklist）；
+  CLAUDE.md「P1/P2 解法摘要」。**本回合純規劃，未改任何程式碼。**
+- **下一步：** clear 後切回 Sonnet，依 plan.md 從 P5 起手實作。
+
+---
+
+## 2026-06-04 — 第三批：LaTeX 渲染 + 跨 Session 確認 + Emil 動效 + 繁中詳解 ✅
+
+- **任務 1 — KaTeX 渲染：** 新增 `MathRenderer.tsx`（regex 切 `$...$` / `\(...\)`，KaTeX renderToString），套用到 QuizPanel 題目、feedback、expected_answer。
+- **任務 2 — 跨 Session 確認 modal：** QuizPanel 加 `sessionUploaded` prop；若本 session 未上傳就點「產生題目」，先彈出確認 modal（「使用舊教材出題？」）再繼續，不動 DB schema。App.tsx 傳入 `sessionUploaded`。
+- **任務 3 — Emil 動效升級：** `.question-enter`（題目卡片滑入 240ms）、`.grade-enter`（評分結果 scale-in）+ `.correct` 彈跳；答對粒子從 3 顆增為 8 顆多色分散；`.pill:hover` pixel-flash keyframe。
+- **任務 4 — 繁中詳解：** `gemini_client.grade_answer` prompt 改要求繁體中文回饋；fallback heuristic 訊息和空答案提示也改繁中。出題 prompt 亦改為繁體中文 + 數學式 `$...$` 指示。
+- **技術：** `npm install katex @types/katex`；`npm run build` 零錯誤。
+
+---
+
 ## 2026-06-04 — UI 第一批：全站 5 個子頁面遷移為亮色主題（全部完成） ✅
 
 - **範圍：** SetupPanel → QuizPanel → StudyPanels + MasteryTable → KnowledgeGraphPanel + MindMapCanvas + ClassHeatmapPanel。

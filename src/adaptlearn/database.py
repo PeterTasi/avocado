@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator
 
 import psycopg2
@@ -21,6 +22,8 @@ class StudyRepository:
         self._pool: psycopg2.pool.ThreadedConnectionPool = (
             psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=database_url)
         )
+        # In-memory cache so get_active_course_id() immediately reflects ingest within the same process.
+        self._active_course_id: str | None = None
 
     def __enter__(self) -> "StudyRepository":
         return self
@@ -44,7 +47,7 @@ class StudyRepository:
     def close(self) -> None:
         self._pool.closeall()
 
-    def initialize(self) -> None:  # noqa: PLR0912
+    def initialize(self) -> None:
         with self._connect() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS courses (
@@ -136,7 +139,7 @@ class StudyRepository:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_cross_course_from ON cross_course_edges(from_concept_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_cross_course_to ON cross_course_edges(to_concept_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id)")
-            # Migration: add course_id column if missing on existing databases
+            # Legacy migration: add course_id column if missing on existing databases
             cur.execute("""
                 SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'concepts' AND column_name = 'course_id'
@@ -144,7 +147,101 @@ class StudyRepository:
             if not cur.fetchone():
                 cur.execute("ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)")
 
+        # P5: run versioned migrations after base schema is ready
+        self._run_migrations()
+
+    # ── P5: Migration system ───────────────────────────────────────
+
+    def _run_migrations(self) -> None:
+        with self._connect() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """)
+            cur.execute("SELECT version FROM schema_version ORDER BY version")
+            applied = {row["version"] for row in cur.fetchall()}
+
+        migrations = [
+            (1, self._migration_001_add_timestamptz),
+        ]
+        for version, fn in migrations:
+            if version not in applied:
+                logger.info("Applying DB migration %d", version)
+                fn()
+                with self._connect() as cur:
+                    cur.execute("INSERT INTO schema_version (version) VALUES (%s)", (version,))
+                logger.info("DB migration %d applied successfully", version)
+
+    def _migration_001_add_timestamptz(self) -> None:
+        """Convert TEXT time columns to TIMESTAMPTZ for proper date arithmetic (P2)."""
+        columns = [
+            ("attempts", "created_at"),
+            ("questions", "created_at"),
+            ("courses", "uploaded_at"),
+            ("review_plan", "next_review_at"),
+            ("class_node_stats", "updated_at"),
+        ]
+        with self._connect() as cur:
+            for table, col in columns:
+                cur.execute("""
+                    SELECT data_type FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                """, (table, col))
+                row = cur.fetchone()
+                if row and row["data_type"] != "timestamp with time zone":
+                    cur.execute(f"""
+                        ALTER TABLE {table}
+                        ALTER COLUMN {col} TYPE TIMESTAMPTZ
+                        USING {col}::timestamptz
+                    """)
+                    logger.info("Converted %s.%s to TIMESTAMPTZ", table, col)
+
+    # ── P1: Course-scoped state management ────────────────────────
+
+    def reset_course_state(self, course_id: str) -> None:
+        """Delete all concept-derived data for a single course; preserve attempts history."""
+        with self._connect() as cur:
+            # Delete edges first (they reference concept IDs)
+            cur.execute("""
+                DELETE FROM concept_edges
+                WHERE source_id IN (SELECT id FROM concepts WHERE course_id = %s)
+            """, (course_id,))
+            cur.execute("""
+                DELETE FROM questions
+                WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+            """, (course_id,))
+            cur.execute("""
+                DELETE FROM review_plan
+                WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+            """, (course_id,))
+            cur.execute("DELETE FROM concepts WHERE course_id = %s", (course_id,))
+
+    def set_active_course(self, course_id: str) -> None:
+        """Mark a course as active within this process (called by ingest_material)."""
+        self._active_course_id = course_id
+
+    def get_active_course_id(self) -> str | None:
+        """Return the active course id.
+
+        Uses in-memory cache (set by ingest_material) when available so that
+        get_active_course_id() immediately reflects the just-ingested course within
+        the same process.  Falls back to DB query filtered to non-future timestamps
+        (guards against migration artifact where old local-time strings were stored
+        as UTC, making them appear to be in the future on UTC+N systems).
+        """
+        if self._active_course_id:
+            return self._active_course_id
+        with self._connect() as cur:
+            cur.execute(
+                "SELECT id FROM courses WHERE uploaded_at <= now() ORDER BY uploaded_at DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+        return row["id"] if row else None
+
     def reset_learning_state(self, include_attempts: bool = True) -> None:
+        """Legacy global wipe — kept for tests; prefer reset_course_state for normal use."""
         with self._connect() as cur:
             cur.execute("DELETE FROM concept_edges")
             cur.execute("DELETE FROM concepts")
@@ -182,15 +279,26 @@ class StudyRepository:
                 ],
             )
 
-    def list_concepts(self) -> list[Concept]:
+    def list_concepts(self, course_id: str | None = None) -> list[Concept]:
         with self._connect() as cur:
-            cur.execute(
-                """
-                SELECT id, name, chapter, description, prerequisites_json
-                FROM concepts
-                ORDER BY chapter, name
-                """
-            )
+            if course_id:
+                cur.execute(
+                    """
+                    SELECT id, name, chapter, description, prerequisites_json
+                    FROM concepts
+                    WHERE course_id = %s
+                    ORDER BY chapter, name
+                    """,
+                    (course_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, name, chapter, description, prerequisites_json
+                    FROM concepts
+                    ORDER BY chapter, name
+                    """
+                )
             rows = cur.fetchall()
 
         concepts: list[Concept] = []
@@ -209,27 +317,39 @@ class StudyRepository:
         return concepts
 
     def replace_edges(self, edges: list[ConceptEdge]) -> None:
+        """Insert edges (UPSERT). Course-scoped deletion is handled by reset_course_state."""
+        if not edges:
+            return
         with self._connect() as cur:
-            cur.execute("DELETE FROM concept_edges")
-            if not edges:
-                return
             cur.executemany(
                 """
                 INSERT INTO concept_edges (source_id, target_id, relation)
                 VALUES (%s, %s, %s)
+                ON CONFLICT (source_id, target_id, relation) DO NOTHING
                 """,
                 [(edge.source_id, edge.target_id, edge.relation) for edge in edges],
             )
 
-    def list_edges(self) -> list[ConceptEdge]:
+    def list_edges(self, course_id: str | None = None) -> list[ConceptEdge]:
         with self._connect() as cur:
-            cur.execute(
-                """
-                SELECT source_id, target_id, relation
-                FROM concept_edges
-                ORDER BY source_id, target_id
-                """
-            )
+            if course_id:
+                cur.execute(
+                    """
+                    SELECT ce.source_id, ce.target_id, ce.relation
+                    FROM concept_edges ce
+                    WHERE ce.source_id IN (SELECT id FROM concepts WHERE course_id = %s)
+                    ORDER BY ce.source_id, ce.target_id
+                    """,
+                    (course_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT source_id, target_id, relation
+                    FROM concept_edges
+                    ORDER BY source_id, target_id
+                    """
+                )
             rows = cur.fetchall()
         return [ConceptEdge(source_id=row["source_id"], target_id=row["target_id"], relation=row["relation"]) for row in rows]
 
@@ -237,7 +357,7 @@ class StudyRepository:
         if not questions:
             return
 
-        now = datetime.now().isoformat(timespec="seconds")
+        now = datetime.now(timezone.utc)
         with self._connect() as cur:
             cur.executemany(
                 """
@@ -332,7 +452,7 @@ class StudyRepository:
                     1 if attempt.is_correct else 0,
                     attempt.score,
                     attempt.feedback,
-                    attempt.created_at.isoformat(timespec="seconds"),
+                    attempt.created_at,
                 ),
             )
 
@@ -359,7 +479,7 @@ class StudyRepository:
                     is_correct=bool(row["is_correct"]),
                     score=float(row["score"]),
                     feedback=row["feedback"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                    created_at=row["created_at"],
                 )
             )
         return attempts
@@ -381,7 +501,7 @@ class StudyRepository:
                         item.concept_id,
                         item.concept_name,
                         item.priority,
-                        item.next_review_at.isoformat(timespec="seconds"),
+                        item.next_review_at,
                         item.suggested_slot,
                         item.reason,
                     )
@@ -409,7 +529,7 @@ class StudyRepository:
                     concept_id=row["concept_id"],
                     concept_name=row["concept_name"],
                     priority=float(row["priority"]),
-                    next_review_at=datetime.fromisoformat(row["next_review_at"]),
+                    next_review_at=row["next_review_at"],
                     suggested_slot=row["suggested_slot"],
                     reason=row["reason"],
                 )
@@ -445,7 +565,7 @@ class StudyRepository:
                     filename = EXCLUDED.filename,
                     uploaded_at = EXCLUDED.uploaded_at
                 """,
-                (course.id, course.user_id, course.subject, course.filename, course.uploaded_at.isoformat(timespec="seconds")),
+                (course.id, course.user_id, course.subject, course.filename, course.uploaded_at),
             )
 
     def list_courses(self, user_id: str = "default") -> list[Course]:
@@ -461,7 +581,7 @@ class StudyRepository:
                 user_id=row["user_id"],
                 subject=row["subject"] or "",
                 filename=row["filename"] or "",
-                uploaded_at=datetime.fromisoformat(row["uploaded_at"]),
+                uploaded_at=row["uploaded_at"],
             )
             for row in rows
         ]
@@ -480,7 +600,7 @@ class StudyRepository:
             user_id=row["user_id"],
             subject=row["subject"] or "",
             filename=row["filename"] or "",
-            uploaded_at=datetime.fromisoformat(row["uploaded_at"]),
+            uploaded_at=row["uploaded_at"],
         )
 
     # ── Cross-course edges ─────────────────────────────────────────
@@ -537,7 +657,7 @@ class StudyRepository:
             rows = cur.fetchall()
 
             stats: list[ClassNodeStats] = []
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             for row in rows:
                 total = int(row["total"] or 0)
                 wrong = int(row["wrong"] or 0)
@@ -568,7 +688,7 @@ class StudyRepository:
                     """,
                     [
                         (s.course_id, s.concept_id, s.error_rate, s.avg_attempts,
-                         s.stuck_count, s.sample_count, s.updated_at.isoformat(timespec="seconds"))
+                         s.stuck_count, s.sample_count, s.updated_at)
                         for s in stats
                     ],
                 )
@@ -595,7 +715,43 @@ class StudyRepository:
                 avg_attempts=float(row["avg_attempts"]),
                 stuck_count=int(row["stuck_count"]),
                 sample_count=int(row["sample_count"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
+                updated_at=row["updated_at"],
             )
             for row in rows
+        ]
+
+    # ── P2: Progress trend API ─────────────────────────────────────
+
+    def concept_progress(self, course_id: str, days: int = 30) -> list[dict]:
+        """Return daily avg_score per concept for the given number of past days."""
+        with self._connect() as cur:
+            cur.execute(
+                """
+                SELECT a.concept_id,
+                       date_trunc('day', a.created_at) AS day,
+                       AVG(a.score) AS avg_score,
+                       COUNT(*) AS n
+                FROM attempts a
+                WHERE a.created_at >= now() - (%s || ' days')::interval
+                  AND a.concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+                GROUP BY a.concept_id, day
+                ORDER BY a.concept_id, day
+                """,
+                (str(days), course_id),
+            )
+            rows = cur.fetchall()
+
+        by_concept: dict[str, list[dict]] = defaultdict(list)
+        for row in rows:
+            day_val = row["day"]
+            day_str = day_val.isoformat()[:10] if hasattr(day_val, "isoformat") else str(day_val)[:10]
+            by_concept[row["concept_id"]].append({
+                "day": day_str,
+                "avg_score": round(float(row["avg_score"]), 3),
+                "n": int(row["n"]),
+            })
+
+        return [
+            {"concept_id": cid, "daily": daily}
+            for cid, daily in by_concept.items()
         ]

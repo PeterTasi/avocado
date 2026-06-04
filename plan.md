@@ -1,382 +1,257 @@
-# AdaptLearn — 下一批任務計畫（給 Sonnet 執行）
+# AdaptLearn — 任務計畫
 
 > **這份文件是給下一個 session 用的執行計畫。**
-> 目前 UI 全站亮色主題遷移已完成（第一批 + 第二批），所有 legacy-surface 已移除。
-> 以下三個任務是使用者看到成果後提出的新需求（2026-06-04）。
+> 更新於 2026-06-04。
 >
 > 設計總規範在 `CLAUDE.md`「UI/UX Redesign」章節，先讀那段。
 
 ---
 
-# 🟢 第三批任務（優先順序由高到低）
+# ✅ 已完成批次（不要重做）
 
-## 任務 1：測驗題目 LaTeX 渲染（`QuizPanel.tsx`）
+## 第一批：全站亮色主題遷移
+- SetupPanel、QuizPanel、StudyPanels + MasteryTable、KnowledgeGraphPanel + MindMapCanvas + ClassHeatmapPanel 全部改亮色，legacy-surface 全移除。
 
-**問題：** 數學式如 `a_1, a_2, ..., a_n`、`C = AB + 3A - I` 目前以純文字顯示，在數學課程下不易閱讀。
+## 第二批：登入頁 + 像素酪梨 logo + Emil 基礎動效
+- `LandingScreen.tsx`（全螢幕極簡入口，stagger 入場 + 快速離場）
+- `PixelAvocadoLogo.tsx`（AI 暫時版，使用者將自製最終版）
+- `index.css` easing token、`scale(0.97)` 按壓、`prefers-reduced-motion`
+- App.tsx `showLanding` gate、頂欄換酪梨 logo、stat-card stagger 入場
 
-**目標：** 用 KaTeX 把題目中的 LaTeX 語法（`$...$` 或 `\(...\)`）轉換成正確的數學符號。
-
-**技術方案：**
-1. 安裝 KaTeX：`npm install katex` + `import 'katex/dist/katex.min.css'`（frontend-only，符合 Render 不需 Node.js 的部署方式，因為靜態資源 build 後 commit）
-2. 建立 `components/MathRenderer.tsx`：接收 `text: string`，用 regex 切出 `$...$` 區段，分別呼叫 `katex.renderToString()`，危險 HTML 用 `dangerouslySetInnerHTML`
-3. `QuizPanel.tsx` 的題目文字 `currentQuestion.question_text` 換成 `<MathRenderer text={...} />`；grade result 的 `feedback` 和 `expected_answer` 也套用
-4. 後端 `quiz_engine.py` prompt 可補充「數學式請以 $...$ 包住」，但前端 fallback（無 $ 時原樣顯示）已足夠
-5. `npm run build` 零錯誤，目視確認矩陣式/特徵值式正確渲染
-
-**注意：**
-- KaTeX 是 Render build 前 npm install，產物 commit 到 `webapp/static/`，不違反「Render 無 Node.js」限制
-- 若 quiz_engine 生成的題目沒有 $ 符號，MathRenderer 直接原樣顯示，不會壞
+## 第三批：LaTeX / 跨 Session / Emil 動效升級 / 繁中詳解
+- `MathRenderer.tsx`（KaTeX，`$...$` / `\(...\)`）→ 套用至 QuizPanel 題目、feedback、參考答案
+- 跨 Session 確認 modal（`sessionUploaded` prop，未上傳時彈 modal）
+- 題目卡 `.question-enter`、評分結果 `.grade-enter` / `.correct` 彈跳、答對粒子 8 顆多色分散、`.pill:hover` pixel-flash
+- `gemini_client.py` grading + question generation prompt 全改繁體中文，`$...$` 數學式指示
 
 ---
 
-## 任務 2：跨 Session 資料庫概念殘留問題
+# 🟡 剩餘待辦
 
-**問題描述：** 使用者重新整理頁面後，產生測驗時仍使用前次 session 上傳教材所建立的概念（資料庫內有舊資料）。`sessionUploaded` gate 只保護首頁 stat cards 的顯示，但「產生題目」API 直接從 DB 撈所有概念，無法感知「這次 session 有沒有上傳」。
+## 待辦 1：像素酪梨 Logo 最終版（使用者自製）
 
-**根因：** 後端 `/api/diagnostics/generate` 從 DB 取全部 concepts 出題，不區分 session。前端 QuizPanel 的「產生題目」按鈕在任何時機都可觸發。
+**說明：** `PixelAvocadoLogo.tsx` 目前是 AI 暫時版。使用者將自行設計最終版本。
 
-**修法選項（Opus 先決定方案再實作）：**
+**格式需求（保持相容）：**
+- export 名稱維持 `PixelAvocadoLogo`
+- props：`size?: number`（預設 32）、`className?`、`withPulse?: boolean`
+- 頂欄用 `size={30}`，登入頁用 `size={104}`
 
-- **方案 A（推薦）：** 在「產生題目」按鈕旁加一個目前使用課程的提示（顯示 `activeCourseId`、上傳時間），讓使用者知道題目基於哪份教材。前端 `handleGenerate` 若 `!sessionUploaded` 先跳出確認 modal（「目前將使用上次上傳的教材產生題目，確認繼續？」）。這是非破壞性修法，不動資料庫。
-- **方案 B：** 後端新增 `session_id` 欄位，每次 ingest 產生一個 session，quiz generation 只取最新 session 的 concepts。需要 DB schema migration。
-- **方案 C：** 提供「清除課程」按鈕，讓使用者主動清除舊資料。
-
-**建議先讀：** `webapp/main.py` 的 `/api/diagnostics/generate`、`src/adaptlearn/quiz_engine.py`
-
----
-
-## 任務 3：Emil 動效升級 + 像素風格強化
-
-**使用者回饋（2026-06-04）：** 按按鈕產生的轉場可以多一點，或像素風格更強烈。
-
-**參考：** `.agents/skills/emil-design-eng/SKILL.md`（Emil Kowalski 設計工程哲學）
-
-### 3-A：按鈕/互動轉場強化
-
-Emil 原則：決策時慢、回應時快、絕不從 scale(0) 入場、只動 transform/opacity。
-
-- **「產生題目」→ 題目出現**：題目 card 從 `opacity:0 + translateY(12px)` 滑入（240ms ease-out）
-- **「送出作答」→ 評分結果**：grade result 區塊 `opacity:0 + scale(0.97)` → 正常（200ms ease-out），correct 時先有個短暫 `scale(1.02)` 彈跳
-- **頁面切換 nav tab 點擊**：目前 `.view-enter` 只有 translateY，可加 `scale(0.985→1.0)` 微縮放入場
-- **「送出作答」button 本身**：pressed state 加 `scale(0.96)` + 短暫 indigo glow（`box-shadow: 0 0 0 4px var(--accent-ring)`）
-- **步驟進度條（Setup progress-step）**：步驟推進時加 `translateX(4px)→0` 的微位移提示
-
-### 3-B：像素風格強化（競賽記憶點）
-
-- **答對粒子**：從 3 顆增加到 6~8 顆，顏色混搭 `--high`/`--accent`/`--medium`，飛散角度分散（-30°~+30°）
-- **Setup 掃描線**：`scan-line` 處理中時顏色改為 indigo，並在上傳區加一個 4x4 像素格子浮水印（`.pixel-grid-bg`，低透明度）
-- **MindMap 中心節點**：像素邊框改用更明顯的 `box-shadow` 多層偏移（現在只有 1 層，改成 4 層從細到粗）
-- **概念 pill hover**：加邊框 pixel-flash（border-color 在 100ms 內閃一下 indigo 再回來，用 keyframe）
-- **熱力格子 hover**：格子放大 `scale(1.15)`，邊框變深（現在只有 opacity，可更明顯）
+替換時改 `PixelAvocadoLogo.tsx` 元件內容即可，全站自動生效。
 
 ---
 
-## 已完成（不要重做）
+## 待辦 2：Bug 5 跨 Session 概念殘留（後端根本解）
 
-- ✅ 全站亮色主題 Light Professional（index.css + 6 個子元件 + App.tsx）
-- ✅ LandingScreen + PixelAvocadoLogo
-- ✅ Emil 基礎動效（easing token、scale(0.97) 按壓、prefers-reduced-motion）
-- ✅ legacy-surface 完全移除
+**現況：** 前端方案 A（確認 modal）已完成，使用者知道在使用舊教材出題。
+
+**若之後要更根本的解法：**
+
+- **方案 B（需 DB schema migration）：** 後端新增 `session_id` 欄位，每次 ingest 產生一個 session；`/api/diagnostics/generate` 只取最新 session 的 concepts。
+  - 需改 `database.py`（schema + query）、`pipeline.py`（ingest 寫入 session_id）、`main.py`（quiz generation 過濾）
+- **方案 C：** 前端提供「清除課程資料」按鈕，呼叫新後端 DELETE endpoint 清空 concepts/questions。
+
+**目前方案 A 已足夠競賽使用，方案 B/C 為選配。**
 
 ---
 
-## 執行規則（延用）
+# 🔵 架構改善建議（2026-06-04 Opus 評估）
+
+> 評估範圍：`main.py`、`pipeline.py`、`database.py`、`config.py`。
+> 依「競賽 CP 值」排序：**P1–P2 改了同時解 bug + 解鎖已規劃功能，最值得做**；
+> P3–P4 是正確性/效能；P5–P6 是長期健康度，競賽期可延後。
+> 每項都標了 證據 / 影響 / 建議 / 影響範圍。實作前切回 Sonnet。
+
+---
+
+## P1 ⭐ 全域 `reset_learning_state` 摧毀所有歷史 — 架構級根因
+
+- **證據：** `pipeline.py:146` 每次 `ingest_material` 都呼叫
+  `self.repo.reset_learning_state(include_attempts=True)`，
+  `database.py:147` 直接 `DELETE FROM concepts / edges / questions / review_plan / attempts`。
+- **問題：** schema 明明有 `course_id`（`concepts.course_id`、`courses` 表），
+  但寫入路徑每次上傳就清空整個 DB。資料模型支援多課程，寫入邏輯卻是「單課程覆蓋」。
+- **影響（三個一起爆）：**
+  1. **Bug 5 跨 Session 殘留的真正根因** — 前端方案 A（modal）只是貼 OK 繃。
+  2. **多課程不可能** — 上傳第二份教材直接洗掉第一份，`/api/courses` 列表與實際概念對不上。
+  3. **封死已規劃 Feature 2（學習進度追蹤）** — attempts 每次上傳被刪，沒有縱向歷史可追。
+- **建議（= Bug 5 方案 B 的正解）：**
+  - 移除 ingest 路徑的全域 wipe。改為查詢全部用 `course_id` 範圍化。
+  - 「目前作用中的課程」用最新 `uploaded_at` 的 course 決定（或前端傳 `active_course_id`）。
+  - `generate_diagnostics` / `list_concepts` / mastery / review 都加 `WHERE course_id = ?`。
+  - attempts 保留歷史（見 P2）。
+- **影響範圍：** `database.py`（查詢加 course 過濾 + 移除 wipe）、`pipeline.py:146` 與下游聚合、
+  `main.py`（concepts/mastery/diagnostics 等端點傳 course_id）。需 schema migration（見 P5）。
+- **風險：** 中。動到核心讀寫，需回歸測試。但這是整個系統最高槓桿的修正。
+
+### ✅ P1 解法設計（細）
+
+> **⚠️ 先決發現：** `_concept_id = uuid5(chapter + name)`（`knowledge_graph.py:480`）**沒有 course 維度**。
+> 目前靠「每次全清」才沒撞 ID。一旦停止 wipe，A 課程與 B 課程的同名同章概念會撞同一個 PK
+> → upsert 互相覆蓋，且 A 的 attempts/questions 會錯接到 B 的概念。**所以 ID 必須先 course-scope。**
+
+**Step 1 — 概念 ID 加入 course 維度（不可省）**
+- `knowledge_graph._concept_id(name, chapter, course_id)`：`raw = f"{course_id}:{chapter}:{name}"`。
+- `build_knowledge_graph(...)` 多收一個 `course_id` 參數，往下傳給 `_concept_id`（含 line 206/241/266/289 的邊解析，全用同一個 course_id 才一致）。
+- `pipeline.ingest_material`：把 `course_id` 的計算**移到 `build_knowledge_graph` 之前**
+  （它只依賴 `course_name + file_name`，現在在 `:131` 才算，提前即可），再傳進去。
+- seed template 概念（`domain_templates`）合併後也要重算 ID 帶 course_id（`_merge_concept_sets` 後補）。
+
+**Step 2 — 用「逐課程 reset」取代「全域 wipe」**
+- 移除 `pipeline.py:146` 的 `reset_learning_state(include_attempts=True)`。
+- `database.py` 新增 `reset_course_state(course_id)`：只刪該 course 的
+  `concepts`（`WHERE course_id=?`）、其衍生 `concept_edges`、`questions`、該 course 的 `review_plan`。
+  **不刪 attempts**（保留歷史，給 P2）。
+- 因 ID 是 deterministic，重傳同一檔案 → 同 course_id → 同概念 ID，attempts 仍正確掛回。
+- `concept_edges` 目前無 `course_id` 欄 → migration 加上（見 P5），或先用
+  `DELETE FROM concept_edges WHERE source_id IN (SELECT id FROM concepts WHERE course_id=?)`（在刪 concepts 之前執行）。
+
+**Step 3 — 讀取路徑全部 course-scope**
+- `database.list_concepts(course_id=None)`、`list_edges(course_id=None)` 加可選過濾。
+- 「作用中課程」決策：`database.get_active_course_id()` = `uploaded_at` 最新的 course。
+  Phase 1 後端自動取最新（前端零改動，直接解掉 Bug 5）；
+  Phase 2 再讓 `main.py` 各端點吃可選 `course_id` query param，前端做課程切換下拉。
+- 下游同步 scope：`generate_diagnostics`、`get_concept_mastery`、`get_chapter_mastery`、
+  `get_tonight_*`、`get_graphviz`、`build_and_save_review_plan` 都改用「作用中課程的 concepts」。
+- `review_plan` 也加 `course_id`（migration），或視為「僅作用中課程」的快取，rebuild 時帶 course。
+
+**Step 4 — 回歸測試**
+- 兩課程連續上傳 → 各自概念都在、互不覆蓋；`/api/courses` 與概念數一致。
+- 同檔案重傳 → 概念不重複、attempts 歷史保留。
+- 跨課程連結（`cross_course_edges`）此時才第一次真的有兩個 course 可連 → 順便驗證它能動。
+
+**前端配合（Phase 1 可不動）：** 解掉根因後，Bug 5 的確認 modal（方案 A）可保留為 UX 提示或移除。
+
+### 拆解小工單（P1）✅ 已完成 (2026-06-04)
+
+- [x] migration：schema_version 表 + `_run_migrations()` (P5)；`concept_edges.course_id` 用 subquery 取代
+- [x] `knowledge_graph._concept_id` + `build_knowledge_graph` 加 `course_id`
+- [x] `pipeline.ingest_material` course_id 提前計算並傳入；移除全域 wipe，改 `reset_course_state`
+- [x] `database`：`reset_course_state(course_id)`、`get_active_course_id()`（in-memory+DB）、`list_concepts/list_edges` 加過濾
+- [x] pipeline 下游聚合（mastery/diagnostics/review/graph）全部 scope 到作用中課程
+- [x] 回歸測試：40/41 通過（1 pre-existing 失敗）
+
+## P2 ⭐ 時間欄位全是 TEXT + 攻擊歷史被刪 → 進度追蹤無法做
+
+- **證據：** `database.py` 所有 `created_at / uploaded_at / next_review_at` 都是 `TEXT`
+  （存 `datetime.now().isoformat()`，naive 本地時間，無時區）。
+- **問題：** 排序靠 ISO 字串字典序「剛好」能用，但無法在 SQL 做日期區間運算
+  （「過去 7 天正確率趨勢」做不到）；server 上 `datetime.now()` 是 naive 時間。
+- **建議：** 欄位改 `TIMESTAMPTZ`，寫入用 `datetime.now(timezone.utc)`。
+  搭配 P1 保留 attempts 後，新增 `GET /api/progress/concepts`：
+  以 `date_trunc('day', created_at)` 分組回傳每概念每日 avg_score 趨勢（improving/declining/plateaued）。
+- **影響範圍：** `database.py`（欄位型別 + 寫入）、`models.py`、新增 `pipeline` 方法 + `main.py` 端點。
+- **風險：** 低–中。是 Feature 2 的地基，做完直接多一個競賽亮點頁面。
+
+### ✅ P2 解法設計（細）
+
+**Step 1 — 欄位 TEXT → TIMESTAMPTZ（migration）**
+- 對 `attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、
+  `review_plan.next_review_at`、`class_node_stats.updated_at` 執行：
+  `ALTER TABLE x ALTER COLUMN col TYPE timestamptz USING col::timestamptz;`
+- 既有資料是 ISO 字串，`::timestamptz` 可直接轉。
+  ⚠️ 舊資料是 naive 本地時間，轉換時會被當成 server 時區 → 記錄此一次性誤差，可接受。
+
+**Step 2 — 寫入改 timezone-aware UTC**
+- 所有 `datetime.now()` → `datetime.now(timezone.utc)`（`pipeline.py`、`database.py`）。
+- psycopg2 會自動把 aware datetime 轉成 timestamptz，**不要再 `.isoformat()` 後存字串**。
+
+**Step 3 — 讀取改用原生 datetime（重要陷阱）**
+- timestamptz 欄位 `RealDictCursor` 回傳的是 `datetime` 物件，**不是字串**。
+- 把所有 `datetime.fromisoformat(row["..."])` 改成直接 `row["..."]`
+  （`list_attempts`、`list_courses`、`get_course`、`list_review_plan`、`list_class_node_stats`）。
+  這步漏改會 runtime crash，務必全掃。
+
+**Step 4 — 新增進度趨勢 API**
+- `database.concept_progress(course_id, days)`：
+  ```sql
+  SELECT concept_id,
+         date_trunc('day', created_at) AS day,
+         AVG(score) AS avg_score,
+         COUNT(*)   AS n
+  FROM attempts
+  WHERE created_at >= now() - (%s || ' days')::interval
+    AND concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+  GROUP BY concept_id, day
+  ORDER BY concept_id, day;
+  ```
+- `pipeline.get_concept_progress(days=30)`：把每概念的每日序列組起來，並判趨勢：
+  比較前半段平均 vs 後半段平均，差 > +0.05 → `improving`、< −0.05 → `declining`、否則 `plateaued`。
+- `main.py`：`GET /api/progress/concepts?days=30`（`@cached`，scope 作用中課程；依賴 P1 的 course-scope）。
+
+**Step 5 — 前端進度頁（競賽亮點，Phase 2 可選）**
+- `ProgressPanel.tsx`：用 Recharts（已在技術棧）畫每概念 avg_score 折線 + 趨勢徽章
+  （↑improving 綠 / ↓declining 紅 / →plateaued 灰）。掛到 review 或新分頁。
+
+### 拆解小工單（P2）✅ 後端已完成 (2026-06-04)
+
+- [x] migration：5 個時間欄位轉 TIMESTAMPTZ（Migration 001）
+- [x] 寫入全改 `datetime.now(timezone.utc)`，移除存字串
+- [x] 讀取移除所有 `datetime.fromisoformat(row[...])`（5 處）
+- [x] `database.concept_progress` + `pipeline.get_concept_progress` + `/api/progress/concepts`
+- [ ] （選配）`ProgressPanel.tsx` Recharts 趨勢圖
+
+> **P1/P2 依賴關係：** P2 的 Step 4 progress API 需要 P1 的 course-scope 才有意義
+> （否則跨課程 attempts 混在一起）。順序仍是 **P5 → P1 → P2**。
+
+## P3 服務單例的併發競態 — `_service_lock` 宣告了卻沒用
+
+- **證據：** `main.py:46` 宣告 `_service_lock = asyncio.Lock()`，註解寫「Fix #2」，
+  但 `_get_service`（`main.py:144`）切換 API key、重建 service 時**從未 acquire 這個 lock**。
+- **問題：** 兩個請求同時帶不同 key 進來，會同時 `AdaptLearnService(...)` 重建
+  → 兩個 DB pool、兩個 Chroma client，舊的可能在被其他請求使用時就 `close()`。
+- **額外成本：** 每次換 key 都重建整個 service（新 DB pool + 重開 Chroma），過重。
+- **建議：** 把 GeminiClient 的 key 切換做成「只換 client，不重建整個 service」；
+  或真的用 lock 包住重建。競賽單人 demo 風險低，但這是貨真價實的 bug，值得順手修。
+- **影響範圍：** `main.py:144-158`、`pipeline.py:__init__`（讓 key 可熱替換）。
+- **風險：** 低。
+
+## P4 掌握度聚合在 Python 端做，每次拉 5000 筆 attempts
+
+- **證據：** `pipeline.py` `get_concept_mastery` / `get_chapter_mastery` / `get_tonight_*`
+  各自 `list_attempts(limit=5000)` 後在 Python 用 `defaultdict` 聚合。
+- **問題：** 重複把全部 attempts 載進記憶體做平均，該用 SQL `GROUP BY concept_id` 算。
+  TTLCache 擋了一部分，但 cache miss 時三個端點各跑一次全量聚合。
+- **建議：** `database.py` 加 `concept_score_summary()`（`GROUP BY` 回傳 avg_score、count），
+  pipeline 改用它；mastery band 仍在 Python 判。
+- **影響範圍：** `database.py`（新 query）、`pipeline.py`（三處改用）。
+- **風險：** 低。純效能/整潔，行為不變。
+
+## P5 沒有 migration 機制 — schema 演進靠 ad-hoc `information_schema` 檢查
+
+- **證據：** `database.py:140` 只有一段手寫的「加 course_id 欄位」檢查。
+- **問題：** P1/P2 會再加 `session_id`、改 TIMESTAMPTZ、課程範圍欄位，繼續用手寫檢查會失控。
+- **建議：** 引入輕量 migration（編號 SQL 檔 + `schema_version` 表，或 yoyo/alembic 擇一）。
+  競賽期可先用「編號 SQL + version 表」最小方案，不引重依賴。
+- **影響範圍：** `database.py` + 新 `migrations/`。
+- **風險：** 低，但要先做才好做 P1/P2。
+
+## P6 ChromaDB 持久化在 Render free tier 是暫存碟 → 重新部署就清空
+
+- **證據：** `config.py:53` `chroma_path = data/chroma`（本地磁碟）；Render free 無持久碟。
+- **問題：** 每次 redeploy，向量庫歸零 → 跨課程語意連結（`cross_course_edges`）失效，
+  與 PostgreSQL 裡留存的 edges 不一致。
+- **建議（擇一）：** (a) 跨課程連結改用 PG `pgvector` 取代 Chroma（單一資料源）；
+  (b) 或接受「重啟後首次查詢重建」並在 ingest 時重算。競賽 demo 可只記錄此限制，不急著改。
+- **影響範圍：** `vector_store.py`、`cross_course_linker.py`、`requirements.txt`。
+- **風險：** 中。pgvector 要改依賴；競賽期建議只記錄，賽後再做。
+
+---
+
+## 建議實作順序（若要動架構）
+
+1. **P5（migration 地基）→ P1（course 範圍化 + 停止 wipe）→ P2（時間欄位 + 進度 API）**
+   這三個是一條線：解掉 Bug 5 根因、解鎖多課程、解鎖 Feature 2 進度追蹤，是最高槓桿的一包。
+2. P3、P4 可獨立穿插，風險低。
+3. P6 競賽期只記錄限制，賽後處理。
+
+> ⚠️ 競賽取捨提醒：若 demo 只展示「單課程單人」流程，P1–P2 不是必須；
+> 但只要想展示「多科目知識圖譜」或「進度成長曲線」，P1–P2 就是前置條件。
+
+---
+
+# 執行規則（延用）
 
 - 每改完一個檔案 → `npm run build` 零錯誤
-- 不新增 npm 套件（**例外：KaTeX 任務 1 可以加**）
-- 不動後端 API/hooks（任務 2 除外）
+- 不新增 npm 套件（**例外：KaTeX 已加**）
 - 完成後更新 `CLAUDE.md` 進度追蹤 + `DEVLOG.md`
-
----
-
-# 🟢 本回合優先（2026-06-04 第二批）— 登入頁 + 像素酪梨 logo + 首頁/頂欄 Emil 級打磨
-
-> **這是現在要做的。** 下方「子頁面遷移計畫（第一批）」維持不變、之後再做。
-> 範圍：① 像素酪梨 logo ② 全螢幕極簡登入入口頁 ③ 首頁/頂欄動效打磨。
-> **不動 4 個子頁面、不動後端/API/hooks、不新增 npm 套件。**
-> 設計哲學依 Emil Kowalski（`.agents/skills/emil-design-eng/SKILL.md`）：自訂 easing 曲線、按壓 `scale(0.97)`、
-> 絕不從 `scale(0)` 入場、進場慢/離場快、stagger 30–80ms、只動 `transform`/`opacity`、補 `prefers-reduced-motion`。
-
-## 已確認的設計決策（使用者拍板，不要再改方向）
-
-- **登入頁版面**：置中極簡 hero（大酪梨 logo → 字標 → tagline → 單一「開始學習 →」按鈕 → 小字「已支援 PDF・手寫・圖片」）。
-- **logo 風格**：酪梨 + 脈搏混合 —— 深綠果皮 + 淺綠果肉，**果核位置畫一條 indigo 脈搏線（ECG）**，延續現有「學習脈搏」品牌記憶。
-- **登入頁顯示時機**：`showLanding` 預設 `true`，**每次重新整理都會看到入場動畫**（競賽 demo 記憶點；屬「罕見/首次」動效，Emil 框架允許加 delight）。不需 sessionStorage 記憶。
-
----
-
-## 任務 A：新增自訂 easing token + 按鈕回饋升級（`index.css`）
-
-1. 在 `:root`（檔案最上方 token 區）新增 Emil 推薦的自訂 easing 變數：
-   ```css
-   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* UI 進/出場 */
-   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* 螢幕內移動 */
-   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* iOS 抽屜感 */
-   ```
-2. **按鈕按壓回饋**（現況 `index.css:167-197`）：
-   - `.btn-primary` 的 `transition`（現為 `transform 0.12s ease`）→ 改 `transform 160ms var(--ease-out)`；
-     `.btn-primary:active`（現 `translateY(1px)`）→ 改 `transform: scale(0.97);`。
-   - `.btn-secondary` / `.btn-ghost` 各補上 `transform 160ms var(--ease-out)` 過渡與 `:active { transform: scale(0.97); }`。
-   - 縮放細微（0.95–0.98），讓「介面在聽」。
-3. **hover 位移加裝置守門**：帶 `transform`/上浮的 hover（`.card-interactive`、`.stat-card` hover 等）包進
-   `@media (hover: hover) and (pointer: fine)`，避免觸控裝置誤觸。
-4. **消滅 `transition: all`**：grep `transition: all` 逐一改成明確屬性（只列 `transform`/`opacity`/`background`/`color`/`border-color`）。
-5. **補 `prefers-reduced-motion`**（檔案底部）：
-   ```css
-   @media (prefers-reduced-motion: reduce) {
-     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
-       transition-duration: 0.01ms !important; }
-   }
-   ```
-6. **像素 token 確認**：確保 `.pixel-border`、`.pixel-grid-bg`、`.pixel-particle` 已存在（第一批有定義），缺則補（登入頁右下角用 `.pixel-grid-bg`）。
-
-## 任務 B：像素酪梨 logo 元件（`components/PixelAvocadoLogo.tsx`）
-
-> **⚠️ 使用者將自行設計 logo（2026-06-04）**。
-> 目前 `PixelAvocadoLogo.tsx` 是暫時版本（AI 生成）。
-> 使用者想要自己來設計最終版本，設計完成後替換 `PixelAvocadoLogo.tsx` 即可，
-> 頂欄（`App.tsx`）和 `LandingScreen.tsx` 已正確引用，改元件內容就全站生效。
->
-> **格式需求（保持相容）：**
-> - export 名稱維持 `PixelAvocadoLogo`
-> - props：`size?: number`（預設 32）、`className?`、`withPulse?: boolean`
-> - 頂欄用 `size={30}`，登入頁用 `size={104}`
-
-## 任務 C：全螢幕極簡登入入口頁（`components/LandingScreen.tsx`，新檔）
-
-- props：`onEnter: () => void`。
-- 版面：`min-h-screen` 置中（`flex flex-col items-center justify-center`），底色 `var(--bg-app)`，
-  右下角放極淡 `.pixel-grid-bg`（低透明度、`pointer-events-none`、絕對定位）當品牌點綴。
-- 內容由上而下：① `<PixelAvocadoLogo size={104} />` ② 字標 `AdaptLearn`（`.font-display`，大）
-  ③ tagline「把教材變成測驗・複習・圖譜」（`--text-secondary`）④ `.btn-primary`「開始學習 →」⑤ 小字「已支援 PDF・手寫・圖片」（`--text-muted`）。
-- **入場（stagger）**：5 元素各 `opacity:0→1` + `translateY(8px)→0` + `scale(0.96)→1`，`~360ms var(--ease-out)`，
-  delay `0 / 50 / 100 / 150 / 200ms`。**禁止 `scale(0)`**。可在 `index.css` 加一個 `.landing-item` keyframe + `nth-child` delay。
-- **離場（不對稱、要快）**：點按鈕 → 容器加 `data-leaving`（`opacity→0` + `scale(0.98)`，`~240ms var(--ease-out)`）→
-  `setTimeout(onEnter, 240)`（或 `transitionend`）。離場比入場快（Emil：決策時慢、回應時快）。
-- `prefers-reduced-motion` 由任務 A 全域守門涵蓋，元件內不必重複。
-
-## 任務 D：`App.tsx` 整合 landing gate + 首頁/頂欄打磨
-
-1. **gate state**：`const [showLanding, setShowLanding] = useState(true);`
-   - `return (` 之後最前面：`if (showLanding) return <LandingScreen onEnter={() => setShowLanding(false)} />;`
-     —— landing 期間**不渲染頂欄**（呼應「不要一進來全部按鈕都出現」）。
-   - app shell 在 `showLanding=false` 時照常渲染；既有 `.view-enter` 自然接手，形成「登入頁淡出 → 儀表板淡入」。
-2. **頂欄 brand**：依任務 B 換成 `<PixelAvocadoLogo size={30}/>`。
-3. **nav active indicator** 過渡補 `var(--ease-out)`（`index.css` 對應 class）。
-4. **首頁統計卡 stagger 入場**：首頁三張 `.stat-card` 入場各加 30–60ms 遞延（inline `style={{ animationDelay }}` 配既有 `.stat-animate-in`），保留 `CountUp`。
-
-## 驗證（本回合）
-
-```bash
-cd webapp/frontend && npm run build        # 必須零錯誤
-npm run dev                                # 看登入頁入場 → 點「開始學習」→ 淡出進首頁 → 頂欄酪梨 logo
-grep -rn "transition: all" src/index.css   # 應為空
-```
-- 慢動作檢查（Emil）：入場 stagger 順、按鈕按壓 `scale(0.97)` 有回饋、離場比入場快、酪梨縮到 30px 可辨識。
-- 完成後在 `CLAUDE.md`「實作進度追蹤」勾選本回合項目、`DEVLOG.md` 補 2026-06-04 條目。
-
-## 已修復的 Bug（2026-06-04）
-
-### Bug A：Landing 點「開始學習」跳到教材頁而非首頁
-- **根因：** `App.tsx` 的 `onEnter` callback 只有 `setShowLanding(false)`，
-  沒有重置路由；`activeView` 仍保留上次的 URL（如 `/setup`）→ 進入後直接顯示教材頁。
-- **修法：** `onEnter` 改為 `() => { setShowLanding(false); navigateTo("home"); }`。
-
-### Bug B：首頁 stat cards 顯示前一次 session 的殘留資料
-- **根因：** `concept_count`、`reviewItems.length`、`accuracyPct`、`topChapter`、`topFocus`
-  直接從 DB 拿，沒有被 `sessionUploaded` gate 保護，頁面重整後仍顯示舊資料。
-- **修法：** 加 `sessionConceptCount`、`sessionReviewCount` 等 gated 變數，
-  `topChapter`/`topFocus`/`accuracyPct` 都改為 `sessionUploaded ? 真實值 : 預設空值`。
-
----
-
-## 目前狀態（已完成，不要重做）
-
-- ✅ `index.css` — 已是完整 light 主題（tokens + utility classes + `.legacy-surface` 過渡層）
-- ✅ `App.tsx` — 釘住頂欄 + 亮色首頁儀表板 + `CountUp` 計數動畫 + 問候卡裝飾 blob + date pill + 動態 accent bar + 工作流程 timeline + next-up 卡
-- ✅ `DailyProgressRing.tsx` — 改為 SVG arc（更平滑，帶 transition 動畫）
-- ✅ `InsightFeed.tsx` — 左側 3px 彩色 border + SVG 空狀態插圖
-
-**目前 4 個子頁面（教材/測驗/複習/圖譜）內部仍是舊白字元件，被 `App.tsx` 用 `.legacy-surface` 暗色層包住保持可讀。**
-你的工作就是把它們一個個改成亮色，然後拆掉 legacy 包裹。
-
----
-
-## 🎮 像素風點綴方向（新方向，2026-06-04）
-
-> **核心精神：明亮專業底 + 少量像素風裝飾**
-> 不是把整站改成 8-bit 遊戲，而是在「有意義的裝飾位置」放像素元素，
-> 讓競賽評審有印象點，同時保持清晰的資訊層次。
-
-### 像素風適用位置
-
-| 位置 | 手法 | 效果 |
-|------|------|------|
-| 空狀態插圖（空測驗、空圖譜、空複習） | 純 SVG 像素風小圖（2×2 grid 畫法） | 有趣，不枯燥 |
-| 測驗答對粒子（`.particle`） | 從圓點改為 4×4 px 方塊飄散 | 像遊戲的答對特效 |
-| 成就/里程碑 badge | 像素風星星/旗幟小 icon（SVG） | 學習達標時的小驚喜 |
-| 知識圖譜節點（小概念 pill） | 節點邊框用像素 border（box-shadow 模擬，不依賴圖片） | 圖譜有科技+遊戲感 |
-| 首頁 greeting 區裝飾 | 右下角 16×16 像素網格圖案（低透明度） | 品牌個性，不干擾閱讀 |
-
-### 技術實作規則（像素風）
-
-```css
-/* 像素風邊框（用 box-shadow 模擬 1px 階梯感，不需圖片）*/
-.pixel-border {
-  box-shadow:
-    2px 0 0 var(--border-strong),
-    0 2px 0 var(--border-strong),
-    -2px 0 0 var(--border-strong),
-    0 -2px 0 var(--border-strong);
-  border-radius: 0;  /* 像素風無圓角 */
-}
-
-/* 像素風裝飾圖案（背景 repeating-pattern） */
-.pixel-grid-bg {
-  background-image: repeating-conic-gradient(var(--bg-sunken) 0 25%, transparent 0 50%);
-  background-size: 8px 8px;
-  opacity: 0.4;
-}
-
-/* 方塊粒子（替代圓形 .particle）*/
-.pixel-particle {
-  width: 4px; height: 4px;
-  border-radius: 0;  /* 方塊！ */
-  background: var(--high);
-  animation: float-up 0.8s ease-out forwards;
-}
-```
-
-- **SVG 像素風插圖**：用 `<rect>` 畫 8×8 或 16×16 的格子圖案，不用圓角，顏色用設計 token
-- **字體不改**：Plus Jakarta Sans 保留，像素風只在「裝飾性視覺」不在正文
-- **克制原則**：一個頁面最多 1~2 個像素元素，不要搶主要資訊的視線
-
----
-
-## 設計系統速查（直接用這些 class，不要自己發明）
-
-定義都在 `webapp/frontend/src/index.css`。
-
-**色彩 token（用 Tailwind 任意值語法 `text-[color:var(--xxx)]` 或在 className 套既有 class）：**
-```
-背景    --bg-app #f5f6f8 / --bg-surface #fff / --bg-subtle #f7f8fa / --bg-sunken #f0f1f4
-邊框    --border / --border-strong / --border-hover
-文字    --text-primary #16181d / --text-secondary #5a616b / --text-muted #8b929c
-強調    --accent #4f46e5 (indigo) / --accent-soft #eef0fe
-語意    --high #0ea472(綠) / --medium #d98a04(琥珀) / --low #e11d48(玫紅)  ← 只用在掌握度/難度
-```
-
-**現成 class：**
-| 用途 | class |
-|------|-------|
-| 卡片 | `.card` `.card-flat` `.card-subtle` `.card-interactive`(hover上浮) |
-| 按鈕 | `.btn-primary`(indigo) `.btn-secondary` `.btn-ghost` |
-| 輸入框 | `.input`（focus 有 accent ring） |
-| 標籤/狀態 | `.pill` `.tag-high/medium/low` `.status-dot(.live/.signal/.weak/.neural)` |
-| 統計卡 | `.stat-card`（左側 accent-bar） |
-| 掌握度條 | `.mastery-bar-track` + `.mastery-bar-fill` |
-| 小標題 | `.section-eyebrow`（已是亮色 muted） |
-| 數字 | `.stat-value` / `.font-mono-data`（DM Mono, tabular-nums） |
-| 上傳區 | `.upload-zone`（hover/`.drag-over`）+ `.scan-line` |
-| 進度步驟 | `.progress-step(.active/.done)` + `.progress-step-dot` |
-| 測驗圓弧 | `.quiz-arc-track` / `.quiz-arc-fill` |
-| 答題鈕 | `.answer-btn(.correct/.incorrect)` + `.particle`(答對粒子→改`.pixel-particle`) |
-| 圖譜邊線動畫 | `.graph-edge-animated`（stroke-dashoffset 流動） |
-
----
-
-## ⚠️ 黃金規則（每個檔案都適用）
-
-1. **消滅所有 `text-white` / `text-white/NN`** → 換成 `text-[color:var(--text-primary)]`（主文字）、
-   `text-[color:var(--text-secondary)]`（次要）、`text-[color:var(--text-muted)]`（最淡）。
-   這是最重要的一條——白字在白底會消失。
-2. **`glass-panel` / `glass-panel-strong` → `.card`**；**`glass-subpanel` → `.card-subtle`**；
-   **`glass-button` → `.btn-secondary`**；**`glass-input` → `.input`**。
-3. **超大圓角收斂**：`rounded-[28px]`/`[26px]`/`[22px]` 之類 → 用 `.card` 內建的 14px，或 `rounded-xl`(12px)。
-4. **掌握度/難度顏色用語意 class**（`.tag-high` 等 / `.mastery-high` 等），不要自己調 rgba。
-5. **改完一個子頁面，到 `App.tsx` 把該 view 外層的 `<div className="legacy-surface">` 拆掉**
-   （改成普通 `<div className="space-y-6">` 或直接 fragment）。同時把該 view 在 `renderSubView()` 裡
-   殘留的 `text-white/glass-*` 側欄面板也一併改成亮色（那些側欄 JSX 在 App.tsx 內，不在子元件）。
-6. **每改完一個檔案就 `cd webapp/frontend && npm run build`，必須零錯誤**才算完成。
-7. **每完成一項，更新 `CLAUDE.md`「實作進度追蹤」清單**把對應項目打勾（使用者明確要求）。
-
----
-
-## 執行順序與各檔案目標
-
-> 每個檔案動工前先 `Read` 它，看清楚現有 props / 結構，再改。不要憑空改。
-
-### 任務 1：`components/SetupPanel.tsx` + App.tsx setup 側欄（教材頁，最優先）
-- 把整個面板改亮色（card / 語意色 / 移除 white）。
-- **上傳區**：用 `.upload-zone` 做一個大的拖曳區（icon + 「拖曳檔案至此或點擊選擇」），
-  支援 drag-over 狀態（`onDragOver`/`onDrop` 切 `.drag-over`）。
-- **處理中狀態**：ingesting 時用 3 步驟進度條（`.progress-step`：解析文件→抽取概念→建立圖譜），
-  可在上傳區疊一條 `.scan-line`。現有的 `elapsedSec` 計時可保留顯示。
-- **🎮 像素點綴**：上傳空狀態加入小型 SVG 像素風插圖（8×8 grid 資料夾/上傳圖示），
-  掃描線（`.scan-line`）處理中時出現。
-- 保留所有既有邏輯（`handleIngest`、`ocrFailed` 紅色警告、`llmDegraded` 黃色提示、`ConceptSection`）。
-  注意 `ConceptSection.tsx` 也要一起改亮色（它列出已抽取概念）。
-- App.tsx 裡 setup 的右側欄（系統模式/當前課程/教材摘要那塊 glass-panel-strong）改成 `.card`。
-- 完成後移除 setup 的 `.legacy-surface`。
-
-### 任務 2：`components/QuizPanel.tsx` + App.tsx quiz 側欄（測驗頁）
-- 改亮色。題目卡用 `.card` 放大、選項用 `.answer-btn`。
-- **圓弧進度**：頂部用 SVG 半圓 `.quiz-arc-track`/`.quiz-arc-fill`（stroke-dasharray 算進度）顯示第 N/總題。
-- **答題回饋**：答對 → 選項加 `.correct` + 噴 2~3 個 **`.pixel-particle`**（4×4 方塊，絕對定位、向上飄）；
-  答錯 → `.incorrect`（shake）並標出正解。
-- **🎮 像素點綴**：答對粒子改為方塊（`.pixel-particle`），空測驗狀態加像素風空箱插圖。
-- App.tsx quiz 右側欄（測驗前提醒）改 `.card`。
-- 完成後移除 quiz 的 `.legacy-surface`。
-
-### 任務 3：`components/StudyPanels.tsx`（含 `TonightPanel` + `StudyPlansPanel`）+ `components/MasteryTable.tsx`（複習頁）
-- 全部改亮色。
-- **TonightPanel**：保留率三節點視覺「`before%` → `+uplift%` → `after%`」用大數字 + 箭頭橫排。
-- **掌握度列表/表格**：用 `.mastery-bar-track`/`.mastery-bar-fill` 漸層條呈現掌握度，
-  狀態文字用 `.mastery-high/medium/low`。
-- **🎮 像素點綴**：掌握度達 100% 的概念旁加一個像素風星星（`★` 或小 SVG），作為達成彩蛋。
-- 完成後移除 review 的 `.legacy-surface`。
-
-### 任務 4：`components/KnowledgeGraphPanel.tsx` + `components/MindMapCanvas.tsx` + `components/ClassHeatmapPanel.tsx`（圖譜頁）
-- **MindMapCanvas**：心智圖配合亮底 —— 畫布背景改淺色（`--bg-subtle`），
-  節點/邊線顏色改成在淺底可讀（概念 pill 用語意色、章節用既有調色盤但加深）。
-  邊線可加 `.graph-edge-animated` 做訊號流動。
-- **🎮 像素點綴**：中心課程節點加 `.pixel-border`（無圓角方塊感），強調為「核心」；
-  邊線動畫顏色與 signal flow 保持 indigo 系。
-- **ClassHeatmapPanel**：從數字列表改成 **熱力格子**（類似 GitHub contribution）——
-  每個概念一格，色塊深淺/紅綠代表錯誤率（用 `--low`→`--high` 插值或分級）。
-  **格子本身就是像素風** — 2px gap、無圓角、hover 時顯示 tooltip。
-- `KnowledgeGraphPanel` 外框與控制鈕（+/−/⟳）改亮色 `.btn-secondary`。
-- 完成後移除 graph 的 `.legacy-surface`。
-
-### 任務 5（收尾）：清理 + 像素風彙整
-- 4 個 `.legacy-surface` 都移除後，把 `index.css` 裡的 `.legacy-surface` 整段 CSS 刪掉。
-- 確認 `index.css` 已有 `.pixel-border`、`.pixel-grid-bg`、`.pixel-particle` 的定義（若無則補）。
-- 全站 grep 確認沒有殘留 `text-white`、`glass-panel`、`glass-subpanel`、`floating-orb`、`demo-` class
-  （`grep -rn "text-white\|glass-panel\|glass-subpanel\|floating-orb\|demo-" webapp/frontend/src`）。
-- 最終 `npm run build` 零錯誤。
-- `DEVLOG.md` 補一則 2026-06-04 的條目記錄這次 UI 改版（給海報/報告用）。
-
----
-
-## 驗證指令
-
-```bash
-cd webapp/frontend
-npm run build          # 每改完一個檔案都要跑，必須零錯誤
-# 想實際看效果：
-npm run dev            # http://localhost:5173（需後端在 :8000，或單看畫面也行）
-```
-
-產物會輸出到 `webapp/static/`（Render 部署前要 build 並 commit）。
-
----
-
-## 注意事項
-
-- **不要新增 npm 套件**（Render 部署限制）。純 React + Tailwind + SVG。
-- **不要動後端 / API / hooks 的邏輯**，只改視覺層（className、JSX 結構、必要的 local state 如 drag-over）。
-- 中文文案面向使用者、英文面向 log（既有慣例）。
-- 改 JSX 時保留所有既有 props 與資料流（concepts、tonight、reviewItems、masteryItems… 照舊傳）。
-- 有疑問先 `Read` 該元件 + 對照 `App.tsx` 怎麼呼叫它。
-- **像素風是點綴不是主題**：每頁最多 1~2 個像素元素，主要資訊仍用 Plus Jakarta Sans + 明亮主題。
-

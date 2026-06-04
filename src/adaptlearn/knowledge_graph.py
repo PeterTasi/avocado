@@ -151,6 +151,7 @@ def build_knowledge_graph(
     text: str,
     course_name: str,
     gemini_client,
+    course_id: str = "",
     max_concepts: int = 24,
 ) -> tuple[list[Concept], list[ConceptEdge]]:
     cleaned_text = _sanitize_material_text(text)
@@ -159,15 +160,15 @@ def build_knowledge_graph(
         course_name=course_name,
         max_concepts=max_concepts,
     )
-    concepts = _records_to_concepts(records, max_concepts=max_concepts)
+    concepts = _records_to_concepts(records, max_concepts=max_concepts, course_id=course_id)
     if not concepts:
-        concepts = _heuristic_extract_concepts(text=cleaned_text, max_concepts=max_concepts)
+        concepts = _heuristic_extract_concepts(text=cleaned_text, max_concepts=max_concepts, course_id=course_id)
 
     edges = _build_edges(concepts)
     return concepts, edges
 
 
-def _records_to_concepts(records: list[dict], max_concepts: int) -> list[Concept]:
+def _records_to_concepts(records: list[dict], max_concepts: int, course_id: str = "") -> list[Concept]:
     concepts: list[Concept] = []
     used_ids: set[str] = set()
     used_names: set[str] = set()
@@ -203,7 +204,7 @@ def _records_to_concepts(records: list[dict], max_concepts: int) -> list[Concept
         if not base_id:
             base_id = f"concept-{len(concepts) + 1}"
 
-        concept_id = _concept_id(name, chapter)
+        concept_id = _concept_id(name, chapter, course_id)
         concepts.append(
             Concept(
                 id=concept_id,
@@ -217,7 +218,7 @@ def _records_to_concepts(records: list[dict], max_concepts: int) -> list[Concept
     return concepts
 
 
-def _heuristic_extract_concepts(text: str, max_concepts: int) -> list[Concept]:
+def _heuristic_extract_concepts(text: str, max_concepts: int, course_id: str = "") -> list[Concept]:
     phrases = _extract_phrase_candidates(text)
     counts = Counter(phrases)
 
@@ -238,7 +239,7 @@ def _heuristic_extract_concepts(text: str, max_concepts: int) -> list[Concept]:
     for index, term in enumerate(top_terms):
         display_term = _format_concept_name(term)
         chapter = f"Chapter {(index // 6) + 1}"
-        concept_id = _concept_id(display_term, chapter)
+        concept_id = _concept_id(display_term, chapter, course_id)
         concepts.append(
             Concept(
                 id=concept_id,
@@ -467,16 +468,13 @@ def _normalize_name(value: str) -> str:
     cjk_tokens = re.findall(r"[\u4e00-\u9fff]+", value)
     return "".join(cjk_tokens)
 
-def _concept_id(name: str, chapter: str) -> str:
-    """Deterministic, collision-free concept ID using UUID5(chapter + name).
+def _concept_id(name: str, chapter: str, course_id: str = "") -> str:
+    """Deterministic, collision-free concept ID scoped to course + chapter + name.
 
-    Unlike slug + counter, this guarantees:
-    - Same concept name in the same chapter always gets the same ID.
-    - "Matrix Multiplication" and "MatrixMultiplication" in the same chapter
-      produce different IDs because their full names differ.
-    - Cross-chapter duplicates (same name, different chapters) get different IDs.
+    Including course_id prevents PK collisions when multiple courses share
+    the same concept names — identical names in different courses get different IDs.
     """
-    raw = f"{chapter.strip().lower()}:{name.strip().lower()}"
+    raw = f"{course_id}:{chapter.strip().lower()}:{name.strip().lower()}"
     return "c-" + uuid.uuid5(_CONCEPT_NAMESPACE, raw).hex[:16]
 
 

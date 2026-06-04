@@ -378,6 +378,13 @@ def class_weak_concepts(course_id: str, top_n: int = 3) -> dict[str, Any]:
     return {"items": _get_service().get_class_weak_concepts(course_id, top_n=top_n)}
 
 
+@app.get("/api/progress/concepts")
+@cached(_cache)
+def concept_progress(days: int = 30) -> dict[str, Any]:
+    days = max(1, min(days, 365))
+    return {"items": _get_service().get_concept_progress(days=days)}
+
+
 @app.get("/{full_path:path}")
 def spa_entry(full_path: str) -> FileResponse:
     if full_path.startswith("api/"):

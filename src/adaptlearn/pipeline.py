@@ -4,7 +4,7 @@ import hashlib
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .chandra_client import ChandraClient
 from .class_heatmap import compute_class_heatmap, get_weak_concepts
@@ -79,11 +79,17 @@ class AdaptLearnService:
         # Reset LLM error state so we can detect failures during this ingest.
         self.gemini.last_error = ""
 
+        # P1: compute course_id BEFORE build_knowledge_graph so it can be passed in.
+        course_id = hashlib.sha256(f"{course_name}:{file_name}".encode()).hexdigest()[:12]
+
         ocr_failed = False
         ocr_message = ""
         if low_text_mode:
             if used_seed_template:
                 concepts = list(seed_concepts)
+                # Assign course_id to seed concepts and recompute their IDs with course scope.
+                for concept in concepts:
+                    concept.course_id = course_id
                 edges = _build_edges_from_concepts(concepts)
                 ingest_mode = "template-fallback"
                 # OCR produced nothing usable, so these are generic template concepts —
@@ -109,6 +115,7 @@ class AdaptLearnService:
                 text=material_text,
                 course_name=course_name,
                 gemini_client=self.gemini,
+                course_id=course_id,
             )
             if used_seed_template:
                 concepts = _merge_concept_sets(concepts, seed_concepts)
@@ -127,14 +134,13 @@ class AdaptLearnService:
                 "或改用明確模板。"
             )
 
-        # Create course record
-        course_id = hashlib.sha256(f"{course_name}:{file_name}".encode()).hexdigest()[:12]
+        # Create course record (P2: use timezone-aware datetime)
         course = Course(
             id=course_id,
             user_id="default",
             subject=course_name,
             filename=file_name,
-            uploaded_at=datetime.now(),
+            uploaded_at=datetime.now(timezone.utc),
         )
         self.repo.save_course(course)
 
@@ -142,8 +148,9 @@ class AdaptLearnService:
         for concept in concepts:
             concept.course_id = course_id
 
-        # Replace previous corpus-derived state so a new upload reflects only the current material.
-        self.repo.reset_learning_state(include_attempts=True)
+        # P1: course-scoped reset (keeps attempts from other courses + all history)
+        self.repo.set_active_course(course_id)
+        self.repo.reset_course_state(course_id)
         self.repo.upsert_concepts(concepts)
         self.repo.replace_edges(edges)
         self.vector_store.upsert_concepts(concepts, replace_existing=False, course_id=course_id)
@@ -177,7 +184,9 @@ class AdaptLearnService:
         }
 
     def generate_diagnostics(self, question_count: int = 9) -> list[Question]:
-        concepts = self.repo.list_concepts()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        concepts = self.repo.list_concepts(course_id=active_course_id)
         if not concepts:
             return []
 
@@ -213,7 +222,7 @@ class AdaptLearnService:
             is_correct=bool(grading["is_correct"]),
             score=float(grading["score"]),
             feedback=str(grading["feedback"]),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
         self.repo.save_attempt(attempt)
 
@@ -226,7 +235,9 @@ class AdaptLearnService:
         }
 
     def build_and_save_review_plan(self) -> list[ReviewItem]:
-        concepts = self.repo.list_concepts()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        concepts = self.repo.list_concepts(course_id=active_course_id)
         attempts = self.repo.list_attempts(limit=5000)
         review_plan = build_review_plan(concepts=concepts, attempts=attempts)
         self.repo.save_review_plan(review_plan)
@@ -236,10 +247,14 @@ class AdaptLearnService:
         return self.repo.list_review_plan(limit=200)
 
     def list_concepts(self) -> list[Concept]:
-        return self.repo.list_concepts()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        return self.repo.list_concepts(course_id=active_course_id)
 
     def get_concept_mastery(self) -> list[dict[str, object]]:
-        concepts = self.repo.list_concepts()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        concepts = self.repo.list_concepts(course_id=active_course_id)
         attempts = self.repo.list_attempts(limit=5000)
 
         scores_by_concept: dict[str, list[float]] = defaultdict(list)
@@ -289,7 +304,9 @@ class AdaptLearnService:
         return chapter_rows
 
     def get_tonight_study_dashboard(self, top_n: int = 5) -> dict[str, object]:
-        concepts = self.repo.list_concepts()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        concepts = self.repo.list_concepts(course_id=active_course_id)
         attempts = self.repo.list_attempts(limit=5000)
 
         review_items = self.repo.list_review_plan(limit=200)
@@ -343,8 +360,10 @@ class AdaptLearnService:
         return self.vector_store.query_related(query=query, n_results=n_results)
 
     def get_graphviz(self) -> str:
-        concepts = self.repo.list_concepts()
-        edges = self.repo.list_edges()
+        # P1: scope to active course
+        active_course_id = self.repo.get_active_course_id()
+        concepts = self.repo.list_concepts(course_id=active_course_id)
+        edges = self.repo.list_edges(course_id=active_course_id)
         cross_edges = self.repo.list_cross_course_edges()
         if not concepts:
             return "digraph ConceptGraph { empty [label=\"No concepts yet\"]; }"
@@ -408,6 +427,43 @@ class AdaptLearnService:
             "accuracy": metrics["avg_score"],
         }
 
+    # P2: Progress trend API
+    def get_concept_progress(self, days: int = 30) -> list[dict]:
+        active_course_id = self.repo.get_active_course_id()
+        if not active_course_id:
+            return []
+
+        concept_data = self.repo.concept_progress(course_id=active_course_id, days=days)
+
+        concepts = self.repo.list_concepts(course_id=active_course_id)
+        name_map = {c.id: c.name for c in concepts}
+
+        result = []
+        for item in concept_data:
+            daily = item["daily"]
+            if len(daily) < 2:
+                trend = "plateaued"
+            else:
+                mid = len(daily) // 2
+                first_half_avg = sum(d["avg_score"] for d in daily[:mid]) / mid
+                second_half_avg = sum(d["avg_score"] for d in daily[mid:]) / (len(daily) - mid)
+                diff = second_half_avg - first_half_avg
+                if diff > 0.05:
+                    trend = "improving"
+                elif diff < -0.05:
+                    trend = "declining"
+                else:
+                    trend = "plateaued"
+
+            result.append({
+                "concept_id": item["concept_id"],
+                "concept_name": name_map.get(item["concept_id"], item["concept_id"]),
+                "daily": daily,
+                "trend": trend,
+            })
+
+        return result
+
     def _select_weak_concepts(
         self,
         concepts: list[Concept],
@@ -442,7 +498,7 @@ def _normalize_name(value: str) -> str:
     if tokens:
         return " ".join(tokens)
     # CJK fallback
-    return "".join(re.findall(r"[\u4e00-\u9fff]+", value))
+    return "".join(re.findall(r"[一-鿿]+", value))
 
 
 def _merge_concept_sets(extracted: list[Concept], seeded: list[Concept]) -> list[Concept]:

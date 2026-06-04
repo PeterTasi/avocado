@@ -273,11 +273,7 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 ### 未修 Bug
 
 - **Bug 5 方案 B/C（選配）：** 後端加 `session_id` 欄位限制出題範圍（方案 B）；或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端確認 modal）已完成，競賽夠用。
-- **班級熱力圖課程 tab 重複（Bug 7）：** `ClassHeatmapPanel` 的課程 tab 列表出現重複課程名稱（e.g. Linear Algebra × 3、通用課程 × 2）。需查 `GET /api/heatmap/{course_id}` 或前端取得課程列表的邏輯是否對同一課程去重。
-
-### 已修 Bug（本日）
-
-- **Bug 8 ✅：** 未上傳教材時複習頁顯示假通過率（63.4% / +30% / 93.4%）。根因：`_estimate_pass_probability` 無 attempts 時回傳固定 0.55 baseline。修法：後端加 `has_data` 旗標（無 attempts → False），前端沒資料時改顯示提示訊息，不顯示數字。
+- **Bug 7：** `ClassHeatmapPanel` 課程 tab 列表出現重複課程名稱（e.g. Linear Algebra × 3）。需查前端 `useApi.ts` hook 或 `ClassHeatmapPanel` 是否對 course_id 去重。
 
 ### 架構技術債
 
@@ -287,6 +283,13 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | **P3** | 待做 | `_service_lock` 宣告卻沒 acquire；換 key 重建整個 service（真 bug，單人 demo 風險低） |
 | **P4** | 待做 | mastery 聚合在 Python 端每次拉 5000 筆 attempts（該用 SQL `GROUP BY`，效能問題） |
 | **P6** | 待做 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零（賽後處理） |
+
+### 本日完成（2026-06-04，已推送）
+
+- ✅ **全站部署修復：** 前端改動沒 commit，Render 顯示舊版。已補 commit push。
+- ✅ **Bug 8：** 複習頁假通過率（無資料時顯示 63.4%）。後端加 `has_data` 旗標，前端無資料顯示提示。
+- ✅ **網站標題：** 改為純 `avocado`，移除「自適應學習儀表板」後綴。
+- ✅ **全站酪梨配色：** 從 logo bibilavocado.png 提取色板，indigo 全換深酪梨綠 (#3d6b28)，背景改奶油米色，語意色改森林綠/暖棕/暖紅，MindMapCanvas 同步更新。
 
 ---
 

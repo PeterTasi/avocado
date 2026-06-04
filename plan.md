@@ -28,39 +28,14 @@
 
 # 🟡 剩餘待辦
 
-## 待辦 0：UI 像素圖示全站替換 ✅ (2026-06-04)
+## ✅ 待辦 0：UI 像素圖示全站替換 (2026-06-04)
 
-**說明：** 所有 Lucide 主題圖示（LayoutDashboard / Activity / Sparkles / CalendarClock / Network / BookOpen / TrendingUp）已換成自製像素 SVG 圖示。
-新元件：`src/components/PixelIcons.tsx`（PixelHome / PixelUpload / PixelStar / PixelCalendar / PixelGraph / PixelBook / PixelChart）。
-保留 lucide：ArrowRight / ChevronLeft / ChevronRight / UserCircle2（純 UI 導覽用途）。
+PixelIcons.tsx 完成，PixelAvocadoLogo.tsx 改用 bibilavocado.png。
 
-Logo 部分：`PixelAvocadoLogo.tsx` 已改用 `<img>` 載入 `src/assets/bibilavocado.png`（使用者自製去背版）。
+## ✅ 待辦 1：像素酪梨 Logo + 品牌名 (2026-06-04)
 
----
-
-## 待辦 1：像素酪梨 Logo — 已更新為比比拉布角色版 ✅ (2026-06-04)
-
-**說明：** `PixelAvocadoLogo.tsx` 已從舊抽象酪梨更新為像素酪梨貓（比比拉布）。
-品牌名稱全站已從 "AdaptLearn" 改為 "avocado"（頂欄 + 登入頁 + document.title）。
-
-若使用者想再調整像素圖稿，直接改 `PixelAvocadoLogo.tsx` 元件，全站自動生效。
-**格式需求（保持相容）：**
-- export 名稱維持 `PixelAvocadoLogo`
-- props：`size?: number`（預設 32）、`className?`、`withPulse?: boolean`
-- 頂欄用 `size={30}`，登入頁用 `size={104}`
-
----
-
-## 待辦 1b：圖譜觸控板縮放 Bug ✅ 已修 (2026-06-04)
-
-**症狀：** Mac 觸控板雙指滑動觸發 wheel 事件 → `MindMapCanvas` 把它當縮放 → 飛速放大縮小。
-
-**根因：** `onWheel` 沒區分「pinch」vs「一般捲動」；Mac 上雙指捲動 `ctrlKey=false`，
-pinch 才是 `ctrlKey=true`。舊代碼不管哪種都縮放。
-
-**修復（`MindMapCanvas.tsx`）：**
-- `ctrlKey=true`（pinch）→ 縮放，factor 縮小為 1.04/0.96（原本 1.12/0.88 過快）
-- `ctrlKey=false`（一般雙指捲動）→ 平移（pan）
+比比拉布 logo、品牌名 avocado、觸控板縮放 bug 全修完。
+props 格式：`PixelAvocadoLogo` / `size`（頂欄 30、登入頁 104）。
 
 ---
 
@@ -80,14 +55,7 @@ pinch 才是 `ctrlKey=true`。舊代碼不管哪種都縮放。
 
 ## ✅ Bug 8：複習頁假通過率（2026-06-04 修）
 
-**症狀：** 未上傳任何教材/未作答，複習頁「今晚衝刺計畫」仍顯示 63.4% / +30% / 93.4%。
-
-**根因：** `pipeline._estimate_pass_probability` 無 attempts 時回傳固定 `0.55` baseline，再加上 seed concepts 產生的 uplift（每 item +6.5%，5 items = +30%），導致全是假數字。
-
-**修復：**
-- `pipeline.py`：計算 `has_data = bool(attempts)`；無資料時 before/uplift/after 全為 0，回傳 `"has_data": False`。
-- `useApi.ts`：`TonightDashboard` 加 `has_data?: boolean`。
-- `StudyPanels.tsx`：`hasData` 為 false 時顯示「尚無作答記錄」提示，不顯示數字。
+後端加 `has_data` 旗標，無 attempts 時前端改顯示提示。
 
 ---
 

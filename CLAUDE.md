@@ -188,22 +188,30 @@ Known UI issues to fix during redesign:
 - `pdf_parser.py` OCR order is Ollama → Chandra → Gemini; `source_type` values include `image-chandra-ocr`, `pdf-chandra-ocr`, `image-ollama-ocr`, `pdf-ollama-ocr`
 - Configure via `OLLAMA_OCR_MODEL` / `OLLAMA_URL`, or `CHANDRA_METHOD` / `CHANDRA_VLLM_URL` in `.env`
 
-### 2. Learning Progress Tracking Algorithm
+### 2. Learning Progress Tracking Algorithm（未實作，非競賽優先）
 - New endpoint(s) to expose per-concept progress over time (not just current mastery)
 - Track attempt history timelines; surface trend signals (improving / declining / plateaued)
 - Extend `models.py` and `database.py` as needed; expose via new API routes
 
-### 4. LaTeX 數學式渲染（待實作，見 plan.md 任務 1）
-- 測驗題目目前以純文字顯示數學式（如 `a_1, a_2`, `C = AB + 3A - I`），需 KaTeX 渲染
-- 方案：新增 `components/MathRenderer.tsx`，用 regex 切出 `$...$` 區段，KaTeX renderToString
-- QuizPanel 的題目、feedback、expected_answer 都套用
-- 可加 KaTeX npm 套件（例外允許，build 後 commit 到 static/）
+### 4. LaTeX 數學式渲染 ✅ DONE (2026-06-04)
+- 新增 `components/MathRenderer.tsx`（KaTeX renderToString，`$...$` 和 `\(...\)` 支援）
+- QuizPanel 題目、feedback、expected_answer 都套用 MathRenderer
+- 後端 `gemini_client.py` generate_questions prompt 加入「數學式用 $...$ 包住」指示
+- `npm install katex @types/katex`，build 產物 commit 到 `webapp/static/`
 
-### 5. Emil 動效升級 + 像素風格強化（待實作，見 plan.md 任務 3）
-- 使用者回饋：按按鈕的轉場太平，像素風格不夠強烈
-- 參考 `.agents/skills/emil-design-eng/SKILL.md`
-- 具體：題目出現滑入動畫、評分結果彈跳、答對粒子增量（6~8 顆，角度分散）、概念 pill hover 像素閃框
-- 詳見 plan.md 任務 3-A（動效）和 3-B（像素）
+### 5. Emil 動效升級 + 像素風格強化 ✅ DONE (2026-06-04)
+- 題目卡片入場：`.question-enter`（`translateY(12px)→0`，240ms，key=questionIndex 觸發重播）
+- 評分結果：`.grade-enter`（scale 0.97→1）+ 答對時 `.correct`（scale 彈跳到 1.02）
+- 答對粒子從 3 顆擴充為 8 顆（角度分散 18%~88%，混色 high/accent/medium）
+- 概念 pill hover：`.pill:hover` pixel-flash keyframe（border-color 閃 indigo）
+
+### 6. 跨 Session 確認 Modal ✅ DONE (2026-06-04)
+- QuizPanel 加 `sessionUploaded` prop；本 session 未上傳時點「產生題目」先彈出確認 modal
+- 方案 A（非破壞性）已完成；方案 B（DB session_id）/ 方案 C（清除按鈕）為選配，見 plan.md
+
+### 7. 測驗詳解改繁體中文 ✅ DONE (2026-06-04)
+- `grade_answer` prompt 要求繁體中文 feedback；fallback heuristic 訊息、空答案提示全改繁中
+- `generate_questions` prompt 改繁體中文出題，加數學式 `$...$` 指示
 
 ### 3. Mind Map Visualization ✅ DONE (frontend)
 - The 圖譜 (Graph) view now renders a **radial SVG mind map** instead of the old force-directed graph.
@@ -240,15 +248,14 @@ Known UI issues to fix during redesign:
   4. Paste the working key into Render `GEMINI_API_KEY` → redeploy.
 - Note: Chandra always fails on Render (`CHANDRA_METHOD=vllm` → `localhost:8000`, no vLLM server) — expected; the Gemini fallback is what must work.
 
-### Bug 5: 跨 Session 概念殘留 — 測驗產生使用前次教材（待修）
+### Bug 5: 跨 Session 概念殘留 — 測驗產生使用前次教材（方案 A 已修，選配方案待定）
 
 - **症狀（2026-06-04）：** 使用者重整頁面後點「產生題目」，仍用前次 session 上傳教材建立的概念出題，即使本 session 尚未上傳任何教材。
 - **根因：** `/api/diagnostics/generate` 從 DB 取全部概念，不區分 session；前端 `sessionUploaded` gate 只保護首頁顯示，不阻擋 quiz 產生。
-- **修法選項（在 plan.md 第三批任務 2 有詳細分析）：**
-  - 方案 A（推薦，非破壞性）：`handleGenerate` 若 `!sessionUploaded` 先跳出確認 modal 告知使用者目前使用的是舊資料。
-  - 方案 B（需 schema migration）：後端加 `session_id` 欄位，quiz generation 只取最新 session 的 concepts。
-  - 方案 C：提供「清除課程資料」按鈕。
-- **詳細計畫：** 見 `plan.md` 任務 2。
+- **方案 A ✅ 已實作（2026-06-04）：** QuizPanel 加 `sessionUploaded` prop；若本 session 未上傳，點「產生題目」先彈出確認 modal（「使用舊教材出題？」），確認後才呼叫 API。非破壞性，競賽夠用。
+- **方案 B（選配，需 schema migration）：** 後端加 `session_id` 欄位，quiz generation 只取最新 session 的 concepts。
+- **方案 C（選配）：** 提供「清除課程資料」按鈕，呼叫新後端 DELETE endpoint。
+- **詳細計畫：** 見 `plan.md`。
 
 ### Bug 4: Stale test uses removed `Settings(database_path=...)` field — ✅ FIXED
 - `tests/test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` called `Settings(database_path=..., ...)`, but `Settings` switched to `database_url` in the SQLite→PostgreSQL migration, so it failed with `TypeError: unexpected keyword argument 'database_path'`.
@@ -256,6 +263,38 @@ Known UI issues to fix during redesign:
 - **Test coverage added (`TestNativePdfTranscription`):** new regression tests at the `pdf_parser` level (no DB required) lock in the native-PDF behavior from commit `141a6bd`: a Gemini client exposing `transcribe_pdf` bypasses `MAX_OCR_PAGES` (28 pages, cap 1 → accepted, `source_type="pdf-ocr"`), while a client without it still enforces the cap. The page limit only gates the per-page image OCR path (Chandra), not native PDF transcription.
 
 ---
+
+## 架構限制與技術債（Architecture Debt — 2026-06-04 Opus 評估）
+
+> 完整評估、證據行號、建議與實作順序見 `plan.md`「🔵 架構改善建議」。這裡只留速查地圖。
+> 動手改任何一項前先讀 plan.md 該段，並切回 Sonnet 實作。
+
+| # | 狀態 | 限制 | 一句話 | 連帶影響 |
+|---|------|------|--------|---------|
+| **P1** ⭐ | ✅ 已修 | ingest 每次全域清空 DB | 改 `reset_course_state(course_id)`；`_concept_id` 加 course 維度；讀寫全部 course-scope | Bug 5 根因已解；多課程可並存；attempts 歷史保留 |
+| **P2** ⭐ | ✅ 後端已修 | 時間欄位全 TEXT（naive 本地時間） | 5 欄改 TIMESTAMPTZ；寫入 UTC；新增 `/api/progress/concepts` | 進度趨勢 API 完成；前端 ProgressPanel 待做 |
+| **P3** | 待做 | `_service_lock` 宣告卻沒 acquire；換 key 重建整個 service | 併發換 key 競態 + 重建過重 | 真 bug，單人 demo 風險低 |
+| **P4** | 待做 | mastery 聚合在 Python 端，每次 `list_attempts(limit=5000)` | 該用 SQL `GROUP BY` | 效能/整潔，行為不變 |
+| **P5** | ✅ 已修 | 無 migration 機制 | 加 `schema_version` 表 + `_run_migrations()` | P1/P2 的前置地基已建立 |
+| **P6** | 待做 | ChromaDB 存本地碟，Render free 無持久碟 | redeploy 後向量庫歸零 | 跨課程連結與 PG 不一致；賽後再處理 |
+
+**最高槓桿一包：** ~~P5 → P1 → P2~~ ✅ 已全部完成（2026-06-04）。多課程、進度追蹤功能已解鎖。
+
+### P1/P2 解法摘要（完整步驟與小工單見 plan.md）
+
+**P1 — 停止全域 wipe，改 course-scope ✅ 已完成（2026-06-04）**
+- `_concept_id(name, chapter, course_id)` hash 加入 course 維度，多課程同名概念不撞 PK。
+- `build_knowledge_graph` 新收 `course_id` 參數（`knowledge_graph.py`）。
+- `pipeline.ingest_material`：course_id 提前計算（在建圖前），改呼叫 `reset_course_state(course_id)` 取代全域 wipe（保留 attempts）。
+- `database.get_active_course_id()`：in-memory cache（`set_active_course()`）+ DB fallback（`WHERE uploaded_at <= now()` 防 migration 產生未來時間戳）。
+- `list_concepts(course_id=None)`、`list_edges(course_id=None)` 加可選過濾；下游（mastery/diagnostics/review/graph）全部 scope 到 active course。
+
+**P2 — TIMESTAMPTZ + 進度趨勢 API ✅ 後端已完成（2026-06-04）**
+- Migration 001：5 個時間欄 TEXT→TIMESTAMPTZ（`attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、`review_plan.next_review_at`、`class_node_stats.updated_at`）。
+- 寫入全改 `datetime.now(timezone.utc)`，不再 `.isoformat()` 存字串。
+- 讀取移除所有 `datetime.fromisoformat(row[...])`（5 處）— psycopg2 直接回傳 datetime 物件。
+- `GET /api/progress/concepts?days=30`：`database.concept_progress()`（`date_trunc('day')` 分組）→ `pipeline.get_concept_progress()`（趨勢判 improving/declining/plateaued，±0.05）。
+- Step 5（選配）`ProgressPanel.tsx` Recharts 折線 + 趨勢徽章 — 待前端實作。
 
 ## Key Algorithms
 

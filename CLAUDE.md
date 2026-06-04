@@ -275,6 +275,10 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 - **Bug 5 方案 B/C（選配）：** 後端加 `session_id` 欄位限制出題範圍（方案 B）；或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端確認 modal）已完成，競賽夠用。
 - **班級熱力圖課程 tab 重複（Bug 7）：** `ClassHeatmapPanel` 的課程 tab 列表出現重複課程名稱（e.g. Linear Algebra × 3、通用課程 × 2）。需查 `GET /api/heatmap/{course_id}` 或前端取得課程列表的邏輯是否對同一課程去重。
 
+### 已修 Bug（本日）
+
+- **Bug 8 ✅：** 未上傳教材時複習頁顯示假通過率（63.4% / +30% / 93.4%）。根因：`_estimate_pass_probability` 無 attempts 時回傳固定 0.55 baseline。修法：後端加 `has_data` 旗標（無 attempts → False），前端沒資料時改顯示提示訊息，不顯示數字。
+
 ### 架構技術債
 
 | # | 狀態 | 說明 |

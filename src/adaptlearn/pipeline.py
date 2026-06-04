@@ -332,9 +332,11 @@ class AdaptLearnService:
                 }
             )
 
-        pass_before = _estimate_pass_probability(attempts)
-        uplift = min(0.3, sum(float(d["estimated_gain"]) for d in focus_items))  # type: ignore[misc, arg-type]
-        pass_after = _clamp(pass_before + uplift, 0.0, 0.98)
+        has_data = bool(attempts)
+
+        pass_before = _estimate_pass_probability(attempts) if has_data else 0.0
+        uplift = min(0.3, sum(float(d["estimated_gain"]) for d in focus_items)) if has_data else 0.0  # type: ignore[misc, arg-type]
+        pass_after = _clamp(pass_before + uplift, 0.0, 0.98) if has_data else 0.0
 
         chapters: list[str] = []
         for d in focus_items:
@@ -348,6 +350,7 @@ class AdaptLearnService:
             "after": pass_after,
             "chapters": chapters,
             "focus_items": focus_items,
+            "has_data": has_data,
         }
 
     def list_questions(self, limit: int = 100) -> list[Question]:

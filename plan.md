@@ -78,6 +78,19 @@ pinch 才是 `ctrlKey=true`。舊代碼不管哪種都縮放。
 
 ---
 
+## ✅ Bug 8：複習頁假通過率（2026-06-04 修）
+
+**症狀：** 未上傳任何教材/未作答，複習頁「今晚衝刺計畫」仍顯示 63.4% / +30% / 93.4%。
+
+**根因：** `pipeline._estimate_pass_probability` 無 attempts 時回傳固定 `0.55` baseline，再加上 seed concepts 產生的 uplift（每 item +6.5%，5 items = +30%），導致全是假數字。
+
+**修復：**
+- `pipeline.py`：計算 `has_data = bool(attempts)`；無資料時 before/uplift/after 全為 0，回傳 `"has_data": False`。
+- `useApi.ts`：`TonightDashboard` 加 `has_data?: boolean`。
+- `StudyPanels.tsx`：`hasData` 為 false 時顯示「尚無作答記錄」提示，不顯示數字。
+
+---
+
 ## 待辦 3：Bug 7 — 班級熱力圖課程 tab 重複（2026-06-04 發現）
 
 **症狀：** `ClassHeatmapPanel` 的課程篩選 tab 出現同名課程多次（截圖見 2026-06-04 session）：

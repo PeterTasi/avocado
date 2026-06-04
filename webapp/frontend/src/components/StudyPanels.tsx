@@ -21,6 +21,7 @@ interface TonightProps {
 
 export function TonightPanel({ tonight }: TonightProps) {
   const upliftPct = (safeNumber(tonight.uplift) * 100).toFixed(1);
+  const hasData = tonight.has_data !== false && (tonight.before > 0 || tonight.after > 0);
 
   return (
     <article className="card p-6">
@@ -38,26 +39,30 @@ export function TonightPanel({ tonight }: TonightProps) {
       </div>
 
       {/* Before / Uplift / After — big numbers */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="card-subtle p-3 text-center">
-          <p className="section-eyebrow">目前通過率</p>
-          <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
-            {formatPercent(tonight.before)}
-          </p>
+      {hasData ? (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="card-subtle p-3 text-center">
+            <p className="section-eyebrow">目前通過率</p>
+            <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
+              {formatPercent(tonight.before)}
+            </p>
+          </div>
+          <div className="card-subtle p-3 text-center" style={{ borderColor: "rgba(14,164,114,0.25)", background: "var(--high-soft)" }}>
+            <p className="section-eyebrow" style={{ color: "var(--high)" }}>預估提升</p>
+            <p className="mt-2 font-mono-data text-2xl font-bold" style={{ color: "var(--high)" }}>
+              +{upliftPct}%
+            </p>
+          </div>
+          <div className="card-subtle p-3 text-center">
+            <p className="section-eyebrow">預估通過率</p>
+            <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
+              {formatPercent(tonight.after)}
+            </p>
+          </div>
         </div>
-        <div className="card-subtle p-3 text-center" style={{ borderColor: "rgba(14,164,114,0.25)", background: "var(--high-soft)" }}>
-          <p className="section-eyebrow" style={{ color: "var(--high)" }}>預估提升</p>
-          <p className="mt-2 font-mono-data text-2xl font-bold" style={{ color: "var(--high)" }}>
-            +{upliftPct}%
-          </p>
-        </div>
-        <div className="card-subtle p-3 text-center">
-          <p className="section-eyebrow">預估通過率</p>
-          <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
-            {formatPercent(tonight.after)}
-          </p>
-        </div>
-      </div>
+      ) : (
+        <p className="text-xs text-[color:var(--text-muted)]">尚無作答記錄。先上傳教材並完成測驗，通過率預估才會出現。</p>
+      )}
 
       {/* Chapter tags */}
       {tonight.chapters.length > 0 && (

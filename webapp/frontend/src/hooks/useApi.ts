@@ -100,6 +100,7 @@ export interface TonightDashboard {
   uplift: number;
   after: number;
   chapters: string[];
+  has_data?: boolean;
   focus_items: Array<{
     concept: string;
     chapter: string;

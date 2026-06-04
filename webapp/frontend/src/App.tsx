@@ -524,7 +524,7 @@ export default function App() {
                   height: 320,
                   top: -100,
                   right: -60,
-                  background: "radial-gradient(circle, rgba(79,70,229,0.07) 0%, transparent 70%)",
+                  background: "radial-gradient(circle, rgba(61,107,40,0.08) 0%, transparent 70%)",
                 }}
               />
               <div
@@ -534,7 +534,7 @@ export default function App() {
                   height: 200,
                   bottom: -80,
                   right: 160,
-                  background: "radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)",
+                  background: "radial-gradient(circle, rgba(122,176,48,0.06) 0%, transparent 70%)",
                 }}
               />
 
@@ -571,7 +571,7 @@ export default function App() {
                     type="button"
                     onClick={() => navigateTo("setup")}
                     className="btn-primary gap-2 px-5 py-2.5 text-sm shadow-md"
-                    style={{ boxShadow: "0 4px 14px rgba(79,70,229,0.25)" }}
+                    style={{ boxShadow: "0 4px 14px rgba(61,107,40,0.28)" }}
                   >
                     <PixelUpload size={16} />
                     匯入教材
@@ -682,7 +682,7 @@ export default function App() {
                           className="font-mono-data relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-semibold transition-all duration-150"
                           style={
                             isFirst
-                              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 2px 8px rgba(79,70,229,0.28)" }
+                              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 2px 8px rgba(61,107,40,0.28)" }
                               : { background: "var(--bg-sunken)", color: "var(--text-secondary)", border: "1px solid var(--border-strong)" }
                           }
                         >
@@ -742,7 +742,7 @@ export default function App() {
                     </div>
                     <div
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-                      style={{ background: "var(--accent)", boxShadow: "0 2px 8px rgba(79,70,229,0.25)" }}
+                      style={{ background: "var(--accent)", boxShadow: "0 2px 8px rgba(61,107,40,0.25)" }}
                     >
                       <PixelCalendar size={16} style={{ color: "#fff" }} />
                     </div>

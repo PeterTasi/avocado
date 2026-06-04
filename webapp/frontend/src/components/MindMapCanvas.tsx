@@ -5,10 +5,10 @@ import type { ParsedGraph, GraphNode } from "../utils/graphUtils";
 // ── Colour palettes ──────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  mastered:     "#0ea472",   // var(--high)
-  learning:     "#d98a04",   // var(--medium)
-  needs_review: "#e11d48",   // var(--low)
-  new:          "#4f46e5",   // var(--accent)
+  mastered:     "#2a8c35",   // var(--high) — forest green
+  learning:     "#b07828",   // var(--medium) — warm amber-brown
+  needs_review: "#c44040",   // var(--low) — warm red
+  new:          "#3d6b28",   // var(--accent) — deep avocado green
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -18,22 +18,22 @@ const STATUS_LABELS: Record<string, string> = {
   new: "未測驗",
 };
 
-// 10 distinct hues — slightly deeper for light-bg readability
+// 10 distinct hues — avocado-harmonious palette
 const CHAPTER_PALETTE = [
-  "#6366f1", "#ec4899", "#10b981", "#f59e0b",
-  "#3b82f6", "#8b5cf6", "#f43f5e", "#22c55e",
-  "#eab308", "#0ea5e9",
+  "#3d6b28", "#7ab030", "#b07828", "#c44040",
+  "#5a8f3a", "#8b5e1a", "#2a7a42", "#9e3a3a",
+  "#6b8c30", "#4a6e50",
 ];
 
 const RELATION_COLORS: Record<string, string> = {
-  prerequisite:   "#0ea472",   // green — must-know first
-  progression:    "#d98a04",   // amber — sequence
-  related:        "#6366f1",   // indigo — related
-  equivalent:     "#ec4899",   // pink
-  generalization: "#6366f1",
-  analogy:        "#10b981",
-  semantic:       "#94a3b8",   // muted
-  next:           "#94a3b8",
+  prerequisite:   "#2a8c35",   // forest green — must-know first
+  progression:    "#b07828",   // warm amber — sequence
+  related:        "#5a8f3a",   // medium avocado — related
+  equivalent:     "#7ab030",   // yellow-green — equivalent
+  generalization: "#3d6b28",   // deep avocado
+  analogy:        "#8b5e1a",   // warm brown
+  semantic:       "#a8a090",   // warm muted
+  next:           "#a8a090",
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -255,10 +255,10 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         style={{ display: "block" }}
       >
         <defs>
-          {/* Center gradient */}
+          {/* Center gradient — avocado flesh to deep green */}
           <radialGradient id="mm-cg">
-            <stop offset="0%" stopColor="#818cf8" />
-            <stop offset="100%" stopColor="#4338ca" />
+            <stop offset="0%" stopColor="#7ab030" />
+            <stop offset="100%" stopColor="#2d5219" />
           </radialGradient>
           {/* Glow filter */}
           <filter id="mm-glow" x="-40%" y="-40%" width="180%" height="180%">
@@ -341,10 +341,10 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
 
         {/* ── Center node (pixel-border square, 🎮) ── */}
         {/* Pixel staircase border offset rects */}
-        <rect x={CX-26+2} y={CY-26}   width={52} height={52} rx="0" fill="none" stroke="#4f46e5" strokeWidth="2" strokeOpacity="0.3" />
-        <rect x={CX-26}   y={CY-26+2} width={52} height={52} rx="0" fill="none" stroke="#4f46e5" strokeWidth="2" strokeOpacity="0.3" />
+        <rect x={CX-26+2} y={CY-26}   width={52} height={52} rx="0" fill="none" stroke="#3d6b28" strokeWidth="2" strokeOpacity="0.3" />
+        <rect x={CX-26}   y={CY-26+2} width={52} height={52} rx="0" fill="none" stroke="#3d6b28" strokeWidth="2" strokeOpacity="0.3" />
         {/* Center square body */}
-        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="#4f46e5" />
+        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="#3d6b28" />
         <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="url(#mm-cg)" />
         <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="700">
           {courseName.length > 5 ? courseName.slice(0, 5) : courseName}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useGenerateDiagnostics, useGradeQuestion } from "../hooks/useApi";
 import type { Question } from "../hooks/useApi";
@@ -20,15 +20,89 @@ interface Props {
 
 function formatDifficulty(value: string): string {
   switch (value.toLowerCase()) {
-    case "easy":
-      return "基礎";
-    case "medium":
-      return "進階";
-    case "hard":
-      return "挑戰";
-    default:
-      return value;
+    case "easy":   return "基礎";
+    case "medium": return "進階";
+    case "hard":   return "挑戰";
+    default:       return value;
   }
+}
+
+function difficultyClass(value: string): string {
+  switch (value.toLowerCase()) {
+    case "easy":   return "tag-high";
+    case "medium": return "tag-medium";
+    case "hard":   return "tag-low";
+    default:       return "pill";
+  }
+}
+
+/** SVG arc showing N / total progress */
+function QuizArc({ current, total }: { current: number; total: number }) {
+  const r = 34;
+  const cx = 44;
+  const cy = 44;
+  const circumference = Math.PI * r; // half-circle (180°)
+  const fraction = total > 0 ? current / total : 0;
+  const offset = circumference * (1 - fraction);
+
+  return (
+    <svg width="88" height="50" viewBox="0 0 88 50" aria-label={`第 ${current} 題，共 ${total} 題`}>
+      <path
+        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        className="quiz-arc-track"
+      />
+      <path
+        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        className="quiz-arc-fill"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+      />
+      <text x={cx} y={cy - 6} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--text-primary)" fontFamily="'DM Mono', monospace">
+        {current}/{total}
+      </text>
+    </svg>
+  );
+}
+
+/** 像素風空箱插圖 */
+function PixelEmptyBox() {
+  return (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      {/* Box body */}
+      <rect x="8"  y="24" width="48" height="32" fill="var(--bg-sunken)" />
+      <rect x="8"  y="24" width="48" height="4"  fill="var(--border-strong)" opacity="0.5" />
+      {/* Box flaps */}
+      <rect x="8"  y="16" width="20" height="8"  fill="var(--bg-sunken)" />
+      <rect x="36" y="16" width="20" height="8"  fill="var(--bg-sunken)" />
+      {/* Question marks */}
+      <rect x="28" y="32" width="4"  height="8"  fill="var(--border-strong)" opacity="0.4" />
+      <rect x="28" y="44" width="4"  height="4"  fill="var(--border-strong)" opacity="0.4" />
+      <rect x="24" y="28" width="4"  height="4"  fill="var(--border-strong)" opacity="0.4" />
+      <rect x="32" y="28" width="4"  height="4"  fill="var(--border-strong)" opacity="0.4" />
+      <rect x="32" y="32" width="4"  height="4"  fill="var(--border-strong)" opacity="0.4" />
+    </svg>
+  );
+}
+
+/** 答對時噴出像素方塊粒子 */
+function PixelParticles({ active }: { active: boolean }) {
+  if (!active) return null;
+  const particles = [
+    { left: "30%", color: "var(--high)",   delay: "0ms" },
+    { left: "50%", color: "var(--accent)", delay: "80ms" },
+    { left: "70%", color: "var(--high)",   delay: "160ms" },
+  ];
+  return (
+    <>
+      {particles.map((p, i) => (
+        <span
+          key={i}
+          className="pixel-particle"
+          style={{ left: p.left, bottom: "100%", background: p.color, animationDelay: p.delay }}
+        />
+      ))}
+    </>
+  );
 }
 
 export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionIndex }: Props) {
@@ -38,6 +112,8 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
   const [questionCount, setQuestionCount] = useState(9);
   const [answerText, setAnswerText] = useState("");
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
+  const [showParticles, setShowParticles] = useState(false);
+  const particleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const currentQuestion = questions[questionIndex] ?? null;
 
@@ -55,8 +131,16 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
       questionId: currentQuestion.id,
       answer: answerText.trim(),
     });
-    setGradeResult(result as GradeResult);
+    const graded = result as GradeResult;
+    setGradeResult(graded);
+    if (graded.is_correct) {
+      setShowParticles(true);
+      clearTimeout(particleTimer.current);
+      particleTimer.current = setTimeout(() => setShowParticles(false), 1000);
+    }
   }, [currentQuestion, answerText, gradeQuestion]);
+
+  useEffect(() => () => clearTimeout(particleTimer.current), []);
 
   const handlePrev = useCallback(() => {
     setQuestionIndex((prev) => Math.max(0, prev - 1));
@@ -70,7 +154,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
     setGradeResult(null);
   }, [questions.length, setQuestionIndex]);
 
-  const status = generateDiagnostics.isPending
+  const statusText = generateDiagnostics.isPending
     ? "正在產生自適應題目..."
     : gradeQuestion.isPending
     ? "正在評分作答..."
@@ -79,54 +163,93 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
     : "";
 
   return (
-    <article className="glass-panel rounded-[28px] p-6 text-white">
-      <p className="section-eyebrow">診斷測驗</p>
-      <h2 className="mt-2 text-lg font-semibold text-white">自適應測驗</h2>
-      <p className="mt-1 text-xs text-white/62">系統會優先抽弱點概念，並混合三種難度。</p>
+    <article className="card p-6">
+      {/* Header row */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="section-eyebrow">診斷測驗</p>
+          <h2 className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">自適應測驗</h2>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">系統會優先抽弱點概念，並混合三種難度。</p>
+        </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <input
-          type="number"
-          min={3}
-          max={30}
-          step={3}
-          value={questionCount}
-          onChange={(event) => setQuestionCount(Number(event.target.value))}
-          className="glass-input h-11 w-24 rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
-        />
+        {questions.length > 0 && (
+          <QuizArc current={questionIndex + 1} total={questions.length} />
+        )}
+      </div>
+
+      {/* Generate controls */}
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-[color:var(--text-secondary)]">題數</span>
+          <input
+            type="number"
+            min={3}
+            max={30}
+            step={3}
+            value={questionCount}
+            onChange={(e) => setQuestionCount(Number(e.target.value))}
+            className="input h-10 w-20 px-3 text-sm"
+          />
+        </div>
         <button
           type="button"
           onClick={handleGenerate}
           disabled={generateDiagnostics.isPending}
-          className="glass-button-primary rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:opacity-60"
+          className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50"
         >
           {generateDiagnostics.isPending ? "產生中..." : "產生題目"}
         </button>
-        <span className="text-xs text-white/62">{status}</span>
+        {statusText && (
+          <span className="text-xs text-[color:var(--text-muted)]">{statusText}</span>
+        )}
       </div>
 
-      {currentQuestion ? (
-        <div className="mt-4 rounded-[24px] border border-white/12 bg-[rgba(8,15,32,0.12)] p-4">
-          <p className="text-xs text-white/62">
-            題目 {questionIndex + 1}/{questions.length} · {currentQuestion.concept_name} ·{" "}
-            {formatDifficulty(currentQuestion.difficulty)}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-white">{currentQuestion.question_text}</p>
+      {/* Empty state */}
+      {!currentQuestion && (
+        <div className="mt-8 flex flex-col items-center gap-3 py-6 text-center">
+          <PixelEmptyBox />
+          <p className="text-sm font-medium text-[color:var(--text-secondary)]">尚未產生題目</p>
+          <p className="text-xs text-[color:var(--text-muted)]">先匯入教材，再點「產生題目」開始診斷測驗</p>
+        </div>
+      )}
 
+      {/* Question card */}
+      {currentQuestion && (
+        <div className="mt-5 card-subtle rounded-2xl p-5">
+          {/* Meta row */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="font-mono-data text-xs text-[color:var(--text-muted)]">
+              {questionIndex + 1} / {questions.length}
+            </span>
+            <span className="pill text-[11px]">{currentQuestion.concept_name}</span>
+            <span className={`pill text-[11px] ${difficultyClass(currentQuestion.difficulty)}`}>
+              {formatDifficulty(currentQuestion.difficulty)}
+            </span>
+          </div>
+
+          {/* Question text */}
+          <p className="text-[15px] font-medium leading-7 text-[color:var(--text-primary)]">
+            {currentQuestion.question_text}
+          </p>
+
+          {/* Answer textarea */}
           <textarea
             value={answerText}
-            onChange={(event) => setAnswerText(event.target.value)}
-            rows={5}
+            onChange={(e) => setAnswerText(e.target.value)}
+            rows={4}
             placeholder="輸入你的作答內容..."
-            className="glass-input mt-3 w-full rounded-[22px] p-3 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
+            className="input mt-4 w-full rounded-xl p-3 text-sm"
           />
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          {/* Action buttons */}
+          <div className="relative mt-4 flex flex-wrap items-center gap-3">
+            <PixelParticles active={showParticles} />
+
             <button
               type="button"
               onClick={handlePrev}
               disabled={questionIndex === 0}
-              className="glass-button inline-flex items-center gap-1 rounded-full px-4 py-2 text-xs disabled:opacity-50"
+              className="btn-secondary gap-1 px-4 py-2 text-xs disabled:opacity-50"
             >
               <ChevronLeft size={14} />
               上一題
@@ -136,7 +259,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
               type="button"
               onClick={handleGrade}
               disabled={gradeQuestion.isPending || !answerText.trim()}
-              className="glass-button-primary rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-60"
+              className="btn-primary px-5 py-2 text-sm disabled:opacity-50"
             >
               {gradeQuestion.isPending ? "評分中..." : "送出作答"}
             </button>
@@ -145,25 +268,36 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
               type="button"
               onClick={handleNext}
               disabled={questionIndex >= questions.length - 1}
-              className="glass-button inline-flex items-center gap-1 rounded-full px-4 py-2 text-xs disabled:opacity-50"
+              className="btn-secondary gap-1 px-4 py-2 text-xs disabled:opacity-50"
             >
               下一題
               <ChevronRight size={14} />
             </button>
           </div>
 
-          {gradeResult ? (
-            <div className="mt-3 rounded-[20px] border border-white/12 bg-white/8 p-3 text-xs text-white/72">
-              <p>
-                分數：<span className="text-emerald-100">{(safeNumber(gradeResult.score) * 100).toFixed(1)}%</span> ·
-                判定：{gradeResult.is_correct ? "答對" : "待加強"}
+          {/* Grade result */}
+          {gradeResult && (
+            <div
+              className={`mt-4 rounded-xl border p-4 text-sm ${
+                gradeResult.is_correct
+                  ? "border-[color:var(--high)] bg-[color:var(--high-soft)]"
+                  : "border-[color:var(--low)] bg-[color:var(--low-soft)]"
+              }`}
+            >
+              <p className="font-semibold" style={{ color: gradeResult.is_correct ? "var(--high)" : "var(--low)" }}>
+                {gradeResult.is_correct ? "✓ 答對了！" : "✗ 需要加強"}
+                <span className="ml-2 font-mono-data text-[13px]">
+                  {(safeNumber(gradeResult.score) * 100).toFixed(1)}%
+                </span>
               </p>
-              <p className="mt-1">回饋：{gradeResult.feedback}</p>
-              <p className="mt-1 text-white/58">參考答案：{gradeResult.expected_answer}</p>
+              <p className="mt-2 text-[color:var(--text-secondary)]">{gradeResult.feedback}</p>
+              <p className="mt-1.5 text-xs text-[color:var(--text-muted)]">
+                參考答案：{gradeResult.expected_answer}
+              </p>
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
+      )}
     </article>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
 import type { Concept } from "../hooks/useApi";
@@ -20,6 +20,29 @@ interface Props {
   conceptsError: boolean;
 }
 
+function PixelUploadIllustration() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      {/* Document */}
+      <rect x="10" y="6"  width="28" height="36" fill="var(--bg-sunken)" />
+      <rect x="30" y="6"  width="8"  height="8"  fill="var(--bg-app)" />
+      <rect x="30" y="6"  width="8"  height="8"  fill="var(--border-strong)" opacity="0.4" />
+      <rect x="14" y="16" width="14" height="2"   fill="var(--border-strong)" />
+      <rect x="14" y="20" width="20" height="2"   fill="var(--border-strong)" />
+      <rect x="14" y="24" width="16" height="2"   fill="var(--border-strong)" />
+      {/* Upload arrow — pixel staircase */}
+      <rect x="26" y="32" width="4" height="10"  fill="var(--accent)" />
+      <rect x="22" y="32" width="4" height="4"   fill="var(--accent)" />
+      <rect x="30" y="32" width="4" height="4"   fill="var(--accent)" />
+      <rect x="18" y="28" width="4" height="4"   fill="var(--accent)" />
+      <rect x="34" y="28" width="4" height="4"   fill="var(--accent)" />
+      <rect x="26" y="24" width="4" height="4"   fill="var(--accent)" />
+      {/* Cloud base line */}
+      <rect x="18" y="46" width="20" height="4"  fill="var(--accent-soft)" />
+    </svg>
+  );
+}
+
 export function SetupPanel({
   apiKey,
   setApiKey,
@@ -38,8 +61,9 @@ export function SetupPanel({
   const saveApiKey = useSaveApiKey();
   const ingestMaterial = useIngestMaterial();
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Show elapsed time while ingesting so the user knows it's still running.
   useEffect(() => {
     if (!ingestMaterial.isPending) { setElapsedSec(0); return; }
     const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
@@ -60,10 +84,22 @@ export function SetupPanel({
       formData.append("api_key", apiKey.trim());
     }
     await ingestMaterial.mutateAsync(formData);
-    // Mutation only resolves on a successful ingest; flip the session gate so
-    // the concept list and insights start reflecting this upload.
     onIngested();
   }, [materialFile, courseName, templateMode, apiKey, ingestMaterial, onIngested]);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) setMaterialFile(file);
+  }, [setMaterialFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
   const ingestData = ingestMaterial.data as
     | { llm_degraded?: boolean; ocr_failed?: boolean; ocr_message?: string; llm_last_error?: string }
@@ -81,57 +117,98 @@ export function SetupPanel({
     ? ingestMaterial.error.message
     : "";
 
-  const templateLabel =
-    templateMode === "generic" ? "通用抽取" : templateMode === "auto" ? "自動偵測" : "線性代數";
+  const step1Done = elapsedSec > 5;
+  const step2Done = elapsedSec > 15;
 
   return (
-    <article className="glass-panel rounded-[28px] p-6 text-white">
+    <article className="card p-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="section-eyebrow">教材設定</p>
-          <h2 className="mt-2 text-xl font-semibold text-white">匯入教材與課程配置</h2>
-          <p className="mt-2 text-sm leading-6 text-white/72">
-            上傳 PDF、TXT 或圖片後，系統會重建概念、知識圖譜與後續複習節奏。手寫/掃描筆記會優先使用 Gemini 視覺轉寫。新教材會覆寫目前的課程狀態。
+          <h2 className="mt-2 text-xl font-semibold text-[color:var(--text-primary)]">匯入教材與課程配置</h2>
+          <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
+            上傳 PDF、TXT 或圖片後，系統會重建概念、知識圖譜與後續複習節奏。
+            手寫筆記優先本地 OCR 辨識，無需額外 API。新教材會覆寫目前的課程狀態。
           </p>
         </div>
-
-        <div className="glass-subpanel rounded-[22px] px-4 py-3 text-right md:min-w-48">
-          <p className="text-xs uppercase tracking-[0.18em] text-white/55">目前配置</p>
-          <p className="mt-2 text-base font-semibold text-white">{templateLabel}</p>
-          <p className="mt-1 text-xs text-white/65">
+        <div className="card-subtle shrink-0 px-4 py-3 text-right md:min-w-[180px]">
+          <p className="section-eyebrow">目前配置</p>
+          <p className="mt-2 text-base font-semibold text-[color:var(--text-primary)]">
+            {templateMode === "generic" ? "通用抽取" : templateMode === "auto" ? "自動偵測" : "線性代數"}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">
             {conceptsError ? "概念讀取失敗" : `已抽取概念 ${concepts.length} 筆`}
           </p>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="text-white/72">Gemini API 金鑰</span>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="選填金鑰"
-            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
-          />
-        </label>
+      {/* Upload zone */}
+      <div
+        className={`upload-zone mt-6 flex cursor-pointer flex-col items-center justify-center px-6 py-10 text-center${isDragging ? " drag-over" : ""}`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={() => fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
+      >
+        {ingestMaterial.isPending && (
+          <div className="scan-line" />
+        )}
 
-        <label className="space-y-1 text-sm">
-          <span className="text-white/72">課程名稱</span>
+        {materialFile ? (
+          <>
+            <div
+              className="mb-3 grid h-12 w-12 place-items-center rounded-xl"
+              style={{ background: "var(--accent-soft)" }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="2"  width="12" height="16" rx="1" fill="var(--accent)" opacity="0.15" />
+                <rect x="4" y="2"  width="12" height="16" rx="1" stroke="var(--accent)" strokeWidth="1.5" />
+                <rect x="13" y="2" width="3"  height="3"  rx="0" fill="var(--accent-soft)" />
+                <path d="M7 8h6M7 11h4" stroke="var(--accent)" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-[color:var(--text-primary)]">{materialFile.name}</p>
+            <p className="mt-1 text-xs text-[color:var(--accent)]">點擊更換檔案</p>
+          </>
+        ) : (
+          <>
+            <PixelUploadIllustration />
+            <p className="mt-4 text-sm font-semibold text-[color:var(--text-primary)]">拖曳檔案至此，或點擊選擇</p>
+            <p className="mt-1 text-xs text-[color:var(--text-muted)]">PDF・TXT・PNG / JPG / TIFF・手寫圖片</p>
+          </>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,image/*,.tif,.tiff"
+          onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
+          className="sr-only"
+        />
+      </div>
+
+      {/* Config fields */}
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <label className="space-y-1.5 text-sm">
+          <span className="font-medium text-[color:var(--text-secondary)]">課程名稱</span>
           <input
             type="text"
             value={courseName}
-            onChange={(event) => setCourseName(event.target.value)}
-            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
+            onChange={(e) => setCourseName(e.target.value)}
+            className="input h-10 w-full px-3 text-sm"
           />
         </label>
 
-        <label className="space-y-1 text-sm">
-          <span className="text-white/72">課程模板</span>
+        <label className="space-y-1.5 text-sm">
+          <span className="font-medium text-[color:var(--text-secondary)]">課程模板</span>
           <select
             value={templateMode}
-            onChange={(event) => setTemplateMode(event.target.value)}
-            className="glass-input h-11 w-full rounded-2xl px-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
+            onChange={(e) => setTemplateMode(e.target.value)}
+            className="input h-10 w-full px-3 text-sm"
           >
             <option value="generic">通用模式（依講義抽取）</option>
             <option value="linear-algebra">線性代數模板</option>
@@ -139,74 +216,86 @@ export function SetupPanel({
           </select>
         </label>
 
-        <label className="space-y-1 text-sm">
-          <span className="text-white/72">教材檔案（PDF / TXT / 圖片）</span>
+        <label className="space-y-1.5 text-sm">
+          <span className="font-medium text-[color:var(--text-secondary)]">Gemini API 金鑰（選填）</span>
           <input
-            type="file"
-            accept=".pdf,.txt,image/*,.tif,.tiff"
-            onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)}
-            className="block w-full text-xs text-white/68 file:mr-3 file:rounded-xl file:border-0 file:bg-white/18 file:px-4 file:py-2.5 file:text-white"
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="選填，無金鑰仍可使用本地 OCR"
+            className="input h-10 w-full px-3 text-sm"
           />
         </label>
       </div>
 
-      <div className="mt-4 rounded-[24px] border border-white/12 bg-[rgba(8,15,32,0.12)] px-4 py-3 text-sm text-white/72">
-        <p className="font-medium text-white">目前教材</p>
-        <p className="mt-1 truncate text-xs text-white/62">
-          {materialFile?.name ?? "尚未選擇檔案，可先匯入講義再產生圖譜與測驗。"}
-        </p>
-        <p className="mt-2 text-xs text-white/55">
-          手寫圖片與掃描 PDF 需要可用的 Gemini API 金鑰，否則請先做 OCR。
-        </p>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={handleSaveApiKey}
-          disabled={saveApiKey.isPending}
-          className="glass-button rounded-full px-5 py-2.5 text-sm transition disabled:opacity-60"
-        >
-          {saveApiKey.isPending ? "儲存中..." : "儲存金鑰"}
-        </button>
+      {/* Actions row */}
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={handleIngest}
           disabled={ingestMaterial.isPending || !materialFile}
-          className="glass-button-primary inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:opacity-60"
+          className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50"
         >
-          {ingestMaterial.isPending && <Loader2 size={15} className="animate-spin" />}
+          {ingestMaterial.isPending && <Loader2 size={14} className="animate-spin" />}
           {ingestMaterial.isPending ? "建立中..." : "建立知識圖譜"}
         </button>
-        <span className="text-xs text-white/68">{status}</span>
+        <button
+          type="button"
+          onClick={handleSaveApiKey}
+          disabled={saveApiKey.isPending}
+          className="btn-secondary px-5 py-2.5 text-sm disabled:opacity-50"
+        >
+          {saveApiKey.isPending ? "儲存中..." : "儲存金鑰"}
+        </button>
+        {status && (
+          <span className={`text-xs ${ocrFailed || ingestMaterial.error ? "text-[color:var(--low)]" : "text-[color:var(--text-muted)]"}`}>
+            {status}
+          </span>
+        )}
       </div>
 
+      {/* Ingesting progress steps */}
       {ingestMaterial.isPending && (
-        <div className="mt-3 rounded-[18px] border border-white/12 bg-white/6 px-4 py-3 text-sm text-white/72">
-          <span className="font-medium text-white">正在處理教材</span>
-          　掃描 / 手寫 PDF 需要 OCR，通常需要 1–2 分鐘，請耐心等待。
-          <span className="ml-2 tabular-nums text-white/50">（已等待 {elapsedSec} 秒）</span>
+        <div className="mt-4 card-subtle flex flex-col gap-2.5 px-4 py-3">
+          <div className={`progress-step ${step1Done ? "done" : "active"}`}>
+            <span className="progress-step-dot" />
+            解析文件與頁面
+            {step1Done && <span className="ml-auto text-[10px] text-[color:var(--high)]">✓</span>}
+          </div>
+          <div className={`progress-step ${step2Done ? "done" : step1Done ? "active" : ""}`}>
+            <span className="progress-step-dot" />
+            抽取概念與章節
+            {step2Done && <span className="ml-auto text-[10px] text-[color:var(--high)]">✓</span>}
+          </div>
+          <div className={`progress-step ${step2Done ? "active" : ""}`}>
+            <span className="progress-step-dot" />
+            建立圖譜與向量索引
+          </div>
+          <p className="text-right text-[11px] tabular-nums text-[color:var(--text-muted)]">
+            已等待 {elapsedSec} 秒，掃描 PDF 通常需要 1–2 分鐘
+          </p>
         </div>
       )}
 
+      {/* OCR failed warning */}
       {ocrFailed && (
-        <div className="mt-3 rounded-[18px] border border-red-400/40 bg-red-500/12 px-4 py-3 text-sm text-red-300">
+        <div className="mt-4 rounded-xl border border-[color:var(--low)] bg-[color:var(--low-soft)] px-4 py-3 text-sm text-[color:var(--low)]">
           <span className="font-semibold">⚠ 未能轉寫教材：</span>
-          {ingestData?.ocr_message ??
-            "未能轉寫手寫／掃描內容，目前顯示的是課程模板概念，並非你上傳教材的實際內容。"}
-          {ingestData?.llm_last_error ? (
-            <span className="mt-1 block text-xs text-red-300/70">原因：{ingestData.llm_last_error}</span>
-          ) : null}
+          {ingestData?.ocr_message ?? "未能轉寫手寫／掃描內容，目前顯示的是課程模板概念，並非你上傳教材的實際內容。"}
+          {ingestData?.llm_last_error && (
+            <span className="mt-1 block text-xs opacity-75">原因：{ingestData.llm_last_error}</span>
+          )}
         </div>
       )}
 
+      {/* LLM degraded warning */}
       {llmDegraded && !ocrFailed && (
-        <div className="mt-3 rounded-[18px] border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+        <div className="mt-4 rounded-xl border border-[color:var(--medium)] bg-[color:var(--medium-soft)] px-4 py-3 text-sm text-[color:var(--medium)]">
           <span className="font-semibold">⚠ AI 降級警告：</span>
           Gemini API 呼叫失敗，概念圖譜已改用啟發式規則建立，品質可能較低。請確認 API 金鑰是否正確並重新匯入。
-          {ingestData?.llm_last_error ? (
-            <span className="mt-1 block text-xs text-amber-300/70">原因：{ingestData.llm_last_error}</span>
-          ) : null}
+          {ingestData?.llm_last_error && (
+            <span className="mt-1 block text-xs opacity-75">原因：{ingestData.llm_last_error}</span>
+          )}
         </div>
       )}
 

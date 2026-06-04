@@ -17,12 +17,12 @@ const queryClient = new QueryClient({
 
 function LoadingFallback() {
   return (
-    <div className="flex h-screen w-full items-center justify-center px-6 text-white/80">
-      <div className="glass-panel flex flex-col items-center gap-3 rounded-[28px] px-8 py-7 text-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/50 border-t-transparent" />
+    <div className="flex h-screen w-full items-center justify-center px-6" style={{ background: "var(--bg-app)" }}>
+      <div className="card flex flex-col items-center gap-3 px-8 py-7 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[color:var(--border-strong)] border-t-[color:var(--accent)]" />
         <div>
-          <p className="text-sm font-semibold text-white">正在載入學習儀表板</p>
-          <p className="mt-1 text-xs text-white/65">同步課程、圖譜與複習資料中</p>
+          <p className="text-sm font-semibold text-[color:var(--text-primary)]">正在載入學習儀表板</p>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">同步課程、圖譜與複習資料中</p>
         </div>
       </div>
     </div>

@@ -1,17 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  BookOpen,
   CalendarClock,
   ChevronLeft,
+  ChevronRight,
   LayoutDashboard,
   Network,
-  Search,
   Sparkles,
+  TrendingUp,
   UserCircle2,
 } from "lucide-react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DailyProgressRing } from "./components/DailyProgressRing";
+import { LandingScreen } from "./components/LandingScreen";
+import { PixelAvocadoLogo } from "./components/PixelAvocadoLogo";
 import { InsightFeed } from "./components/InsightFeed";
 import type { Insight } from "./components/InsightFeed";
 import { KnowledgeGraphPanel } from "./components/KnowledgeGraphPanel";
@@ -76,6 +80,36 @@ const PAGE_META: Record<Exclude<ViewKey, "home">, { title: string; description: 
   },
 };
 
+/** Smoothly animates a number from 0 to `value` on mount / value change. */
+function CountUp({ value, suffix = "", duration = 800 }: { value: number; suffix?: string; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  const frameRef = useRef<number>();
+
+  useEffect(() => {
+    const start = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      // easeOutCubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(value * eased);
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    frameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    };
+  }, [value, duration]);
+
+  return (
+    <span>
+      {Math.round(display)}
+      {suffix}
+    </span>
+  );
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>(() => {
     if (typeof window === "undefined") {
@@ -83,6 +117,7 @@ export default function App() {
     }
     return getViewFromPathname(window.location.pathname);
   });
+  const [showLanding, setShowLanding] = useState(true);
   const [search, setSearch] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [courseName, setCourseName] = useState("通用課程");
@@ -138,24 +173,42 @@ export default function App() {
   const runtimeHint = metrics.llm_enabled ? "可使用生成式診斷、摘要與評分" : "目前以規則與既有資料回應";
   const activeCourseName = courseName.trim() || "通用課程";
   const selectedFileLabel = materialFile?.name ?? "尚未選擇教材檔案";
-  const topChapter = chapterMastery[0]?.chapter ?? "等待教材建立章節";
-  const topFocus = tonight.focus_items[0]?.concept ?? "尚未產生今晚優先概念";
+  const topChapter = sessionUploaded ? (chapterMastery[0]?.chapter ?? "等待教材建立章節") : "等待教材建立章節";
+  const topFocus = sessionUploaded ? (tonight.focus_items[0]?.concept ?? "尚未產生今晚優先概念") : "尚未產生今晚優先概念";
 
-  const overviewCards = [
+  const accuracyPct = sessionUploaded ? Math.round(safeNumber(metrics.accuracy) * 100) : 0;
+  const sessionConceptCount = sessionUploaded ? Math.round(metrics.concept_count) : 0;
+  const sessionReviewCount = sessionUploaded ? reviewItems.length : 0;
+  const statCards = [
     {
       label: "概念節點",
-      value: `${Math.round(metrics.concept_count)}`,
-      hint: "教材已整理出的知識概念數",
+      value: sessionConceptCount,
+      suffix: "",
+      hint: "從教材中萃取的知識概念總數",
+      trend: sessionConceptCount > 0 ? "up" : "flat",
+      trendLabel: sessionConceptCount > 0 ? "已建立圖譜" : "等待上傳",
+      icon: BookOpen,
+      accentColor: "var(--accent)",
     },
     {
       label: "作答完成率",
-      value: `${Math.round(safeNumber(metrics.accuracy) * 100)}%`,
-      hint: "依目前測驗紀錄即時更新",
+      value: accuracyPct,
+      suffix: "%",
+      hint: "本次作答的即時正確率",
+      trend: accuracyPct >= 70 ? "up" : accuracyPct >= 40 ? "flat" : "down",
+      trendLabel: accuracyPct >= 70 ? "表現良好" : accuracyPct >= 40 ? "持續進步" : "需要補強",
+      icon: TrendingUp,
+      accentColor: accuracyPct >= 70 ? "var(--high)" : accuracyPct >= 40 ? "var(--medium)" : "var(--low)",
     },
     {
       label: "待排複習",
-      value: `${reviewItems.length}`,
-      hint: reviewPlanLoading ? "複習資料同步中" : "已進入複習節奏的項目數",
+      value: sessionReviewCount,
+      suffix: "",
+      hint: reviewPlanLoading ? "複習資料同步中…" : "間隔重複排入的複習項目數",
+      trend: sessionReviewCount > 0 ? "up" : "flat",
+      trendLabel: sessionReviewCount > 0 ? `${sessionReviewCount} 項待複習` : "完成測驗後排程",
+      icon: CalendarClock,
+      accentColor: sessionReviewCount > 0 ? "var(--medium)" : "var(--text-muted)",
     },
   ];
 
@@ -169,7 +222,7 @@ export default function App() {
   }> = [
     {
       key: "setup",
-      step: "Step 1",
+      step: "01",
       title: "匯入教材",
       description: "上傳 PDF / TXT / 圖片，建立概念、章節與課程基礎。",
       status: selectedFileLabel === "尚未選擇教材檔案" ? `${concepts.length} 個概念已同步` : selectedFileLabel,
@@ -177,7 +230,7 @@ export default function App() {
     },
     {
       key: "quiz",
-      step: "Step 2",
+      step: "02",
       title: "產生測驗",
       description: "用自適應題目快速找出不熟的概念與理解落差。",
       status: questions.length > 0 ? `已產生 ${questions.length} 題測驗` : "尚未產生診斷題目",
@@ -185,15 +238,15 @@ export default function App() {
     },
     {
       key: "review",
-      step: "Step 3",
+      step: "03",
       title: "查看複習",
       description: "直接看到今晚先攻內容與下次複習的排程。",
-      status: reviewItems.length > 0 ? `下一個重點：${topFocus}` : "先完成測驗後會自動排程",
+      status: sessionReviewCount > 0 ? `下一個重點：${topFocus}` : "先完成測驗後會自動排程",
       icon: CalendarClock,
     },
     {
       key: "graph",
-      step: "Step 4",
+      step: "04",
       title: "理解圖譜",
       description: "檢視概念的先修關係、進展順序與班級熱點。",
       status: graphLoading ? "圖譜載入中" : `主要章節：${topChapter}`,
@@ -208,6 +261,7 @@ export default function App() {
       if (window.location.pathname !== targetPath) {
         window.history.pushState({}, "", targetPath);
       }
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, []);
 
@@ -215,11 +269,9 @@ export default function App() {
     if (typeof window === "undefined") {
       return undefined;
     }
-
     const syncViewFromLocation = () => {
       setActiveView(getViewFromPathname(window.location.pathname));
     };
-
     window.addEventListener("popstate", syncViewFromLocation);
     return () => {
       window.removeEventListener("popstate", syncViewFromLocation);
@@ -230,7 +282,6 @@ export default function App() {
     if (typeof document === "undefined") {
       return;
     }
-
     document.title = activeView === "home"
       ? "AdaptLearn 自適應學習儀表板"
       : `AdaptLearn｜${VIEW_ITEMS.find((item) => item.key === activeView)?.label ?? "儀表板"}`;
@@ -238,33 +289,14 @@ export default function App() {
 
   const pageMeta = activeView === "home" ? null : PAGE_META[activeView];
 
-  const renderPageContent = () => {
+  const renderSubView = () => {
     if (activeView === "setup") {
       return (
         <div className="space-y-6">
-          <div className="glass-subpanel rounded-[26px] p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                      <p className="mt-2 text-sm leading-6 text-white/72">{runtimeHint}</p>
-                <p className="mt-1 text-xs text-white/65">這裡是整個流程的起點，完成後其他頁面資料才會完整。</p>
-              </div>
-              <label className="relative block md:w-[320px]">
-                <Search size={16} className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-white/55" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="篩選概念、章節或摘要"
-                  className="glass-input h-11 w-full rounded-2xl pl-11 pr-4 text-sm outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/15"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr),340px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr),300px]">
             <ErrorBoundary>
               {conceptsLoading ? (
-                <div className="glass-panel rounded-[28px] p-6">
+                <div className="card p-6">
                   <Skeleton className="mb-2 h-5 w-32" />
                   <Skeleton className="h-3 w-56" />
                   <div className="mt-4 space-y-2">
@@ -292,25 +324,27 @@ export default function App() {
               )}
             </ErrorBoundary>
 
-            <div className="space-y-6">
-              <div className="glass-panel-strong rounded-[28px] p-5">
-                <p className="section-eyebrow">目前狀態</p>
-                <div className="mt-4 space-y-3 text-sm text-white/78">
-                  <div className="glass-subpanel rounded-[22px] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-white/55">系統模式</p>
-                    <p className="mt-2 text-base font-semibold text-white">{runtimeLabel}</p>
+            <div className="space-y-4">
+              <div className="card p-5">
+                <p className="section-eyebrow mb-4">目前狀態</p>
+                <div className="space-y-3">
+                  <div className="card-subtle p-4">
+                    <p className="section-eyebrow">系統模式</p>
+                    <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-[color:var(--text-primary)]">
+                      <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
+                      {runtimeLabel}
+                    </p>
                   </div>
-                  <div className="glass-subpanel rounded-[22px] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-white/55">當前課程</p>
-                    <p className="mt-2 text-base font-semibold text-white">{activeCourseName}</p>
+                  <div className="card-subtle p-4">
+                    <p className="section-eyebrow">當前課程</p>
+                    <p className="mt-2 text-sm font-semibold text-[color:var(--text-primary)]">{activeCourseName}</p>
                   </div>
-                  <div className="glass-subpanel rounded-[22px] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-white/55">教材摘要</p>
-                    <p className="mt-2 text-sm leading-6 text-white/78">{selectedFileLabel}</p>
+                  <div className="card-subtle p-4">
+                    <p className="section-eyebrow">教材摘要</p>
+                    <p className="mt-2 truncate text-sm text-[color:var(--text-secondary)]">{selectedFileLabel}</p>
                   </div>
                 </div>
               </div>
-              <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
             </div>
           </div>
         </div>
@@ -319,7 +353,7 @@ export default function App() {
 
     if (activeView === "quiz") {
       return (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr),340px]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr),300px]">
           <ErrorBoundary>
             <QuizPanel
               questions={questions}
@@ -329,25 +363,22 @@ export default function App() {
             />
           </ErrorBoundary>
 
-          <div className="space-y-6">
-            <div className="glass-panel-strong rounded-[28px] p-5">
-              <p className="section-eyebrow">測驗前提醒</p>
-              <div className="mt-4 space-y-3 text-sm text-white/78">
-                <div className="glass-subpanel rounded-[22px] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/55">最佳用法</p>
-                  <p className="mt-2 leading-6 text-white/78">先匯入教材，再用 6 到 9 題快速找出弱點，測完再看複習頁。</p>
+          <div className="space-y-4">
+            <div className="card p-5">
+              <p className="section-eyebrow mb-4">測驗前提醒</p>
+              <div className="space-y-3">
+                <div className="card-subtle p-4">
+                  <p className="section-eyebrow">最佳用法</p>
+                  <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">先匯入教材，再用 6 到 9 題快速找出弱點，測完再看複習頁。</p>
                 </div>
-                <div className="glass-subpanel rounded-[22px] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/55">目前題目</p>
-                  <p className="mt-2 text-base font-semibold text-white">{questions.length > 0 ? `${questions.length} 題已產生` : "尚未產生題目"}</p>
-                </div>
-                <div className="glass-subpanel rounded-[22px] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/55">作答完成率</p>
-                  <p className="mt-2 text-base font-semibold text-white">{Math.round(safeNumber(metrics.accuracy) * 100)}%</p>
+                <div className="card-subtle p-4">
+                  <p className="section-eyebrow">目前題目</p>
+                  <p className="mt-2 text-sm font-semibold text-[color:var(--text-primary)]">
+                    {questions.length > 0 ? `${questions.length} 題已產生` : "尚未產生題目"}
+                  </p>
                 </div>
               </div>
             </div>
-            <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
           </div>
         </div>
       );
@@ -359,7 +390,7 @@ export default function App() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,0.85fr),minmax(0,1.15fr)]">
             <ErrorBoundary>
               {tonightLoading ? (
-                <div className="glass-panel rounded-[28px] p-6">
+                <div className="card p-6">
                   <Skeleton className="mb-3 h-5 w-32" />
                   <div className="grid grid-cols-3 gap-2">
                     {[...Array(3)].map((_, index) => (
@@ -379,7 +410,7 @@ export default function App() {
 
           <ErrorBoundary>
             {masteryLoading ? (
-              <div className="glass-panel rounded-[28px] p-6">
+              <div className="card p-6">
                 <Skeleton className="mb-2 h-5 w-40" />
                 <Skeleton className="h-48 w-full rounded-xl" />
               </div>
@@ -391,6 +422,7 @@ export default function App() {
       );
     }
 
+    // graph
     return (
       <div className="space-y-6">
         <ErrorBoundary>
@@ -403,216 +435,388 @@ export default function App() {
     );
   };
 
+  if (showLanding) {
+    return <LandingScreen onEnter={() => { setShowLanding(false); navigateTo("home"); }} />;
+  }
+
   return (
-    <div className="min-h-screen text-white">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="floating-orb left-[4%] top-20 h-72 w-72 bg-rose-400/55" />
-        <div className="floating-orb right-[7%] top-28 h-80 w-80 bg-sky-300/45 [animation-delay:1.2s]" />
-        <div className="floating-orb bottom-16 left-[38%] h-72 w-72 bg-emerald-300/35 [animation-delay:2.4s]" />
+    <div className="min-h-screen">
+      {/* ─── Anchored top navigation ─────────────────────────── */}
+      <header className="top-nav">
+        <div className="mx-auto flex h-full max-w-[var(--container)] items-center gap-6 px-4 md:px-6">
+          {/* Brand */}
+          <button
+            type="button"
+            onClick={() => navigateTo("home")}
+            className="flex items-center gap-2.5"
+          >
+            <PixelAvocadoLogo size={30} />
+            <span className="font-display text-[17px] font-extrabold text-[color:var(--text-primary)]">AdaptLearn</span>
+          </button>
+
+          {/* Nav tabs */}
+          <nav className="hidden items-center gap-1 md:flex">
+            {VIEW_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => navigateTo(item.key)}
+                  className={`nav-tab ${activeView === item.key ? "active" : ""}`}
+                >
+                  <Icon size={15} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Right cluster */}
+          <div className="ml-auto flex items-center gap-3">
+            <span className="pill hidden sm:inline-flex">
+              <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
+              {runtimeLabel}
+            </span>
+            <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
+            <span className="btn-secondary hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm lg:inline-flex">
+              <UserCircle2 size={16} className="text-[color:var(--text-muted)]" />
+              學生模式
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile nav tabs */}
+      <div className="border-b border-[color:var(--border)] bg-white md:hidden">
+        <div className="mx-auto flex max-w-[var(--container)] items-center gap-1 overflow-x-auto px-3 py-2">
+          {VIEW_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => navigateTo(item.key)}
+                className={`nav-tab shrink-0 ${activeView === item.key ? "active" : ""}`}
+              >
+                <Icon size={15} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="relative mx-auto max-w-[1500px] px-4 pb-10 pt-4 md:px-6 lg:px-8">
-        <nav className="glass-panel sticky top-4 z-40 rounded-[28px] px-5 py-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-white shadow-[0_12px_30px_rgba(15,23,42,0.22)]">
-                <Activity size={20} />
-              </div>
-              <div>
-                <p className="text-base font-semibold text-white">AdaptLearn</p>
-                <p className="text-xs text-white/65">把教材變成測驗、複習與知識圖譜</p>
-              </div>
-            </div>
+      {/* ─── Main content ────────────────────────────────────── */}
+      <main className="mx-auto max-w-[var(--container)] px-4 py-8 md:px-6">
+        {activeView === "home" ? (
+          <div key="home" className="view-enter space-y-8">
+            {/* Greeting + CTAs */}
+            <section className="relative overflow-hidden rounded-2xl border border-[color:var(--border)] bg-white p-6 shadow-[var(--shadow-card)] md:p-8">
+              {/* Decorative blobs — subtle, low-opacity */}
+              <div
+                className="greeting-blob"
+                style={{
+                  width: 320,
+                  height: 320,
+                  top: -100,
+                  right: -60,
+                  background: "radial-gradient(circle, rgba(79,70,229,0.07) 0%, transparent 70%)",
+                }}
+              />
+              <div
+                className="greeting-blob"
+                style={{
+                  width: 200,
+                  height: 200,
+                  bottom: -80,
+                  right: 160,
+                  background: "radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)",
+                }}
+              />
 
-            <div className="flex flex-wrap items-center gap-2">
-              {VIEW_ITEMS.map((item) => {
-                const Icon = item.icon;
-                return (
+              <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                <div className="max-w-xl">
+                  {/* Date + badge row */}
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <span className="date-pill">
+                      <CalendarClock size={11} />
+                      {new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" })}
+                    </span>
+                    <span className="pill">
+                      <Sparkles size={12} className="text-[color:var(--accent)]" />
+                      AI 學習助理
+                    </span>
+                  </div>
+
+                  <h1 className="font-display text-2xl font-extrabold leading-tight text-[color:var(--text-primary)] md:text-3xl">
+                    把教材變成
+                    <span className="gradient-text"> 測驗、複習</span>
+                    <br className="hidden sm:block" />
+                    與<span className="gradient-text"> 知識圖譜</span>
+                  </h1>
+                  <p className="mt-3 text-sm leading-7 text-[color:var(--text-secondary)]">
+                    上傳 PDF、圖片或手寫筆記，系統自動抽取概念、生成自適應題目，
+                    <br className="hidden md:block" />
+                    並依間隔重複安排最值得讀的複習節奏。
+                  </p>
+                </div>
+
+                {/* CTA group — vertical stack, primary + ghost */}
+                <div className="flex flex-col gap-2.5 sm:flex-row md:flex-col md:min-w-[160px]">
                   <button
-                    key={item.key}
                     type="button"
-                    onClick={() => navigateTo(item.key)}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${
-                      activeView === item.key
-                        ? "border-white/16 bg-white/10 text-white shadow-[0_10px_28px_rgba(15,23,42,0.16)]"
-                        : "glass-button border-white/10 text-white/72"
-                    }`}
+                    onClick={() => navigateTo("setup")}
+                    className="btn-primary gap-2 px-5 py-2.5 text-sm shadow-md"
+                    style={{ boxShadow: "0 4px 14px rgba(79,70,229,0.25)" }}
                   >
-                    <Icon size={15} />
-                    <span>{item.label}</span>
+                    <Activity size={16} />
+                    匯入教材
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo("quiz")}
+                    className="btn-secondary gap-2 px-5 py-2.5 text-sm"
+                  >
+                    <Sparkles size={15} />
+                    開始測驗
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo("graph")}
+                    className="btn-ghost gap-1.5 px-3 py-2 text-xs"
+                  >
+                    <Network size={13} />
+                    知識圖譜
+                    <ChevronRight size={12} className="opacity-60" />
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Stat cards */}
+            <section className="grid gap-4 sm:grid-cols-3">
+              {statCards.map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <div
+                    key={card.label}
+                    className="stat-card stat-animate-in p-5"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    {/* Coloured left accent bar — dynamic colour per card */}
+                    <span
+                      className="accent-bar"
+                      style={{ background: card.accentColor }}
+                    />
+
+                    {/* Top row: label + icon */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="section-eyebrow">{card.label}</p>
+                      <span
+                        className="grid h-7 w-7 place-items-center rounded-lg"
+                        style={{ background: `color-mix(in srgb, ${card.accentColor} 12%, transparent)` }}
+                      >
+                        <Icon size={14} style={{ color: card.accentColor }} />
+                      </span>
+                    </div>
+
+                    {/* Main number */}
+                    <p className="stat-value text-5xl font-semibold text-[color:var(--text-primary)]">
+                      <CountUp value={card.value} suffix={card.suffix} />
+                    </p>
+
+                    {/* Bottom: hint + trend badge */}
+                    <div className="mt-3 flex items-end justify-between gap-2">
+                      <p className="text-xs leading-5 text-[color:var(--text-muted)]">{card.hint}</p>
+                      <span
+                        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          card.trend === "up"   ? "trend-up" :
+                          card.trend === "down" ? "trend-down" : "trend-flat"
+                        }`}
+                      >
+                        {card.trend === "up" ? "↑" : card.trend === "down" ? "↓" : "—"}
+                        {card.trendLabel}
+                      </span>
+                    </div>
+                  </div>
                 );
               })}
-            </div>
+            </section>
 
-            <div className="flex items-center gap-3 self-start xl:self-auto">
-              <div className="hidden md:block">
-                <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
-              </div>
-              <div className="glass-button inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white/85">
-                <UserCircle2 size={17} className="text-white/70" />
-                <span>學生模式</span>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        <main className="mt-6">
-          {activeView === "home" ? (
-            <section className="demo-home-shell glass-panel overflow-hidden rounded-[36px] p-6 md:p-8 xl:min-h-[calc(100vh-8.75rem)]">
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.06fr),minmax(420px,0.94fr)] xl:items-stretch">
-                <div className="flex flex-col justify-between gap-8">
+            {/* Workflow + side column */}
+            <section className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr),minmax(320px,1fr)]">
+              {/* Workflow card with vertical timeline */}
+              <div className="card p-6">
+                <div className="mb-6 flex items-center justify-between">
                   <div>
-                    <div className="demo-badge inline-flex items-center gap-2">
-                      <Sparkles size={14} className="text-amber-300" />
-                      <span>Competition Demo · AI Learning Copilot</span>
-                    </div>
-                    <p className="section-eyebrow mt-6">像產品首頁，不像管理後台</p>
-                    <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.04] text-white md:text-6xl">
-                      用一個畫面說清楚<span className="gradient-text">教材如何變成測驗、複習與知識圖譜</span>
-                    </h1>
-                    <p className="mt-5 max-w-2xl text-sm leading-8 text-white/70 md:text-base">
-                      AdaptLearn 把教材解析、弱點診斷與複習策略壓成一條可展示的學習流程，讓評審不用往下捲很多頁，就能理解產品價值與操作順序。
-                    </p>
+                    <p className="section-eyebrow">學習流程</p>
+                    <h2 className="mt-1 text-lg font-bold text-[color:var(--text-primary)]">四步驟完成一輪學習</h2>
                   </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => navigateTo("setup")}
-                      className="demo-primary-button inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
-                    >
-                      <Activity size={16} />
-                      <span>開始匯入教材</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigateTo("graph")}
-                      className="demo-secondary-button inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
-                    >
-                      <Network size={16} />
-                      <span>直接看知識圖譜</span>
-                    </button>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {overviewCards.map((card) => (
-                      <div key={card.label} className="demo-stat-card glass-subpanel rounded-[24px] p-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-white/48">{card.label}</p>
-                        <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
-                        <p className="mt-2 text-xs leading-5 text-white/62">{card.hint}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <span className="pill text-[11px]">
+                    <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
+                    {runtimeLabel}
+                  </span>
                 </div>
 
-                <div className="demo-preview glass-panel-strong rounded-[32px] p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-white/45">Product Preview</p>
-                      <h2 className="mt-3 text-2xl font-semibold text-white">評審 15 秒可理解的操作流程</h2>
-                    </div>
-                    <div className="hidden sm:block">
-                      <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
-                    </div>
-                  </div>
+                {/* Timeline container */}
+                <div className="workflow-timeline space-y-2">
+                  {homeActions.map((item, idx) => {
+                    const Icon = item.icon;
+                    const isFirst = idx === 0;
+                    // Step is "active" if it's the first uncompleted step
+                    const isActive = idx === 0;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => navigateTo(item.key)}
+                        className="group relative flex w-full items-start gap-4 rounded-xl p-4 text-left transition-all duration-150 hover:bg-[color:var(--bg-subtle)]"
+                        style={{ borderRadius: 12 }}
+                      >
+                        {/* Step badge — solid accent for step 01, outline for rest */}
+                        <span
+                          className="font-mono-data relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-semibold transition-all duration-150"
+                          style={
+                            isFirst
+                              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 2px 8px rgba(79,70,229,0.28)" }
+                              : { background: "var(--bg-sunken)", color: "var(--text-secondary)", border: "1px solid var(--border-strong)" }
+                          }
+                        >
+                          {item.step}
+                        </span>
 
-                  <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.12fr),minmax(180px,0.88fr)]">
-                    <div className="glass-subpanel rounded-[24px] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-white/45">核心承諾</p>
-                      <p className="mt-3 text-lg font-semibold leading-8 text-white">
-                        上傳教材後，系統會自動建立概念、生成題目，並安排下一輪最值得讀的複習節奏。
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <span className="demo-chip">教材抽取</span>
-                        <span className="demo-chip">弱點診斷</span>
-                        <span className="demo-chip">SM-2 排程</span>
-                        <span className="demo-chip">Graph 視覺化</span>
-                      </div>
-                    </div>
-
-                    <div className="glass-subpanel rounded-[24px] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-white/45">即時資訊</p>
-                      <div className="mt-4 space-y-3 text-sm text-white/74">
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">系統模式</p>
-                          <p className="mt-2 font-semibold text-white">{runtimeLabel}</p>
-                          <p className="mt-2 text-xs leading-5 text-white/58">{runtimeHint}</p>
-                        </div>
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">目前課程</p>
-                          <p className="mt-2 font-semibold text-white">{activeCourseName}</p>
-                        </div>
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">下一步</p>
-                          <p className="mt-2 leading-6 text-white/74">
-                            {reviewItems.length > 0
-                              ? `先處理 ${reviewItems[0]?.concept_name ?? "高優先概念"}`
-                              : "先進入教材頁上傳講義"}
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <div className="flex items-center gap-2">
+                            <Icon
+                              size={14}
+                              style={{ color: isFirst ? "var(--accent)" : "var(--text-muted)" }}
+                            />
+                            <h3
+                              className="text-[15px] font-semibold"
+                              style={{ color: isFirst ? "var(--text-primary)" : "var(--text-secondary)" }}
+                            >
+                              {item.title}
+                            </h3>
+                          </div>
+                          <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">{item.description}</p>
+                          <p
+                            className="mt-1 truncate text-xs font-medium"
+                            style={{ color: isFirst ? "var(--accent)" : "var(--text-muted)" }}
+                          >
+                            {item.status}
                           </p>
                         </div>
-                      </div>
+
+                        <ArrowRight
+                          size={16}
+                          className="mt-1 shrink-0 transition-all duration-150 group-hover:translate-x-1"
+                          style={{ color: isFirst ? "var(--accent)" : "var(--text-muted)", opacity: isFirst ? 1 : 0.6 }}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right sidebar */}
+              <div className="space-y-5">
+                {/* Next-up action — prominent */}
+                <div className="next-up-card p-5">
+                  <div className="relative flex items-start justify-between gap-3">
+                    <div>
+                      <p className="section-eyebrow" style={{ color: "var(--accent)" }}>今晚優先</p>
+                      <p className="mt-1.5 text-[15px] font-bold text-[color:var(--text-primary)]">
+                        {reviewItems.length > 0
+                          ? reviewItems[0]?.concept_name ?? "高優先概念"
+                          : "先上傳教材開始學習"}
+                      </p>
+                      <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+                        {reviewItems.length > 0
+                          ? `共 ${reviewItems.length} 項待複習，立即進入複習頁`
+                          : runtimeHint}
+                      </p>
+                    </div>
+                    <div
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
+                      style={{ background: "var(--accent)", boxShadow: "0 2px 8px rgba(79,70,229,0.25)" }}
+                    >
+                      <CalendarClock size={16} color="#fff" />
                     </div>
                   </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {homeActions.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => navigateTo(item.key)}
-                          className="demo-action-card group rounded-[24px] p-4 text-left transition"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="rounded-2xl border border-white/14 bg-white/[0.06] p-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)]">
-                              <Icon size={18} />
-                            </div>
-                            <ArrowRight size={18} className="text-white/45 transition group-hover:translate-x-1 group-hover:text-white/72" />
-                          </div>
-                          <p className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/42">{item.step}</p>
-                          <h3 className="mt-2 text-lg font-semibold text-white">{item.title}</h3>
-                          <p className="mt-2 text-sm leading-6 text-white/64">{item.description}</p>
-                          <p className="mt-4 text-xs text-cyan-100/78">{item.status}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <section className="glass-panel rounded-[36px] p-6 md:p-8">
-              <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    onClick={() => navigateTo("home")}
-                    className="glass-button inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white/82"
+                    onClick={() => navigateTo(reviewItems.length > 0 ? "review" : "setup")}
+                    className="relative mt-4 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: "var(--accent)" }}
                   >
-                    <ChevronLeft size={16} />
-                    <span>回首頁</span>
+                    {reviewItems.length > 0 ? "進入複習" : "匯入教材"}
+                    <ArrowRight size={14} />
                   </button>
-                  <div>
-                    <p className="section-eyebrow">功能頁</p>
-                    <h1 className="mt-2 text-3xl font-semibold text-white">{pageMeta?.title}</h1>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/72">{pageMeta?.description}</p>
+                </div>
+
+                {/* System status */}
+                <div className="card p-5">
+                  <p className="section-eyebrow mb-3">系統狀態</p>
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[color:var(--text-secondary)]">運行模式</span>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-[color:var(--text-primary)]">
+                        <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
+                        {runtimeLabel}
+                      </span>
+                    </div>
+                    <div className="h-px bg-[color:var(--border)]" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[color:var(--text-secondary)]">目前課程</span>
+                      <span className="max-w-[120px] truncate text-sm font-semibold text-[color:var(--text-primary)]">
+                        {activeCourseName}
+                      </span>
+                    </div>
+                    <div className="h-px bg-[color:var(--border)]" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[color:var(--text-secondary)]">概念數量</span>
+                      <span className="font-mono-data text-sm font-semibold text-[color:var(--text-primary)]">
+                        {Math.round(metrics.concept_count)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="glass-subpanel rounded-[24px] px-4 py-3 text-sm text-white/78 md:min-w-[240px]">
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/55">目前課程</p>
-                  <p className="mt-2 text-base font-semibold text-white">{activeCourseName}</p>
-                  <p className="mt-1 text-xs text-white/65">{runtimeLabel}</p>
+                {/* InsightFeed */}
+                <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div key={activeView} className="view-enter">
+            {/* Page header */}
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-start gap-3">
+                <button type="button" onClick={() => navigateTo("home")} className="btn-secondary mt-0.5 rounded-xl px-3 py-2 text-sm">
+                  <ChevronLeft size={16} />
+                  首頁
+                </button>
+                <div>
+                  <p className="section-eyebrow">功能頁</p>
+                  <h1 className="mt-1 text-2xl font-bold text-[color:var(--text-primary)]">{pageMeta?.title}</h1>
+                  <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">{pageMeta?.description}</p>
                 </div>
               </div>
+              <div className="card-subtle px-4 py-3 md:min-w-[220px]">
+                <p className="section-eyebrow">目前課程</p>
+                <p className="mt-1.5 text-base font-bold text-[color:var(--text-primary)]">{activeCourseName}</p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[color:var(--text-muted)]">
+                  <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
+                  {runtimeLabel}
+                </p>
+              </div>
+            </div>
 
-              {renderPageContent()}
-            </section>
-          )}
-        </main>
-      </div>
+            {renderSubView()}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

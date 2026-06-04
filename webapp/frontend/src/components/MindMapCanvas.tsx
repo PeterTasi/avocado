@@ -5,10 +5,10 @@ import type { ParsedGraph, GraphNode } from "../utils/graphUtils";
 // ── Colour palettes ──────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  mastered: "#22c55e",
-  learning: "#f59e0b",
-  needs_review: "#ef4444",
-  new: "#60a5fa",
+  mastered:     "#0ea472",   // var(--high)
+  learning:     "#d98a04",   // var(--medium)
+  needs_review: "#e11d48",   // var(--low)
+  new:          "#4f46e5",   // var(--accent)
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -18,22 +18,22 @@ const STATUS_LABELS: Record<string, string> = {
   new: "未測驗",
 };
 
-// 10 distinct hues for chapter branches
+// 10 distinct hues — slightly deeper for light-bg readability
 const CHAPTER_PALETTE = [
-  "#818cf8", "#f472b6", "#34d399", "#fbbf24",
-  "#60a5fa", "#a78bfa", "#fb7185", "#4ade80",
-  "#facc15", "#38bdf8",
+  "#6366f1", "#ec4899", "#10b981", "#f59e0b",
+  "#3b82f6", "#8b5cf6", "#f43f5e", "#22c55e",
+  "#eab308", "#0ea5e9",
 ];
 
 const RELATION_COLORS: Record<string, string> = {
-  prerequisite:   "#22d3ee",
-  progression:    "#f59e0b",
-  related:        "#a78bfa",
-  equivalent:     "#f472b6",
-  generalization: "#818cf8",
-  analogy:        "#a3e635",
-  semantic:       "#94a3b8",
-  next:           "#64748b",
+  prerequisite:   "#0ea472",   // green — must-know first
+  progression:    "#d98a04",   // amber — sequence
+  related:        "#6366f1",   // indigo — related
+  equivalent:     "#ec4899",   // pink
+  generalization: "#6366f1",
+  analogy:        "#10b981",
+  semantic:       "#94a3b8",   // muted
+  next:           "#94a3b8",
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -218,8 +218,8 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
 
   if (!graph.nodes.length) {
     return (
-      <div className="rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.16)] p-4 text-xs text-white/62">
-        目前沒有可視化的圖譜節點。
+      <div className="card-subtle rounded-xl p-4 text-xs text-[color:var(--text-muted)]">
+        目前沒有可視化的圖譜節點。先匯入教材後系統會自動建立知識圖譜。
       </div>
     );
   }
@@ -230,9 +230,9 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   return (
     <div
       ref={containerRef}
-      className="relative select-none overflow-hidden rounded-[24px] border border-white/12"
+      className="relative select-none overflow-hidden rounded-2xl border border-[color:var(--border)]"
       style={{
-        background: "rgba(6,12,28,0.7)",
+        background: "var(--bg-subtle)",
         height: Math.round(SVG_H * scale),
         cursor: dragging.current ? "grabbing" : "grab",
       }}
@@ -333,10 +333,14 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           );
         })}
 
-        {/* ── Center node ── */}
-        <circle cx={CX} cy={CY} r={30} fill="rgba(67,56,202,0.2)" filter="url(#mm-glow)" />
-        <circle cx={CX} cy={CY} r={24} fill="url(#mm-cg)" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
-        <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="12" fontWeight="700">
+        {/* ── Center node (pixel-border square, 🎮) ── */}
+        {/* Pixel staircase border offset rects */}
+        <rect x={CX-26+2} y={CY-26}   width={52} height={52} rx="0" fill="none" stroke="#4f46e5" strokeWidth="2" strokeOpacity="0.3" />
+        <rect x={CX-26}   y={CY-26+2} width={52} height={52} rx="0" fill="none" stroke="#4f46e5" strokeWidth="2" strokeOpacity="0.3" />
+        {/* Center square body */}
+        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="#4f46e5" />
+        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="url(#mm-cg)" />
+        <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="700">
           {courseName.length > 5 ? courseName.slice(0, 5) : courseName}
         </text>
 
@@ -393,16 +397,17 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
                   filter="url(#mm-glow)"
                 />
               )}
-              {/* Pill background */}
+              {/* Pill background — white surface on light bg */}
               <rect
                 x={node.x - pW / 2}
                 y={node.y - PILL_H / 2}
                 width={pW}
                 height={PILL_H}
-                rx="15"
-                fill={isSelected ? `${color}40` : "rgba(12,20,44,0.82)"}
-                stroke={isSelected ? color : `${node.chapterColor}70`}
-                strokeWidth={isSelected ? 1.8 : 1}
+                rx="10"
+                fill={isSelected ? `${color}18` : "#ffffff"}
+                stroke={isSelected ? color : node.chapterColor}
+                strokeWidth={isSelected ? 2 : 1.2}
+                strokeOpacity={isSelected ? 1 : 0.65}
               />
               {/* Mastery dot */}
               <circle
@@ -411,12 +416,12 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
                 r="4.5"
                 fill={color}
               />
-              {/* Concept label */}
+              {/* Concept label — dark text for light bg */}
               <text
                 x={node.x - pW / 2 + 25}
                 y={node.y}
                 dominantBaseline="middle"
-                fill="rgba(255,255,255,0.92)"
+                fill="#16181d"
                 fontSize="11"
                 fontFamily="ui-sans-serif, system-ui, sans-serif"
               >
@@ -438,7 +443,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
             key={label}
             type="button"
             onClick={action}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm text-white hover:bg-white/20 transition-colors"
+            className="btn-secondary flex h-7 w-7 items-center justify-center rounded-lg text-sm"
           >
             {label}
           </button>
@@ -447,18 +452,18 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
 
       {/* ── Selected node detail panel ─────────────────────────────── */}
       {selectedConcept && (
-        <div className="absolute bottom-3 left-3 right-14 rounded-[14px] border border-white/15 bg-[rgba(8,14,36,0.92)] px-4 py-2.5 text-xs backdrop-blur-sm">
+        <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="font-semibold text-white">{selectedConcept.name}</p>
-              <p className="mt-0.5 text-white/50">{selectedConcept.chapter}</p>
+              <p className="font-semibold text-[color:var(--text-primary)]">{selectedConcept.name}</p>
+              <p className="mt-0.5 text-[color:var(--text-muted)]">{selectedConcept.chapter}</p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
               <span
                 className="h-2.5 w-2.5 rounded-full"
                 style={{ background: STATUS_COLORS[selectedConcept.status] ?? STATUS_COLORS.new }}
               />
-              <span className="text-white/70">
+              <span className="text-[color:var(--text-secondary)]">
                 {STATUS_LABELS[selectedConcept.status] ?? selectedConcept.status}
                 　{Math.round(selectedConcept.mastery * 100)}%
               </span>
@@ -474,15 +479,15 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
 
 export function MindMapLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-2 text-[11px] text-white/62">
-      <span className="text-white/40">掌握度：</span>
+    <div className="flex flex-wrap items-center gap-3 border-t border-[color:var(--border)] pt-2 text-[11px] text-[color:var(--text-muted)]">
+      <span>掌握度：</span>
       {Object.entries(STATUS_LABELS).map(([key, label]) => (
         <span key={key} className="inline-flex items-center gap-1">
           <i className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLORS[key] }} />
-          {label}
+          <span className="text-[color:var(--text-secondary)]">{label}</span>
         </span>
       ))}
-      <span className="border-l border-white/12 pl-3 text-white/40">邊線：</span>
+      <span className="border-l border-[color:var(--border)] pl-3">邊線：</span>
       {[
         { color: RELATION_COLORS.prerequisite, label: "先修" },
         { color: RELATION_COLORS.progression,  label: "進展" },
@@ -490,7 +495,7 @@ export function MindMapLegend() {
       ].map(({ color, label }) => (
         <span key={label} className="inline-flex items-center gap-1">
           <i className="inline-block h-0 w-5 border-t-2" style={{ borderColor: color }} />
-          {label}
+          <span className="text-[color:var(--text-secondary)]">{label}</span>
         </span>
       ))}
     </div>

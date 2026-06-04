@@ -250,6 +250,9 @@ Known UI issues to fix during redesign:
 
 ## Frontend Views (App.tsx)
 
+> **入口 gate（第二批規劃中）：** app 啟動先顯示全螢幕 `LandingScreen`（`showLanding` 預設 true，不渲染頂欄），
+> 點「開始學習」後才淡入下方 5-view 主儀表板。詳見 plan.md 第二批。
+
 SPA with 5 views routed via `window.history`:
 
 | Key | Path | Component |
@@ -290,3 +293,155 @@ Frontend assets must be built locally (`npm run build`) and committed to `webapp
 - New API endpoints go in `webapp/main.py`; follow the `@cached` / `@limiter.limit` pattern
 - Frontend API calls go through `hooks/useApi.ts`
 - No silent caps: if a function limits results, log what was dropped
+
+---
+
+## UI/UX Redesign — 明亮專業（LeetCode-inspired）(2026-06)
+
+> **方向轉折（2026-06-04）：** 初版走深色「Synaptic」科技風，使用者回饋仍有「廉價科技感」+ 版面問題。
+> 改採 **LeetCode 式明亮專業** 主題：白底中性灰 + 釘住頂欄 + 結構化網格 + 顏色只用在有意義的狀態。
+> 廉價感根源已定位並移除：霓虹漸層大字、過度毛玻璃、超大圓角浮島、行銷式 Hero。
+>
+> **像素風點綴方向（2026-06-04）：** 明亮專業底 + 少量像素裝飾，讓競賽作品有記憶點。
+> 像素元素只用在「裝飾性位置」（空狀態插圖、答對粒子、圖譜中心節點、熱力格子），不改正文字型。
+> 每頁最多 1~2 個像素元素。技術手法：純 SVG `<rect>` 格子圖、`box-shadow` 階梯邊框、4×4 方塊粒子。
+
+### 設計語言規範（定義於 `index.css`）
+
+**色彩系統（light tokens）：**
+```
+背景：--bg-app #f5f6f8 / --bg-surface #ffffff / --bg-subtle #f7f8fa / --bg-sunken #f0f1f4
+邊框：--border #e6e8ec / --border-strong #d7dade / --border-hover #c2c7cf
+文字：--text-primary #16181d / --text-secondary #5a616b / --text-muted #8b929c
+品牌強調（節制使用）：--accent #4f46e5（indigo）/ --accent-soft #eef0fe
+語意色（只用於掌握度/難度）：--high #0ea472（綠）/ --medium #d98a04（琥珀）/ --low #e11d48（玫紅）
+陰影：--shadow-sm / --shadow-card / --shadow-pop（light 適用，極淡）
+```
+
+**字型：**
+- UI / 標題：`Plus Jakarta Sans`（`.font-display` letter-spacing -0.02em）
+- 數字/統計：`DM Mono`（`.stat-value` / `.font-mono-data`，tabular-nums）
+- 中文：`Noto Sans TC`
+- （已移除 Syne — 對亮色乾淨風格過於 display）
+
+**核心 utility classes：**
+- 卡片：`.card` / `.card-flat` / `.card-subtle` / `.card-interactive`（hover 上浮）
+- 按鈕：`.btn-primary`（indigo）/ `.btn-secondary` / `.btn-ghost`
+- 輸入：`.input`（focus 有 accent ring）
+- 標籤/狀態：`.pill` / `.tag-high|medium|low` / `.status-dot(.live/.signal/.weak/.neural)`
+- 統計卡：`.stat-card`（左側 3px accent-bar）
+- 掌握度條：`.mastery-bar-track` / `.mastery-bar-fill`（紅→琥珀→綠漸層）
+
+### 結構：釘住頂欄（取代浮島 nav）
+
+- `top-nav`：sticky、全寬、白底半透明 + 1px 下邊框 + backdrop blur
+- 左 Logo+wordmark、中 nav tabs（active 有底部 2px indigo indicator）、右 狀態 pill + 進度環 + 學生模式
+- 內容容器：`max-w-[1200px] mx-auto px-6`，響應式 mobile 另有橫向 tab bar
+
+### ⚠️ 遷移機制：`.legacy-surface`（暫時性）
+
+未改造的子頁面（setup/quiz/review/graph 內的舊元件）仍用 `text-white`，在白底會看不見。
+過渡期把這些子頁面內容包在 `.legacy-surface`（暗色包裹層，局部還原舊深色 glass 樣式）保持可讀。
+**每個子頁面改造成亮色元件後，就移除它外層的 `.legacy-surface` 包裹。** 全部完成後可刪掉這段 CSS。
+
+### 各頁面重設計方向
+
+| 頁面 | 主要改動 |
+|------|---------|
+| **Home** ✅ | 亮色儀表板：問候卡（date pill + blob 裝飾）+ 動態統計卡（text-5xl + trend badge）+ 工作流程 timeline + next-up 卡 + AI 洞察（左側彩色 border + SVG 空狀態插圖） |
+| **Setup** | 大型拖曳上傳區（`.upload-zone`）+ 3 步驟進度條 + **🎮 像素風上傳空狀態插圖** |
+| **Quiz** | 圓弧進度（`.quiz-arc-*`）+ **🎮 `.pixel-particle` 方塊答對特效** + 空測驗像素插圖 |
+| **Review** | 三節點保留率視覺 + 掌握度漸層條（`.mastery-bar-*`）+ **🎮 掌握度 100% 像素星星彩蛋** |
+| **Graph** | SVG edge 電流動畫 + **🎮 中心節點 `.pixel-border`（方塊感）** + 熱力格子（無圓角，GitHub 貢獻圖風） |
+
+### 競賽加分視覺細節（CSS 已備好）
+
+1. 首頁統計數字 `CountUp`（easeOutCubic，0→真實值，0.8s）✅
+2. Nav active 底部 indigo indicator
+3. 上傳 `.scan-line` 處理掃描線 + `.upload-zone` hover
+4. 測驗答對 `.pixel-particle`（4×4 方塊，向上飄散）— 替代圓形 `.particle`
+5. 圖譜 `.graph-edge-animated`（stroke-dashoffset 流動）
+6. 頁面切換 `.view-enter`（opacity + translateY）✅
+7. 卡片 hover 上浮（`.card-interactive` / `.stat-card`）✅
+8. **🎮 像素風空狀態插圖**（Setup / Quiz 空狀態，純 SVG `<rect>` 格子畫法）
+9. **🎮 圖譜中心節點 `.pixel-border`**（box-shadow 模擬階梯邊框，無圓角）
+10. **🎮 熱力格子**（ClassHeatmapPanel，2px gap 無圓角，hover tooltip）
+
+### 實作進度追蹤
+
+- [x] `index.css` — 全面改寫為 light 主題 + tokens + utility classes + `.legacy-surface` 過渡層（2026-06-04）
+- [x] `App.tsx` — 釘住頂欄 + 亮色首頁儀表板 + `CountUp` 元件 + date pill + 工作流程 timeline + next-up 卡（2026-06-04）
+- [x] `DailyProgressRing.tsx` — SVG arc 進度環（更平滑，帶 transition 動畫）（2026-06-04）
+- [x] `InsightFeed.tsx` — 左側彩色 border + SVG 空狀態插圖（2026-06-04）
+- [x] `SetupPanel.tsx` — 改亮色元件 + 上傳區 + 進度步驟條 + 🎮 像素風插圖 → 移除 legacy-surface（2026-06-04）
+- [x] `QuizPanel.tsx` — 改亮色 + 圓弧進度 + 🎮 `.pixel-particle` 答對方塊特效 → 移除 legacy-surface（2026-06-04）
+- [x] `StudyPanels.tsx` + `MasteryTable.tsx` — 改亮色 + 掌握度漸層條 + 🎮 100% 星星彩蛋 → 移除 legacy-surface（2026-06-04）
+- [x] `MindMapCanvas.tsx` + `KnowledgeGraphPanel.tsx` — 亮色 + edge 動畫 + 🎮 中心節點 pixel-border → 移除 legacy-surface（2026-06-04）
+- [x] `ClassHeatmapPanel.tsx` — 🎮 熱力格子（無圓角，2px gap，GitHub 貢獻圖風）（2026-06-04）
+
+### 第二批：登入頁 + 像素酪梨 logo + Emil 級動效打磨（2026-06-04 規劃，待 Sonnet 實作）
+
+> 設計與逐任務步驟見 `plan.md`「🟢 本回合優先（第二批）」。依 Emil Kowalski 設計工程哲學
+> （`.agents/skills/emil-design-eng/SKILL.md`）：自訂 easing、按壓 `scale(0.97)`、絕不從 `scale(0)` 入場、
+> 進場慢/離場快、stagger、只動 `transform`/`opacity`、補 `prefers-reduced-motion`。
+
+- **新品牌資產 — 像素酪梨 logo**：`components/PixelAvocadoLogo.tsx`（純 SVG `<rect>`）。
+  ⚠️ **目前是 AI 暫時版，使用者將自行設計最終版本**（2026-06-04）。
+  替換時保持 `export function PixelAvocadoLogo({ size, className, withPulse })`，頂欄 `size={30}`、登入頁 `size={104}`。
+- **新入口頁 — 全螢幕極簡登入**：`components/LandingScreen.tsx`。`showLanding` gate（預設 true，**每次重整都顯示入場**）：
+  大酪梨 logo → 字標 → tagline → 單一「開始學習 →」按鈕 → 「已支援 PDF・手寫・圖片」。stagger 入場、離場較快後淡入主儀表板。
+  landing 期間不渲染頂欄。
+
+- [x] `index.css` — 加 `--ease-out/--ease-in-out/--ease-drawer` token；按鈕 `:active` 改 `scale(0.97)`；消滅 `transition: all`；hover 加 `@media (hover:hover)`；補 `prefers-reduced-motion`（2026-06-04）
+- [x] `PixelAvocadoLogo.tsx`（新）— AI 暫時版像素酪梨，使用者將替換為自製版（2026-06-04）
+- [x] `LandingScreen.tsx`（新）— 全螢幕極簡入口頁 + stagger 入場 + 快速離場（2026-06-04）
+- [x] `App.tsx` — `showLanding` gate（landing 不渲染頂欄）+ 頂欄換酪梨 logo + 首頁 stat-card stagger 入場（2026-06-04）
+- [x] `App.tsx` — fix: Landing 點「開始學習」改為導向首頁（而非上次 URL）；首頁 stat cards 用 `sessionUploaded` gate 防殘留資料（2026-06-04）
+- [ ] `PixelAvocadoLogo.tsx` — 使用者自製最終版 logo（待完成）
+- [ ] 子頁面遷移（第一批 5 項）維持原計畫，本回合不動
+
+
+
+# 工作規則
+
+## 模型分工
+- 架構規劃、技術選型 → 用 Opus（/model opus）
+- 寫程式、debug、實作 → 用 Sonnet（/model sonnet）
+
+## 開始新功能前必做
+1. 先切換到 Opus
+2. 更新 plan.md（功能目標、技術方案、影響範圍）
+3. 更新 devlog.md（日期 + 決策紀錄）
+4. 確認後再切回 Sonnet 開始實作
+
+## 強制檢查點
+每當使用者說「開始做 X」「新增 X 功能」「來做 X」，
+在寫任何程式碼之前，先提醒使用者：
+「需要先切換到 Opus 規劃嗎？plan.md 還沒更新。」
+
+
+## Git 工作流規則
+
+### 分支命名
+- 新功能：`feat/功能名稱`
+- 修 bug：`fix/問題描述`
+- UI 調整：`ui/頁面名稱`
+- 比賽衝刺：`demo/功能名稱`
+
+### 完成一個功能後自動執行
+1. `git add .`
+2. `git commit -m "類型(範圍): 描述"` — 用繁中描述
+3. `git push origin 當前分支`
+
+### Commit 訊息格式範例
+feat(ocr): 新增手寫辨識 API 串接
+fix(auth): 修正登入頁表單驗證
+ui(landing): LandingScreen 像素酪梨 logo 完成
+
+### 何時建新分支
+使用者說「開始做 X」或「來實作 X」時，
+先執行 `git checkout -b feat/X`，再開始寫程式。
+
+### 何時 merge 回 main
+使用者說「這個功能完成了」或「可以合併了」時，
+執行 merge 並 push main。

@@ -5,6 +5,84 @@
 
 ---
 
+## 2026-06-04 — UI 第一批：全站 5 個子頁面遷移為亮色主題（全部完成） ✅
+
+- **範圍：** SetupPanel → QuizPanel → StudyPanels + MasteryTable → KnowledgeGraphPanel + MindMapCanvas + ClassHeatmapPanel。
+- **核心改動：**
+  1. `SetupPanel.tsx`：`.card` + 拖曳上傳區（`.upload-zone` drag-over 狀態）+ 像素風 SVG 資料夾插圖 + 3 步驟進度條（`.progress-step` 60s/15s 自動推進）；修正 OCR 說明文字（反映實際 Ollama → Chandra → Gemini 優先順序）。
+  2. `ConceptSection.tsx`：全面改亮色，`.pill`/`.card-subtle` 取代舊暗底圓角。
+  3. `QuizPanel.tsx`：SVG 半圓弧進度（`QuizArc`）+ 題目元信息用 `.pill`/難度 tag；答對噴 `.pixel-particle` 方塊粒子（3 顆，stagger 0/80/160ms）；像素風空箱插圖。
+  4. `StudyPanels.tsx`：TonightPanel 大數字前/提升/後三欄；StudyPlansPanel 用 `.mastery-bar-track/fill` 漸層條顯示優先度。
+  5. `MasteryTable.tsx`：`.mastery-bar-track/fill` 漸層條取代舊 table；100% 掌握概念旁顯示 ★ 彩蛋。
+  6. `MindMapCanvas.tsx`：畫布換亮底 `var(--bg-subtle)`；中心節點改 pixel-border 方塊（`rx=2` + 偏移矩形模擬像素邊框）；concept pill 換白底深字；zoom 控制改 `.btn-secondary`；detail panel 改 `.card` 光色；`MindMapLegend` 換亮色。
+  7. `KnowledgeGraphPanel.tsx`：`.card` + `.btn-secondary` 控制鈕。
+  8. `ClassHeatmapPanel.tsx`：GitHub 貢獻圖風熱力格子（`2px gap`、`border-radius: 0`、頂部 `3px solid` 顏色條）+ hover tooltip + 圖例。
+  9. `LoadingSkeleton.tsx`：Skeleton 換 `--bg-sunken`，cardSkeleton 等換 `.card`。
+  10. `main.jsx`：LoadingFallback 換亮色 `.card` + `--accent` spinner。
+  11. `index.css`：移除已完成遷移後不再需要的 `.legacy-surface` 整段 CSS。
+- **App.tsx 整合：** 移除所有 setup/quiz/review/graph 的 `.legacy-surface` 包裹；loading skeleton 改亮色 `.card`；各 sidebar 面板換 `.card`/`.card-subtle`。
+- **驗證：** `npm run build` 零錯誤（1.38s）；grep 確認主要元件無殘留 `glass-panel`/`glass-subpanel`/`glass-button`/`glass-input`/`legacy-surface`。
+
+---
+
+## 2026-06-04 — Bug fix：Landing 導向錯誤 + 首頁殘留舊資料 ✅
+
+- **症狀 A：** 點「開始學習」後跳到教材頁（`/setup`），不是首頁（`/`）。
+- **根因 A：** `onEnter` callback 只有 `setShowLanding(false)`，沒有重置路由；`activeView` 保留上次離開時的 URL。
+- **修法 A：** `App.tsx` 改為 `onEnter={() => { setShowLanding(false); navigateTo("home"); }}`。
+- **症狀 B：** 首頁 stat cards（概念節點數、待排複習數）和工作流程狀態文字顯示前一 session 從 DB 撈的舊資料。
+- **根因 B：** `concept_count`、`reviewItems.length`、`accuracyPct`、`topChapter`、`topFocus` 直接用 DB 回傳值，沒有 `sessionUploaded` gate 保護。
+- **修法 B：** 新增 `sessionConceptCount` / `sessionReviewCount` gated 中間變數，`topChapter` / `topFocus` / `accuracyPct` 也套上 `sessionUploaded ? 真實值 : 空值`。
+- **驗證：** `npm run build` 零錯誤（1.46s）。
+- **附記：** 使用者將自行設計最終版酪梨 logo，現有 `PixelAvocadoLogo.tsx` 為 AI 暫時版。
+
+---
+
+## 2026-06-04 — UI 第二批實作：登入頁 + 像素酪梨 logo + Emil 級動效打磨 ✅
+
+- **實作內容：**
+  1. `index.css` — 新增 Emil 推薦的自訂 easing token（`--ease-out`/`--ease-in-out`/`--ease-drawer`）；
+     按鈕 `:active` 改 `scale(0.97)`（替代舊 `translateY(1px)`）；所有 btn 過渡改用 `var(--ease-out)`；
+     `.card-interactive`/`.stat-card` 的 `transform` hover 移入 `@media (hover:hover) and (pointer: fine)`；
+     補 `prefers-reduced-motion` 全域守門；新增 `.pixel-border`/`.pixel-grid-bg`/`.pixel-particle` 三個像素 class；
+     新增 landing 動畫 keyframe（`landing-enter-item`/`landing-leave-container`）+ `.landing-item` stagger 類。
+  2. `PixelAvocadoLogo.tsx`（新）— 純 SVG `<rect>` 格子酪梨：深綠果皮 + 淺綠果肉 + 果核 indigo ECG 脈搏線；
+     支援 `size` / `className` / `withPulse` props；`shape-rendering="crispEdges"` 保持像素感；30px 與 104px 尺寸皆清晰可辨。
+  3. `LandingScreen.tsx`（新）— 全螢幕極簡入口頁：大酪梨 logo → 字標 → tagline → 「開始學習 →」→ 支援說明；
+     5 元素 stagger 入場（`0/50/100/150/200ms` delay，360ms ease-out，從 `scale(0.96)+Y8px` 入）；
+     離場比入場快（240ms，`scale(0.98)` 淡出），`setTimeout(onEnter,240)` 銜接主儀表板。
+     右下/左上角極淡 `.pixel-grid-bg` 品牌點綴。
+  4. `App.tsx` — `showLanding` 預設 `true` gate（landing 不渲染頂欄）；頂欄 brand logo 換成 `<PixelAvocadoLogo size={30}/>`；
+     首頁 stat-card stagger 從 80ms 調整為 50ms。
+  5. `SetupPanel.tsx`（小修）— file input `file:bg-white/18 file:text-white` 改成亮色主題正確樣式，
+     修掉「選擇檔案」按鈕在亮底下反白的視覺問題。
+- **驗證：** `npm run build` 零錯誤，1.54s。無 `transition: all` 殘留。
+- **下一批：** 4 個子頁面（教材/測驗/複習/圖譜）亮色遷移 + 移除 `.legacy-surface`（見 plan.md 第一批）。
+
+---
+
+## 2026-06-04 — UI 第二批規劃：登入頁 + 像素酪梨 logo + Emil 級動效（設計，待實作）📐
+
+- **起點（使用者痛點）:** ① 一進站就把所有按鈕/儀表板全攤開，缺一個「入口」儀式感；
+  ② 現有 logo（indigo 方塊 + Activity 脈搏 icon）辨識度低，想要更有記憶點的品牌符號。
+- **方法:** 用 brainstorming 技能釐清需求，並導入使用者新裝的 **Emil Kowalski 設計工程技能**
+  （`.agents/skills/emil-design-eng/SKILL.md`）作為動效準則。
+- **三項已拍板決策（使用者選定）:**
+  1. **置中極簡登入頁** —— 大酪梨 logo → 字標 → tagline →「開始學習 →」單一主按鈕 → 「已支援 PDF・手寫・圖片」。
+     全螢幕、不渲染頂欄（呼應「不要一進來全部按鈕都出現」）；點按鈕淡出後接入既有 5-view 儀表板。
+     `showLanding` 預設 true、每次重整都重播入場（競賽 demo 記憶點）。
+  2. **logo 改像素酪梨 + 脈搏混合** —— 深綠果皮 + 淺綠果肉 + **果核位置一條 indigo ECG 脈搏線**，
+     兼顧新辨識度與舊「學習脈搏」品牌延續。純 SVG `<rect>`、可變 size（登入頁 ~104px / 頂欄 ~30px）、不新增套件。
+  3. **首頁 + 頂欄 Emil 級打磨** —— 加自訂 easing token（`--ease-out` 等）、按鈕 `:active` 改 `scale(0.97)`、
+     首頁 stat-card stagger 入場、消滅 `transition: all`、hover 加裝置守門、補 `prefers-reduced-motion`。
+- **Emil 準則重點（寫進 plan）:** 絕不從 `scale(0)` 入場（改 `scale(0.96)+opacity`）、進場慢/離場快（不對稱）、
+  stagger 30–80ms、UI 動效 < 300ms、只動 `transform`/`opacity`、自訂 cubic-bezier 比內建 easing 有力。
+- **範圍界定:** 本回合只做 ①②③；plan.md 第一批的 4 個子頁面遷移維持原計畫、之後再做。不動後端/API/hooks、不加 npm 套件。
+- **產出:** 設計與逐任務步驟（A 改 CSS／B 酪梨 logo 元件／C LandingScreen／D App.tsx 整合）寫進
+  `plan.md`「🟢 本回合優先（第二批）」；`CLAUDE.md` UI 章節 + 進度追蹤同步更新。**實作交由 Sonnet。**
+
+---
+
 ## 2026-06-03 — 知識圖譜改為放射狀心智圖(SVG) ✅
 
 - **起點(使用者痛點):** 圖譜頁原本是 `react-force-graph-2d` 力導向圖——節點隨機堆在中間、

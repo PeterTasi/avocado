@@ -28,23 +28,29 @@ export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [], c
   }, [dotSource]);
 
   return (
-    <article className="glass-panel rounded-[28px] p-6 text-white">
+    <article className="card p-6">
       <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Network size={16} className="text-cyan-100" />
+        <div className="flex items-center gap-2.5">
+          <div
+            className="grid h-8 w-8 place-items-center rounded-lg"
+            style={{ background: "var(--accent-soft)" }}
+          >
+            <Network size={15} style={{ color: "var(--accent)" }} />
+          </div>
           <div>
             <p className="section-eyebrow">觀念心智圖</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">知識圖譜</h2>
+            <h2 className="mt-0.5 text-base font-semibold text-[color:var(--text-primary)]">知識圖譜</h2>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <span>節點 {graph.nodes.length}</span>
+
+        <div className="flex items-center gap-2 text-xs text-[color:var(--text-muted)]">
+          <span>{graph.nodes.length} 節點</span>
           <span>·</span>
-          <span>邊 {graph.edges.length}</span>
+          <span>{graph.edges.length} 邊</span>
           <button
             type="button"
             onClick={() => setShowRawDot(prev => !prev)}
-            className="glass-button ml-2 rounded-full px-3 py-1.5"
+            className="btn-secondary ml-2 px-3 py-1.5 text-xs"
           >
             {showRawDot ? "隱藏 DOT" : "DOT"}
           </button>
@@ -52,7 +58,7 @@ export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [], c
             type="button"
             onClick={handleCopy}
             disabled={!dotSource}
-            className="glass-button rounded-full px-3 py-1.5 disabled:opacity-50"
+            className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
           >
             {copied ? "已複製" : "複製"}
           </button>
@@ -60,7 +66,7 @@ export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [], c
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center text-sm text-white/50">
+        <div className="flex h-40 items-center justify-center text-sm text-[color:var(--text-muted)]">
           載入圖譜中…
         </div>
       ) : (
@@ -68,7 +74,7 @@ export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [], c
           <MindMapCanvas graph={graph} masteryItems={masteryItems} courseName={courseName} />
           <MindMapLegend />
           {showRawDot && (
-            <pre className="max-h-64 overflow-auto rounded-[22px] border border-white/12 bg-[rgba(8,15,32,0.16)] p-3 text-[11px] leading-relaxed text-white/78">
+            <pre className="card-subtle max-h-64 overflow-auto rounded-xl p-3 text-[11px] leading-relaxed text-[color:var(--text-secondary)]">
               {dotSource || 'digraph ConceptGraph { empty [label="尚無概念"]; }'}
             </pre>
           )}

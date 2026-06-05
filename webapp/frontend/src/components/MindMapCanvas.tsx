@@ -503,6 +503,22 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         })}
       </svg>
 
+      {/* ── 路徑模式工具列 ── */}
+      <div className="absolute left-3 top-3 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={togglePathMode}
+          className={pathMode ? "btn-primary px-3 py-1.5 text-xs" : "btn-secondary px-3 py-1.5 text-xs"}
+        >
+          {pathMode ? "路徑模式：開" : "路徑模式"}
+        </button>
+        {pathMode && (startId || endId) && (
+          <button type="button" onClick={clearPath} className="btn-secondary px-3 py-1.5 text-xs">
+            清除
+          </button>
+        )}
+      </div>
+
       {/* ── Zoom controls ─────────────────────────────────────────── */}
       <div className="absolute right-3 top-3 flex flex-col gap-1">
         {[
@@ -521,8 +537,34 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         ))}
       </div>
 
-      {/* ── Selected node detail panel ─────────────────────────────── */}
-      {selectedConcept && (
+      {/* ── 路徑模式回饋（取代詳情卡） ── */}
+      {pathMode && (
+        <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
+          {!startId || !endId ? (
+            <p className="text-[color:var(--text-secondary)]">
+              點第一個概念設為<span className="font-semibold text-[color:var(--high)]">起點</span>，再點第二個設為<span className="font-semibold text-[color:var(--low)]">終點</span>。
+            </p>
+          ) : pathResult.found ? (
+            <div>
+              <p className="font-semibold text-[color:var(--text-primary)]">
+                共 {pathResult.steps} 步
+              </p>
+              <p className="mt-1 text-[color:var(--text-secondary)]">
+                {pathResult.nodeIds
+                  .map((id) => layout.concepts.find((c) => c.id === id)?.name ?? id)
+                  .join(" → ")}
+              </p>
+            </div>
+          ) : (
+            <p className="text-[color:var(--text-secondary)]">
+              找不到先修路徑——可能 LLM 尚未建立完整的 prerequisite 關係，試試其他兩個概念。
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Selected node detail panel（僅非路徑模式） ── */}
+      {!pathMode && selectedConcept && (
         <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
           <div className="flex items-start justify-between gap-2">
             <div>

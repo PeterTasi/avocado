@@ -27,6 +27,7 @@ import { MasteryTable } from "./components/MasteryTable";
 import { QuizPanel } from "./components/QuizPanel";
 import { SetupPanel } from "./components/SetupPanel";
 import { StudyPlansPanel, TonightPanel } from "./components/StudyPanels";
+import { ProgressPanel } from "./components/ProgressPanel";
 import {
   useChapterMastery,
   useConceptMastery,
@@ -331,13 +332,6 @@ export default function App() {
                 <p className="section-eyebrow mb-4">目前狀態</p>
                 <div className="space-y-3">
                   <div className="card-subtle p-4">
-                    <p className="section-eyebrow">系統模式</p>
-                    <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-[color:var(--text-primary)]">
-                      <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
-                      {runtimeLabel}
-                    </p>
-                  </div>
-                  <div className="card-subtle p-4">
                     <p className="section-eyebrow">當前課程</p>
                     <p className="mt-2 text-sm font-semibold text-[color:var(--text-primary)]">{activeCourseName}</p>
                   </div>
@@ -421,6 +415,10 @@ export default function App() {
               <MasteryTable conceptMastery={conceptMastery} />
             )}
           </ErrorBoundary>
+
+          <ErrorBoundary>
+            <ProgressPanel />
+          </ErrorBoundary>
         </div>
       );
     }
@@ -477,10 +475,6 @@ export default function App() {
 
           {/* Right cluster */}
           <div className="ml-auto flex items-center gap-3">
-            <span className="pill hidden sm:inline-flex">
-              <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
-              {runtimeLabel}
-            </span>
             <DailyProgressRing value={safeNumber(metrics.accuracy) * 100} />
             <span className="btn-secondary hidden items-center gap-2 rounded-xl px-3 py-1.5 text-sm lg:inline-flex">
               <UserCircle2 size={16} className="text-[color:var(--text-muted)]" />
@@ -656,10 +650,6 @@ export default function App() {
                     <p className="section-eyebrow">學習流程</p>
                     <h2 className="mt-1 text-lg font-bold text-[color:var(--text-primary)]">四步驟完成一輪學習</h2>
                   </div>
-                  <span className="pill text-[11px]">
-                    <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
-                    {runtimeLabel}
-                  </span>
                 </div>
 
                 {/* Timeline container */}
@@ -763,14 +753,6 @@ export default function App() {
                   <p className="section-eyebrow mb-3">系統狀態</p>
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-[color:var(--text-secondary)]">運行模式</span>
-                      <span className="flex items-center gap-1.5 text-sm font-semibold text-[color:var(--text-primary)]">
-                        <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
-                        {runtimeLabel}
-                      </span>
-                    </div>
-                    <div className="h-px bg-[color:var(--border)]" />
-                    <div className="flex items-center justify-between">
                       <span className="text-sm text-[color:var(--text-secondary)]">目前課程</span>
                       <span className="max-w-[120px] truncate text-sm font-semibold text-[color:var(--text-primary)]">
                         {activeCourseName}
@@ -809,10 +791,6 @@ export default function App() {
               <div className="card-subtle px-4 py-3 md:min-w-[220px]">
                 <p className="section-eyebrow">目前課程</p>
                 <p className="mt-1.5 text-base font-bold text-[color:var(--text-primary)]">{activeCourseName}</p>
-                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[color:var(--text-muted)]">
-                  <span className={`status-dot ${metrics.llm_enabled ? "live" : "signal"}`} />
-                  {runtimeLabel}
-                </p>
               </div>
             </div>
 

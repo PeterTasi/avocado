@@ -313,3 +313,25 @@ export function useClassWeakConcepts(courseId: string | null, topN = 3) {
     staleTime: 30000,
   });
 }
+
+export interface ConceptDailyPoint {
+  day: string;
+  avg_score: number;
+  n: number;
+}
+
+export interface ConceptProgressItem {
+  concept_id: string;
+  concept_name: string;
+  daily: ConceptDailyPoint[];
+  trend: "improving" | "declining" | "plateaued";
+}
+
+export function useConceptProgress(days = 30) {
+  return useQuery({
+    queryKey: ["concept-progress", days],
+    queryFn: () =>
+      apiFetch(`/api/progress/concepts?days=${days}`) as Promise<{ items: ConceptProgressItem[] }>,
+    staleTime: 60000,
+  });
+}

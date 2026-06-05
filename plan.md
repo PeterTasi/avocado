@@ -1,9 +1,65 @@
 # AdaptLearn — 任務計畫
 
 > **這份文件是給下一個 session 用的執行計畫。**
-> 更新於 2026-06-04。
+> 更新於 2026-06-05。
 >
 > 設計總規範在 `CLAUDE.md`「UI/UX Redesign」章節，先讀那段。
+
+---
+
+# 🟡 本日待辦（2026-06-05）
+
+## 待辦 A：移除「Gemini 已啟用」pill（UI 清理）
+
+**目標：** 頂欄右側與學習流程卡片內的「Gemini 已啟用」狀態 pill 全數移除，不在頁面上顯示。
+
+**影響範圍：**
+- `webapp/frontend/src/App.tsx`（頂欄右側 pill）
+- 學習流程相關元件（InsightFeed / HomeDashboard 等）
+
+**步驟：**
+1. grep `Gemini 已啟用` 找出所有出現位置
+2. 移除 JSX，不改任何後端邏輯
+3. `npm run build` 確認零錯誤
+
+**風險：** 低
+
+---
+
+## 待辦 B：Bug 7 — ClassHeatmapPanel 課程 tab 重複名稱
+
+**症狀：** 課程篩選 tab 同名課程出現多次（Linear Algebra × 3 等）
+
+**調查順序：**
+1. `ClassHeatmapPanel.tsx` — tab 渲染邏輯是否有去重
+2. `hooks/useApi.ts` — heatmap/courses hook 回傳資料是否已含重複
+3. 後端 `/api/courses` — DB 是否有重複 row
+
+**修復目標：** 以 `course_id` 為 key 去重，tab 不重複顯示，資料不受影響
+
+**影響範圍：** `ClassHeatmapPanel.tsx`（前端去重優先）
+
+**風險：** 低
+
+---
+
+## 待辦 C：ProgressPanel.tsx — 學習進度趨勢折線圖
+
+**目標：** 實作前端進度頁，消耗已完成的 `/api/progress/concepts?days=30` API
+
+**規格：**
+- Recharts `LineChart`，X 軸為日期，Y 軸為 avg_score（0–1）
+- 每個概念一條線，顏色依趨勢：improving（綠）/ declining（紅）/ plateaued（灰）
+- 每條線旁顯示趨勢徽章 `↑` / `↓` / `→`
+- 無資料時顯示「尚無作答紀錄」提示
+- 掛到 `review` 分頁（StudyPlansPanel 下方）或新分頁
+
+**影響範圍：**
+- 新建 `webapp/frontend/src/components/ProgressPanel.tsx`
+- `webapp/frontend/src/App.tsx`（引入元件、加 nav tab 或插入 review 頁）
+- `hooks/useApi.ts`（新增 `useConceptProgress` hook）
+
+**風險：** 低–中（Recharts 已在 package.json）
 
 ---
 

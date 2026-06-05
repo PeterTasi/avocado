@@ -18,7 +18,14 @@ function errorRateFill(rate: number): string {
 
 export function ClassHeatmapPanel() {
   const { data: coursesData, isLoading: coursesLoading } = useCourses();
-  const courses = coursesData?.items ?? [];
+  const allCourses = coursesData?.items ?? [];
+  // 同名課程可能因多次上傳產生多筆，以 subject 去重，保留最新（API 已按 uploaded_at DESC）
+  const seenSubjects = new Set<string>();
+  const courses = allCourses.filter(c => {
+    if (seenSubjects.has(c.subject)) return false;
+    seenSubjects.add(c.subject);
+    return true;
+  });
 
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);

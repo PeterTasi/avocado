@@ -198,6 +198,11 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
     return m;
   }, [layout]);
 
+  const clearPath = useCallback(() => {
+    setStartId(null);
+    setEndId(null);
+  }, []);
+
   // ── Pan & zoom ───────────────────────────────────────────────────────────
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as Element).closest(".mm-node")) return;
@@ -229,11 +234,6 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   }, [zoom]);
 
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1); }, []);
-
-  const clearPath = useCallback(() => {
-    setStartId(null);
-    setEndId(null);
-  }, []);
 
   const togglePathMode = useCallback(() => {
     setPathMode((on) => {

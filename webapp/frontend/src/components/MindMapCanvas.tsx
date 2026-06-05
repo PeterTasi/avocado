@@ -164,6 +164,9 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
     [graph, startId, endId],
   );
 
+  const highlightActive = pathMode && pathResult.found;
+  const pathNodeSet = useMemo(() => new Set(pathResult.nodeIds), [pathResult]);
+
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
@@ -362,14 +365,16 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           const perpX = (-(tgt.y - src.y) / dist) * 40;
           const perpY = ((tgt.x - src.x) / dist) * 40;
 
+          const onPath = pathResult.edgeKeys.has(`${edge.source}|${edge.target}`);
+          const dimmed = highlightActive && !onPath;
           return (
             <path
               key={`edge-${i}`}
               d={`M${src.x},${src.y} Q${mx + perpX},${my + perpY} ${tgt.x},${tgt.y}`}
               fill="none"
-              stroke={color}
-              strokeWidth="1.8"
-              strokeOpacity="0.6"
+              stroke={onPath ? "#4f46e5" : color}
+              strokeWidth={onPath ? 2.6 : 1.8}
+              strokeOpacity={dimmed ? 0.12 : onPath ? 0.95 : 0.6}
               strokeDasharray={isDashed ? "5,3" : undefined}
               markerEnd={
                 key === "prerequisite" || key === "progression" || key === "next"
@@ -424,12 +429,17 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           const isSelected = node.id === selected;
           const pW = pillWidth(displayName(node.name));
           const label = displayName(node.name);
+          const isStart = node.id === startId;
+          const isEnd = node.id === endId;
+          const onPath = pathNodeSet.has(node.id);
+          const dimmed = highlightActive && !onPath;
+          const ringColor = isStart ? "#0ea472" : isEnd ? "#e11d48" : "#4f46e5";
 
           return (
             <g
               key={node.id}
               className="mm-node"
-              style={{ cursor: "pointer" }}
+              style={{ cursor: "pointer", opacity: dimmed ? 0.2 : 1, transition: "opacity 160ms var(--ease-out)" }}
               onClick={() => handleNodeClick(node.id)}
             >
               {/* Mastered glow */}
@@ -452,9 +462,9 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
                 height={PILL_H}
                 rx="10"
                 fill={isSelected ? `${color}18` : "#ffffff"}
-                stroke={isSelected ? color : node.chapterColor}
-                strokeWidth={isSelected ? 2 : 1.2}
-                strokeOpacity={isSelected ? 1 : 0.65}
+                stroke={highlightActive && onPath ? ringColor : isSelected ? color : node.chapterColor}
+                strokeWidth={highlightActive && onPath ? 2.6 : isSelected ? 2 : 1.2}
+                strokeOpacity={highlightActive && onPath ? 1 : isSelected ? 1 : 0.65}
               />
               {/* Mastery dot */}
               <circle
@@ -474,6 +484,20 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               >
                 {label}
               </text>
+              {/* 起/終點標記 */}
+              {pathMode && (isStart || isEnd) && (
+                <text
+                  x={node.x - pW / 2 - 6}
+                  y={node.y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize="11"
+                  fontWeight="700"
+                  fill={isStart ? "#0ea472" : "#e11d48"}
+                >
+                  {isStart ? "起" : "終"}
+                </text>
+              )}
             </g>
           );
         })}

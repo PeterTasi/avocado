@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-06-05 — UI 清理 + Bug 7 修復 + ProgressPanel 學習趨勢圖 ✅
+
+- **移除「Gemini 已啟用」pill：** 頂欄右側、學習流程卡、系統狀態卡「運行模式」行、目前課程卡的 runtimeLabel paragraph、SetupPanel「目前狀態」的系統模式 card-subtle，共 5 處全部移除。`runtimeLabel` / `runtimeHint` 變數保留（仍用於「今晚優先」卡片的 fallback 文字）。
+
+- **Bug 7 — ClassHeatmapPanel 課程 tab 重複：**
+  - **根因：** 同一門課上傳多次 → `courses` 表多筆同 `subject` 不同 `id` 的 row；`list_courses()` 按 `uploaded_at DESC` 回傳全部，前端沒去重。
+  - **修法：** `ClassHeatmapPanel.tsx` 在渲染 tab 前以 `subject` 去重，保留最新一筆（API 已排序，第一筆最新）。不動後端，不影響熱力圖資料。
+
+- **ProgressPanel.tsx — 學習進度趨勢圖（P2 Step 5）：**
+  - 新建 `webapp/frontend/src/components/ProgressPanel.tsx`：Recharts `LineChart`，X 軸日期、Y 軸 avg_score（%），每個概念一條線，顏色依趨勢（綠/紅/灰）。
+  - 概念列表卡片：顯示最新得分 + 趨勢徽章（↑進步中 / ↓需加強 / →穩定）。
+  - 右上角 7/14/30 天切換 tab。無資料時顯示提示。
+  - `useApi.ts` 新增 `useConceptProgress(days)` hook + `ConceptProgressItem` / `ConceptDailyPoint` 型別。
+  - 掛入複習頁（`activeView === "review"`）`MasteryTable` 下方，以 `<ErrorBoundary>` 包裹。
+
+---
+
 ## 2026-06-04 — P5/P1/P2 架構實作：Migration 系統 + Course Scope + TIMESTAMPTZ + 進度 API ✅
 
 - **P5 Migration 系統：** `database.py` 加 `schema_version` 表 + `_run_migrations()` 方法，用版本號追蹤 migration 狀態。Migration 001 把 5 個 TEXT 時間欄位轉 TIMESTAMPTZ（`attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、`review_plan.next_review_at`、`class_node_stats.updated_at`）。

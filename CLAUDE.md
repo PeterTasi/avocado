@@ -266,14 +266,9 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 ## 待處理事項
 
-### 未實作功能
-
-- **學習進度追蹤前端（P2 Step 5）：** `ProgressPanel.tsx` — Recharts 折線圖 + 趨勢徽章。後端 `GET /api/progress/concepts?days=30` 已完成。
-
 ### 未修 Bug
 
 - **Bug 5 方案 B/C（選配）：** 後端加 `session_id` 欄位限制出題範圍（方案 B）；或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端確認 modal）已完成，競賽夠用。
-- **Bug 7：** `ClassHeatmapPanel` 課程 tab 列表出現重複課程名稱（e.g. Linear Algebra × 3）。需查前端 `useApi.ts` hook 或 `ClassHeatmapPanel` 是否對 course_id 去重。
 
 ### 架構技術債
 
@@ -284,12 +279,11 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | **P4** | 待做 | mastery 聚合在 Python 端每次拉 5000 筆 attempts（該用 SQL `GROUP BY`，效能問題） |
 | **P6** | 待做 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零（賽後處理） |
 
-### 本日完成（2026-06-04，已推送）
+### 本日完成（2026-06-05，已推送）
 
-- ✅ **全站部署修復：** 前端改動沒 commit，Render 顯示舊版。已補 commit push。
-- ✅ **Bug 8：** 複習頁假通過率（無資料時顯示 63.4%）。後端加 `has_data` 旗標，前端無資料顯示提示。
-- ✅ **網站標題：** 改為純 `avocado`，移除「自適應學習儀表板」後綴。
-- ✅ **全站酪梨配色：** 從 logo bibilavocado.png 提取色板，indigo 全換深酪梨綠 (#3d6b28)，背景改奶油米色，語意色改森林綠/暖棕/暖紅，MindMapCanvas 同步更新。
+- ✅ **移除「Gemini 已啟用」pill：** 頂欄、學習流程卡、系統狀態卡等 5 處全部移除。
+- ✅ **Bug 7：** `ClassHeatmapPanel` 課程 tab 重複名稱 → 以 `subject` 去重，保留最新一筆。
+- ✅ **ProgressPanel.tsx（P2 Step 5）：** Recharts 折線圖 + 趨勢徽章（↑/↓/→），掛入複習頁底部。
 
 ---
 

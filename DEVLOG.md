@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-06-05 — A5 清理 repo：雜物加進 .gitignore ✅
+
+- **動機:** 架構健檢 A5。repo 根目錄有非專案來源的暫存產物會被 `git add .` 誤掃進 commit。
+- **加入 `.gitignore`:** `.superpowers/`(Claude Code tooling 區)、`architecture-explain.html`、
+  `bug-report.html`(本地暫存產物區)。
+- **註:** `.github/workflows/react-doctor.yml` 是合法 CI 設定,**不 ignore**(留待之後決定是否提交)。
+
+---
+
+## 2026-06-05 — A3 刪死碼：移除未掛載的圖譜元件 ✅
+
+- **動機:** 架構健檢 A3。路徑尋找功能最後做在 `MindMapCanvas`,確認另兩個圖譜元件成為死碼。
+- **查證（刪前必做）:** `grep` 全 `src/` 確認 `ForceGraphCanvas` 與 `GraphCanvas` **零引用**;
+  `MindMapCanvas` 仍被 `KnowledgeGraphPanel.tsx` 使用 → 保留。
+- **刪除:**
+  - `components/ForceGraphCanvas.tsx`、`components/GraphCanvas.tsx` 兩檔。
+  - `package.json` 依賴 `react-force-graph-2d`(唯一使用者是 ForceGraphCanvas,已刪)。
+  - `vite.config.js` 連帶清掉 `manualChunks.forcegraph` 與 `optimizeDeps.include` 的對應項
+    (否則產生 0.03 kB 空 chunk)。
+- **驗證:** `npm run build` 兩次皆綠(`✓ built`),無壞 import、無 TS 錯誤,空 chunk 消失。
+- **保留:** `utils/graphUtils.ts`(MindMapCanvas 路徑功能在用)。
+
+---
+
+## 2026-06-05 — 架構健檢（Opus review，未動程式碼）🩺
+
+- **動機:** 競賽前請 Opus 全面檢查架構,讀實際程式碼(非僅文件)後給評分與改善清單。
+- **總評分:** **8 / 10**(以大二競賽標準屬高於平均)。模組化、migration + `schema_version`、
+  連線池、rate limit、cache、optional auth、OCR fallback chain、`run_in_threadpool`、
+  約 1000 行測試皆到位;`_estimate_pass_probability` 誠實標註為未驗證 placeholder。
+- **發現的問題(依嚴重度,已寫入 `plan.md` 健檢表 A1–A6):**
+  - **A1 🔴 致命 — 全域可變單例 → 單租戶:** `webapp/main.py:45` import 時即建 `_service`,
+    所有請求共用同一份 service / 知識圖譜 / mastery,沒有 user 概念;`_get_service()` 的
+    `set_api_key()` 改動共享全域 → 併發 race。**既有 Bug 5「跨 Session 概念殘留」即此症狀,
+    非獨立 bug**。短期解=加 `session_id` scope(plan 方案 B);中期解(賽後)=`users` 表 + token。
+  - **A2 🟠 高 — 依賴全用 `>=` 未釘版本:** `requirements.txt` redeploy 可能無預警壞掉。
+    解:`pip freeze` 或改 `==`。**列為競賽 P1(最快保命)**。
+  - **A3 🟠 高 — 三個圖譜元件並存含死碼:** `ForceGraphCanvas`(未掛載) / `MindMapCanvas` / `GraphCanvas`。
+  - **A4 🟡 中 — God object:** `database.py` 806 / `pipeline.py` 628 / `App.tsx` 803 行。
+    **競賽期間不動**(風險 > 收益),賽後再拆。
+  - **A5 🟡 中 — repo 根目錄雜物未追蹤:** `architecture-explain.html`、`bug-report.html`、
+    `.superpowers/` → 應進 `.gitignore`。
+  - **A6 🟢 低 — ChromaDB 本地碟 redeploy 歸零(已知 P6,賽後處理)。**
+- **驗證安全性:** SQL 幾乎全參數化;唯一 f-string(`database.py:194` ALTER COLUMN)的表名/欄名
+  來自寫死清單,**非使用者輸入,無注入風險**。
+- **建議執行順序:** A2 → A1 短期(`session_id`) → A5 → A3 → (賽後)A1 完整多租戶 / A4 拆檔。
+- **產出:** `plan.md` 新增「🩺 架構健檢結果」一節(嚴重度表 + 具體作法 + 優先順序)。本次未動任何程式碼。
+
+---
+
 ## 2026-06-05 — 知識圖譜路徑尋找模式 ✅
 
 - **功能目標：** 在現有 `MindMapCanvas` 上加「路徑模式」，使用者點兩個概念，BFS 自動找出最短先修路徑並高亮顯示。

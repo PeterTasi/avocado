@@ -138,3 +138,74 @@ export function buildGraphLayout(graph: ParsedGraph): GraphLayout {
 
   return { positions, groupedByChapter, width, height, nodeWidth, nodeHeight };
 }
+
+// ── Learning-path BFS ────────────────────────────────────────────────────────
+
+// 只有這兩種 relation 有明確「先學→後學」方向語意；其餘（related/semantic…）忽略。
+const DIRECTED_RELATIONS = new Set(["prerequisite", "progression"]);
+
+export interface PathResult {
+  found: boolean;
+  nodeIds: string[]; // 起點…終點的有序節點 id（含頭尾）
+  edgeKeys: Set<string>; // "src|tgt"，用於高亮路徑邊
+  steps: number; // nodeIds.length - 1
+}
+
+const EMPTY_PATH: PathResult = { found: false, nodeIds: [], edgeKeys: new Set(), steps: 0 };
+
+/**
+ * 用 prerequisite/progression 順向邊跑 BFS，找 startId→endId 的最短（邊數最少）學習路徑。
+ * 邊 source→target 語意：source 是先修概念，順著方向就是學習順序。
+ */
+export function findLearningPath(
+  graph: ParsedGraph,
+  startId: string | null,
+  endId: string | null,
+): PathResult {
+  if (!startId || !endId || startId === endId) return { ...EMPTY_PATH, edgeKeys: new Set() };
+
+  const nodeIds = new Set(graph.nodes.map((n) => n.id));
+  if (!nodeIds.has(startId) || !nodeIds.has(endId)) return { ...EMPTY_PATH, edgeKeys: new Set() };
+
+  const adj = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    const rel = edge.relation.split(" ")[0].toLowerCase();
+    if (!DIRECTED_RELATIONS.has(rel)) continue;
+    if (!adj.has(edge.source)) adj.set(edge.source, []);
+    adj.get(edge.source)!.push(edge.target);
+  }
+
+  const parent = new Map<string, string>();
+  const visited = new Set<string>([startId]);
+  const queue: string[] = [startId];
+  let reached = false;
+  while (queue.length) {
+    const cur = queue.shift()!;
+    if (cur === endId) {
+      reached = true;
+      break;
+    }
+    for (const next of adj.get(cur) ?? []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        parent.set(next, cur);
+        queue.push(next);
+      }
+    }
+  }
+  if (!reached) return { ...EMPTY_PATH, edgeKeys: new Set() };
+
+  const path: string[] = [];
+  let node: string | undefined = endId;
+  while (node !== undefined) {
+    path.unshift(node);
+    node = parent.get(node);
+  }
+
+  const edgeKeys = new Set<string>();
+  for (let i = 0; i < path.length - 1; i++) {
+    edgeKeys.add(`${path[i]}|${path[i + 1]}`);
+  }
+
+  return { found: true, nodeIds: path, edgeKeys, steps: path.length - 1 };
+}

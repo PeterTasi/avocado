@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConceptMastery } from "../hooks/useApi";
-import type { ParsedGraph, GraphNode } from "../utils/graphUtils";
+import { findLearningPath } from "../utils/graphUtils";
+import type { ParsedGraph, GraphNode, PathResult } from "../utils/graphUtils";
 
 // ── Colour palettes ──────────────────────────────────────────────────────────
 
@@ -154,6 +155,18 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1.0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pathMode, setPathMode] = useState(false);
+  const [startId, setStartId] = useState<string | null>(null);
+  const [endId, setEndId] = useState<string | null>(null);
+
+  const pathResult: PathResult = useMemo(
+    () => findLearningPath(graph, startId, endId),
+    [graph, startId, endId],
+  );
+
+  const highlightActive = pathMode && pathResult.found;
+  const pathNodeSet = useMemo(() => new Set(pathResult.nodeIds), [pathResult]);
+
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
@@ -185,12 +198,18 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
     return m;
   }, [layout]);
 
+  const clearPath = useCallback(() => {
+    setStartId(null);
+    setEndId(null);
+  }, []);
+
   // ── Pan & zoom ───────────────────────────────────────────────────────────
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as Element).closest(".mm-node")) return;
+    if (pathMode) clearPath();
     dragging.current = true;
     last.current = { x: e.clientX, y: e.clientY };
-  }, []);
+  }, [pathMode, clearPath]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging.current) return;
@@ -215,6 +234,31 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   }, [zoom]);
 
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1); }, []);
+
+  const togglePathMode = useCallback(() => {
+    setPathMode((on) => {
+      if (on) clearPath();
+      return !on;
+    });
+    setSelected(null);
+  }, [clearPath]);
+
+  const handleNodeClick = useCallback(
+    (id: string) => {
+      if (!pathMode) {
+        setSelected((cur) => (cur === id ? null : id));
+        return;
+      }
+      // 路徑模式：第一下=起點、第二下=終點、第三下=重設新起點
+      if (!startId || (startId && endId)) {
+        setStartId(id);
+        setEndId(null);
+      } else if (id !== startId) {
+        setEndId(id);
+      }
+    },
+    [pathMode, startId, endId],
+  );
 
   // ── Selected node info ────────────────────────────────────────────────────
   const selectedConcept = useMemo(
@@ -321,14 +365,16 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           const perpX = (-(tgt.y - src.y) / dist) * 40;
           const perpY = ((tgt.x - src.x) / dist) * 40;
 
+          const onPath = pathResult.edgeKeys.has(`${edge.source}|${edge.target}`);
+          const dimmed = highlightActive && !onPath;
           return (
             <path
               key={`edge-${i}`}
               d={`M${src.x},${src.y} Q${mx + perpX},${my + perpY} ${tgt.x},${tgt.y}`}
               fill="none"
-              stroke={color}
-              strokeWidth="1.8"
-              strokeOpacity="0.6"
+              stroke={onPath ? "#4f46e5" : color}
+              strokeWidth={onPath ? 2.6 : 1.8}
+              strokeOpacity={dimmed ? 0.12 : onPath ? 0.95 : 0.6}
               strokeDasharray={isDashed ? "5,3" : undefined}
               markerEnd={
                 key === "prerequisite" || key === "progression" || key === "next"
@@ -383,13 +429,18 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           const isSelected = node.id === selected;
           const pW = pillWidth(displayName(node.name));
           const label = displayName(node.name);
+          const isStart = node.id === startId;
+          const isEnd = node.id === endId;
+          const onPath = pathNodeSet.has(node.id);
+          const dimmed = highlightActive && !onPath;
+          const ringColor = isStart ? "#0ea472" : isEnd ? "#e11d48" : "#4f46e5";
 
           return (
             <g
               key={node.id}
               className="mm-node"
-              style={{ cursor: "pointer" }}
-              onClick={() => setSelected(node.id === selected ? null : node.id)}
+              style={{ cursor: "pointer", opacity: dimmed ? 0.2 : 1, transition: "opacity 160ms var(--ease-out)" }}
+              onClick={() => handleNodeClick(node.id)}
             >
               {/* Mastered glow */}
               {node.status === "mastered" && (
@@ -411,9 +462,9 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
                 height={PILL_H}
                 rx="10"
                 fill={isSelected ? `${color}18` : "#ffffff"}
-                stroke={isSelected ? color : node.chapterColor}
-                strokeWidth={isSelected ? 2 : 1.2}
-                strokeOpacity={isSelected ? 1 : 0.65}
+                stroke={highlightActive && onPath ? ringColor : isSelected ? color : node.chapterColor}
+                strokeWidth={highlightActive && onPath ? 2.6 : isSelected ? 2 : 1.2}
+                strokeOpacity={highlightActive && onPath ? 1 : isSelected ? 1 : 0.65}
               />
               {/* Mastery dot */}
               <circle
@@ -433,10 +484,40 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               >
                 {label}
               </text>
+              {/* 起/終點標記 */}
+              {pathMode && (isStart || isEnd) && (
+                <text
+                  x={node.x - pW / 2 - 6}
+                  y={node.y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize="11"
+                  fontWeight="700"
+                  fill={isStart ? "#0ea472" : "#e11d48"}
+                >
+                  {isStart ? "起" : "終"}
+                </text>
+              )}
             </g>
           );
         })}
       </svg>
+
+      {/* ── 路徑模式工具列 ── */}
+      <div className="absolute left-3 top-3 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={togglePathMode}
+          className={pathMode ? "btn-primary px-3 py-1.5 text-xs" : "btn-secondary px-3 py-1.5 text-xs"}
+        >
+          {pathMode ? "路徑模式：開" : "路徑模式"}
+        </button>
+        {pathMode && (startId || endId) && (
+          <button type="button" onClick={clearPath} className="btn-secondary px-3 py-1.5 text-xs">
+            清除
+          </button>
+        )}
+      </div>
 
       {/* ── Zoom controls ─────────────────────────────────────────── */}
       <div className="absolute right-3 top-3 flex flex-col gap-1">
@@ -456,8 +537,34 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         ))}
       </div>
 
-      {/* ── Selected node detail panel ─────────────────────────────── */}
-      {selectedConcept && (
+      {/* ── 路徑模式回饋（取代詳情卡） ── */}
+      {pathMode && (
+        <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
+          {!startId || !endId ? (
+            <p className="text-[color:var(--text-secondary)]">
+              點第一個概念設為<span className="font-semibold text-[color:var(--high)]">起點</span>，再點第二個設為<span className="font-semibold text-[color:var(--low)]">終點</span>。
+            </p>
+          ) : pathResult.found ? (
+            <div>
+              <p className="font-semibold text-[color:var(--text-primary)]">
+                共 {pathResult.steps} 步
+              </p>
+              <p className="mt-1 text-[color:var(--text-secondary)]">
+                {pathResult.nodeIds
+                  .map((id) => layout.concepts.find((c) => c.id === id)?.name ?? id)
+                  .join(" → ")}
+              </p>
+            </div>
+          ) : (
+            <p className="text-[color:var(--text-secondary)]">
+              找不到先修路徑——可能 LLM 尚未建立完整的 prerequisite 關係，試試其他兩個概念。
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Selected node detail panel（僅非路徑模式） ── */}
+      {!pathMode && selectedConcept && (
         <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
           <div className="flex items-start justify-between gap-2">
             <div>

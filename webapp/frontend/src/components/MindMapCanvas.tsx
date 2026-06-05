@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConceptMastery } from "../hooks/useApi";
-import type { ParsedGraph, GraphNode } from "../utils/graphUtils";
+import { findLearningPath } from "../utils/graphUtils";
+import type { ParsedGraph, GraphNode, PathResult } from "../utils/graphUtils";
 
 // ── Colour palettes ──────────────────────────────────────────────────────────
 
@@ -154,6 +155,15 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1.0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pathMode, setPathMode] = useState(false);
+  const [startId, setStartId] = useState<string | null>(null);
+  const [endId, setEndId] = useState<string | null>(null);
+
+  const pathResult: PathResult = useMemo(
+    () => findLearningPath(graph, startId, endId),
+    [graph, startId, endId],
+  );
+
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
@@ -188,9 +198,10 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   // ── Pan & zoom ───────────────────────────────────────────────────────────
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as Element).closest(".mm-node")) return;
+    if (pathMode) clearPath();
     dragging.current = true;
     last.current = { x: e.clientX, y: e.clientY };
-  }, []);
+  }, [pathMode, clearPath]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging.current) return;
@@ -215,6 +226,36 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   }, [zoom]);
 
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1); }, []);
+
+  const clearPath = useCallback(() => {
+    setStartId(null);
+    setEndId(null);
+  }, []);
+
+  const togglePathMode = useCallback(() => {
+    setPathMode((on) => {
+      if (on) clearPath();
+      return !on;
+    });
+    setSelected(null);
+  }, [clearPath]);
+
+  const handleNodeClick = useCallback(
+    (id: string) => {
+      if (!pathMode) {
+        setSelected((cur) => (cur === id ? null : id));
+        return;
+      }
+      // 路徑模式：第一下=起點、第二下=終點、第三下=重設新起點
+      if (!startId || (startId && endId)) {
+        setStartId(id);
+        setEndId(null);
+      } else if (id !== startId) {
+        setEndId(id);
+      }
+    },
+    [pathMode, startId, endId],
+  );
 
   // ── Selected node info ────────────────────────────────────────────────────
   const selectedConcept = useMemo(
@@ -389,7 +430,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               key={node.id}
               className="mm-node"
               style={{ cursor: "pointer" }}
-              onClick={() => setSelected(node.id === selected ? null : node.id)}
+              onClick={() => handleNodeClick(node.id)}
             >
               {/* Mastered glow */}
               {node.status === "mastered" && (

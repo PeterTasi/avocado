@@ -488,6 +488,34 @@ class StudyRepository:
             )
         return attempts
 
+    def concept_score_summary(self, course_id: str | None = None) -> dict[str, dict]:
+        """Return avg_score and attempt count per concept via SQL GROUP BY."""
+        with self._connect() as cur:
+            if course_id:
+                cur.execute(
+                    """
+                    SELECT a.concept_id, AVG(a.score) AS avg_score, COUNT(*) AS cnt
+                    FROM attempts a
+                    JOIN concepts c ON c.id = a.concept_id
+                    WHERE c.course_id = %s
+                    GROUP BY a.concept_id
+                    """,
+                    (course_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT concept_id, AVG(score) AS avg_score, COUNT(*) AS cnt
+                    FROM attempts
+                    GROUP BY concept_id
+                    """
+                )
+            rows = cur.fetchall()
+        return {
+            row["concept_id"]: {"avg_score": float(row["avg_score"]), "count": int(row["cnt"])}
+            for row in rows
+        }
+
     def save_review_plan(self, review_items: list[ReviewItem]) -> None:
         with self._connect() as cur:
             cur.execute("DELETE FROM review_plan")

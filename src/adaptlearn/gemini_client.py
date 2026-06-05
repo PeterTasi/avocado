@@ -74,6 +74,16 @@ class GeminiClient:
                 client_kwargs["http_options"] = genai_types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS)
             self._client = genai.Client(**client_kwargs)
 
+    def set_api_key(self, api_key: str) -> None:
+        self.api_key = api_key.strip()
+        self.enabled = bool(self.api_key) and genai is not None
+        self._client = None
+        if self.enabled:
+            client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+            if genai_types is not None:
+                client_kwargs["http_options"] = genai_types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS)
+            self._client = genai.Client(**client_kwargs)
+
     def _generate_content(self, contents: Any) -> str:
         if not self.enabled or not self._client:
             return ""

@@ -7,6 +7,37 @@
 
 ---
 
+# 🔵 待規劃：知識圖譜路徑尋找模式（Feature — 交給 Opus 設計架構）
+
+## 功能目標
+
+把知識圖譜從「概念圓圈擺放」升級成「可追蹤學習路徑的心智圖」。
+
+**核心體驗：** 選兩個概念（起點 + 終點），系統自動用 BFS 找出最短學習路徑，在圖上高亮顯示「從 A 到 B 需要先學哪幾個概念」。
+
+## 現有基礎
+
+- `ForceGraphCanvas.tsx`：力導向圖已完整寫好，目前沒掛進主 UI
+- `MindMapCanvas.tsx`：現行 SVG 放射狀圖，掛在 `KnowledgeGraphPanel.tsx`
+- 後端 `/api/graph` 回傳 Graphviz DOT 字串，`parseDotGraph()` 轉成 `{ nodes, edges }`
+- Edge 已有 `relation` 欄位（prerequisite / progression / related / etc.）
+
+## 待 Opus 規劃的子問題
+
+1. **前端 BFS 路徑尋找算法：** 如何從 `ParsedGraph` 的 edges 建 adjacency map，跑 BFS 找最短路徑
+2. **互動模式設計：** 選起點 / 選終點 UI（點擊第一個 = 起點、點擊第二個 = 終點，或另有 UI）；如何清除選擇
+3. **視覺高亮：** 路徑上的節點/邊變色，非路徑節點變淡（opacity），路徑步數顯示
+4. **是否要切換到 `ForceGraphCanvas`** 還是在 `MindMapCanvas` 上加路徑功能？兩者取捨？
+5. **後端是否需要改動：** 目前 DOT 格式是否包含足夠的 edge 方向資訊？還是要新 API？
+
+## 已知限制
+
+- 力導向圖每次初始位置不同（可用 `d3-force` 的 seed 固定）
+- LLM 產出的 prerequisite 關係不一定完整，路徑可能找不到（需要 fallback UI）
+- 若只有 `related` 邊（無向），BFS 可走但語意上不是嚴格先修
+
+---
+
 # 🟡 本日待辦（2026-06-05）
 
 ## 待辦 A：移除「Gemini 已啟用」pill（UI 清理）
@@ -270,7 +301,7 @@ Linear Algebra × 3、通用課程 × 2、General Course 單獨出現。
 > **P1/P2 依賴關係：** P2 的 Step 4 progress API 需要 P1 的 course-scope 才有意義
 > （否則跨課程 attempts 混在一起）。順序仍是 **P5 → P1 → P2**。
 
-## P3 服務單例的併發競態 — `_service_lock` 宣告了卻沒用
+## ✅ P3 服務單例的併發競態 — `_service_lock` 宣告了卻沒用（2026-06-05 修）
 
 - **證據：** `main.py:46` 宣告 `_service_lock = asyncio.Lock()`，註解寫「Fix #2」，
   但 `_get_service`（`main.py:144`）切換 API key、重建 service 時**從未 acquire 這個 lock**。
@@ -282,7 +313,7 @@ Linear Algebra × 3、通用課程 × 2、General Course 單獨出現。
 - **影響範圍：** `main.py:144-158`、`pipeline.py:__init__`（讓 key 可熱替換）。
 - **風險：** 低。
 
-## P4 掌握度聚合在 Python 端做，每次拉 5000 筆 attempts
+## ✅ P4 掌握度聚合在 Python 端做，每次拉 5000 筆 attempts（2026-06-05 修）
 
 - **證據：** `pipeline.py` `get_concept_mastery` / `get_chapter_mastery` / `get_tonight_*`
   各自 `list_attempts(limit=5000)` 後在 Python 用 `defaultdict` 聚合。

@@ -44,6 +44,10 @@ class AdaptLearnService:
         )
         self.vector_store = ConceptVectorStore(settings.chroma_path)
 
+    def set_api_key(self, api_key: str) -> None:
+        self.gemini.set_api_key(api_key)
+        logger.info("Gemini API key updated (service not rebuilt)")
+
     def close(self) -> None:
         """Release all resources (DB connections, vector store singletons)."""
         self.repo.close()
@@ -190,9 +194,9 @@ class AdaptLearnService:
         if not concepts:
             return []
 
-        attempts = self.repo.list_attempts(limit=3000)
+        summary = self.repo.concept_score_summary(course_id=active_course_id)
         target_count = max(1, min(len(concepts), question_count // 3 or 1))
-        target_concepts = self._select_weak_concepts(concepts, attempts, target_count)
+        target_concepts = self._select_weak_concepts(concepts, summary, target_count)
 
         questions = build_questions_for_concepts(
             concepts=target_concepts,
@@ -255,23 +259,19 @@ class AdaptLearnService:
         # P1: scope to active course
         active_course_id = self.repo.get_active_course_id()
         concepts = self.repo.list_concepts(course_id=active_course_id)
-        attempts = self.repo.list_attempts(limit=5000)
-
-        scores_by_concept: dict[str, list[float]] = defaultdict(list)
-        for attempt in attempts:
-            scores_by_concept[attempt.concept_id].append(attempt.score)
+        summary = self.repo.concept_score_summary(course_id=active_course_id)
 
         rows: list[dict[str, object]] = []
         for concept in concepts:
-            scores = scores_by_concept.get(concept.id, [])
-            mastery = sum(scores) / len(scores) if scores else 0.0
+            entry = summary.get(concept.id, {})
+            mastery = entry.get("avg_score", 0.0)
             rows.append(
                 {
                     "concept_id": concept.id,
                     "name": concept.name,
                     "chapter": concept.chapter,
                     "mastery": round(mastery, 3),
-                    "attempts": len(scores),
+                    "attempts": entry.get("count", 0),
                     "status": _mastery_band(mastery),
                 }
             )
@@ -471,22 +471,17 @@ class AdaptLearnService:
     def _select_weak_concepts(
         self,
         concepts: list[Concept],
-        attempts: list[Attempt],
+        summary: dict[str, dict],
         target_count: int,
     ) -> list[Concept]:
-        if not attempts:
+        if not summary:
             return concepts[:target_count]
 
-        scores_by_concept: dict[str, list[float]] = {concept.id: [] for concept in concepts}
-        for attempt in attempts:
-            if attempt.concept_id in scores_by_concept:
-                scores_by_concept[attempt.concept_id].append(attempt.score)
-
         def weakness_score(concept: Concept) -> float:
-            scores = scores_by_concept.get(concept.id, [])
-            if not scores:
+            entry = summary.get(concept.id)
+            if not entry:
                 return 1.0
-            return 1.0 - (sum(scores) / len(scores))
+            return 1.0 - entry["avg_score"]
 
         ranked = sorted(concepts, key=weakness_score, reverse=True)
         return ranked[:target_count]

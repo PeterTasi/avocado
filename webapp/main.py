@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -42,11 +41,8 @@ from adaptlearn.pipeline import AdaptLearnService
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# --- Global state with lock for thread safety (🔴 Fix #2) ---
-_service_lock = asyncio.Lock()
 _settings = Settings()
-_active_key = _settings.gemini_api_key
-_service = AdaptLearnService(_settings, api_key=_active_key)
+_service = AdaptLearnService(_settings)
 
 
 @asynccontextmanager
@@ -142,19 +138,10 @@ class GradeRequest(BaseModel):
 
 
 def _get_service(api_key_override: str | None = None) -> AdaptLearnService:
-    global _active_key
-    global _service
-
-    if api_key_override is None:
-        return _service
-
-    normalized = api_key_override.strip()
-    if normalized != _active_key:
-        logger.info("Switching API key, recreating service")
-        old_service = _service
-        _service = AdaptLearnService(_settings, api_key=normalized)
-        _active_key = normalized
-        old_service.close()
+    if api_key_override is not None:
+        normalized = api_key_override.strip()
+        if normalized != _service.gemini.api_key:
+            _service.set_api_key(normalized)
     return _service
 
 

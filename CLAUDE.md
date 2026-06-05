@@ -275,8 +275,8 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | # | 狀態 | 說明 |
 |---|------|------|
 | P1 / P2 / P5 | ✅ 已修 | Course-scope + TIMESTAMPTZ + Migration — 見 DEVLOG 2026-06-04 |
-| **P3** | 待做 | `_service_lock` 宣告卻沒 acquire；換 key 重建整個 service（真 bug，單人 demo 風險低） |
-| **P4** | 待做 | mastery 聚合在 Python 端每次拉 5000 筆 attempts（該用 SQL `GROUP BY`，效能問題） |
+| **P3** | ✅ 已修 | `GeminiClient.set_api_key()` 熱替換，不重建 service — 見 DEVLOG 2026-06-05 |
+| **P4** | ✅ 已修 | `database.concept_score_summary()` SQL GROUP BY，pipeline 改用 dict — 見 DEVLOG 2026-06-05 |
 | **P6** | 待做 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零（賽後處理） |
 
 ### 本日完成（2026-06-05，已推送）

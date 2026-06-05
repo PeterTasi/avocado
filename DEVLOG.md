@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-06-05 — P3 修復（_service_lock）+ P4 效能優化（mastery SQL GROUP BY）✅
+
+- **P3 — Gemini API key 熱替換，不重建 service：**
+  - **根因：** `_get_service()` 換 key 時重建整個 `AdaptLearnService`（DB pool、Chroma 全部重啟），而 `_service_lock` 宣告了卻從未 acquire（`_get_service` 是 sync，無法用 asyncio.Lock）。
+  - **修法：** `GeminiClient.set_api_key(key)` 只重建 HTTP client；`AdaptLearnService.set_api_key(key)` 委派給 `self.gemini`；`main.py` 的 `_get_service()` 改呼叫 `set_api_key()`，移除無效的 `_service_lock` 與 `asyncio` import。
+  - 換 key 時 DB pool、Chroma、Ollama、Chandra 完全不受影響。
+
+- **P4 — mastery 聚合改用 SQL GROUP BY：**
+  - **根因：** `get_concept_mastery()`、`generate_diagnostics()` 各自拉 3000–5000 筆 attempts 到 Python 端做 `defaultdict` 聚合，cache miss 時重複全量載入。
+  - **修法：** `database.concept_score_summary(course_id)` — 一條 `GROUP BY concept_id` 回傳 `{concept_id: {avg_score, count}}`；`pipeline` 改用此 dict，`_select_weak_concepts` 簽名從 `list[Attempt]` 改為 `dict[str, dict]`。
+  - `build_and_save_review_plan` / `get_tonight_study_dashboard` 保留 `list_attempts`（FSRS 需完整時間序列重播）。
+
+---
+
 ## 2026-06-05 — UI 清理 + Bug 7 修復 + ProgressPanel 學習趨勢圖 ✅
 
 - **移除「Gemini 已啟用」pill：** 頂欄右側、學習流程卡、系統狀態卡「運行模式」行、目前課程卡的 runtimeLabel paragraph、SetupPanel「目前狀態」的系統模式 card-subtle，共 5 處全部移除。`runtimeLabel` / `runtimeHint` 變數保留（仍用於「今晚優先」卡片的 fallback 文字）。

@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-06-05 — 知識圖譜路徑尋找模式 ✅
+
+- **功能目標：** 在現有 `MindMapCanvas` 上加「路徑模式」，使用者點兩個概念，BFS 自動找出最短先修路徑並高亮顯示。
+
+- **架構決策：**
+  - 沿用 `MindMapCanvas.tsx`（放射狀 SVG），不切換 `ForceGraphCanvas`（未掛 UI、舊深色主題，重配成本高）。
+  - BFS 只走 `prerequisite` + `progression` 邊（有明確先後語意）；`related`/`semantic` 忽略。
+  - 後端零改動——DOT 邊方向與 `relation` 欄位已足夠。
+  - 不新增 npm 套件，BFS 自寫純函式。
+
+- **`utils/graphUtils.ts` — `findLearningPath()` BFS 純函式：**
+  - 輸入 `ParsedGraph` + `startId` + `endId`，回傳 `PathResult { found, nodeIds, edgeKeys, steps }`。
+  - 建 adjacency map 只收符合條件的邊（順向）；標準 BFS + parent map 回溯組路徑。
+  - 純函式，無 React 依賴，獨立單元測試（`graphUtils.path.test.ts`，直線路徑、多分支取最短、無路徑、起=終等 5 個案例）。
+
+- **`MindMapCanvas.tsx` — 路徑模式 state 與互動：**
+  - 新增 `pathMode`、`startId`、`endId` state；`pathResult` 用 `useMemo` 響應式重算。
+  - 點擊分流：path 模式關 → 維持原有選取/詳情卡行為；path 模式開 → 第一點設起點、第二點設終點、第三點重設起點。
+  - 空白處點擊或「清除」按鈕 → 清空起終點；切出 path 模式自動清空。
+
+- **視覺高亮（SVG render loop）：**
+  - 起點：綠框（`--high`）粗框 + 「起」標記；終點：紅框（`--low`）+ 「終」標記。
+  - 路徑中間節點：accent indigo 框、全 opacity。
+  - 非路徑節點：opacity 0.2；非路徑邊：opacity 0.15；路徑邊：粗 2.5px accent 色。
+  - 未選齊（缺起點或終點）時全部正常顯示，不變淡。
+
+- **控制列與回饋：**
+  - 「路徑模式」toggle 按鈕 + 「清除」按鈕（覆蓋層，沿用 zoom 控制區樣式）。
+  - 提示條：「點第一個概念設為起點，再點第二個設為終點」。
+  - 找到路徑 → 顯示「從 [A] 到 [B] · 共 N 步」+ 有序概念名列。
+  - 找不到 → fallback 文案提示 LLM prerequisite 關係可能尚未建立。
+
+- **Bug 修正（同日）：** `clearPath useCallback` 宣告在 `onMouseDown` 之後，造成 TS block-scoped forward reference 錯誤，修正宣告順序。
+
+---
+
 ## 2026-06-05 — P3 修復（_service_lock）+ P4 效能優化（mastery SQL GROUP BY）✅
 
 - **P3 — Gemini API key 熱替換，不重建 service：**

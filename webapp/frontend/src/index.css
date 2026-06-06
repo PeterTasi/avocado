@@ -462,6 +462,17 @@ a { color: inherit; text-decoration: none; }
 }
 .pill:hover { animation: pill-flash 200ms var(--ease-out) both; }
 
+/* ─── Logo idle animations ───────────────────────────────────── */
+@keyframes avocado-breathe {
+  0%, 100% { transform: scale(1) translateY(0px); }
+  40%       { transform: scale(1.035) translateY(-3px); }
+  70%       { transform: scale(1.02) translateY(-1px); }
+}
+@keyframes avocado-float-subtle {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-2px); }
+}
+
 /* ─── Landing screen animations ─────────────────────────────── */
 @keyframes landing-enter-item {
   from { opacity: 0; transform: translateY(8px) scale(0.96); }

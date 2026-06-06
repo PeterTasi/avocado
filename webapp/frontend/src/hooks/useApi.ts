@@ -76,6 +76,8 @@ export interface ReviewItem {
   next_review_at: string;
   suggested_slot: string;
   reason: string;
+  retention: number;
+  stability: number;
 }
 
 export interface ConceptMastery {

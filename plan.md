@@ -1,134 +1,120 @@
 # AdaptLearn — 任務計畫
 
-> **這份文件是給下一個 session 用的執行計畫。**
+> **這份文件只保留尚未完成的事項。**
 > 更新於 2026-06-05。
->
-> 設計總規範在 `CLAUDE.md`「UI/UX Redesign」章節，先讀那段。
 
 ---
 
-# 🔵 待規劃：知識圖譜路徑尋找模式（Feature — 交給 Opus 設計架構）
+# 🔮 P2 — 遺忘曲線預測顯示（2026-06-06）
 
-## 功能目標
+> 分支：`feat/graph-path-finding`（沿用現有分支）
+> 目標：Review 頁每個複習概念畫一條 FSRS-5 迷你遺忘曲線，視覺化「記憶隨時間衰減」+ 標出「現在」與「該複習」點。差異化賣點，ThetaWave 沒有。
+> 視覺方向已用 brainstorm companion 確認 = **B 迷你遺忘曲線**。
 
-把知識圖譜從「概念圓圈擺放」升級成「可追蹤學習路徑的心智圖」。
+## 關鍵發現
+遺忘預測需要的數字 FSRS **已經算出來了**，目前藏在 `reason` 除錯字串裡：
+- `retrievability`（現在記得的機率）＝ `_build_fsrs_card` 已算
+- `card.stability`（穩定度，畫未來曲線用）＝ 已算
+- `next_review_at`（FSRS 決定的該複習時間）＝ 已有獨立欄位
 
-**核心體驗：** 選兩個概念（起點 + 終點），系統自動用 BFS 找出最短學習路徑，在圖上高亮顯示「從 A 到 B 需要先學哪幾個概念」。
+→ 只要把 `retrievability`、`stability` 從字串**提升成獨立欄位**，前端就能畫曲線。
 
-## 現有基礎
+## 影響範圍
 
-- `ForceGraphCanvas.tsx`：力導向圖已完整寫好，目前沒掛進主 UI
-- `MindMapCanvas.tsx`：現行 SVG 放射狀圖，掛在 `KnowledgeGraphPanel.tsx`
-- 後端 `/api/graph` 回傳 Graphviz DOT 字串，`parseDotGraph()` 轉成 `{ nodes, edges }`
-- Edge 已有 `relation` 欄位（prerequisite / progression / related / etc.）
+| 檔案 | 變更 |
+|---|---|
+| `src/adaptlearn/models.py` | `ReviewItem` 加 `retention: float = 0.0`、`stability: float = 0.0`（有預設值，放欄位最後） |
+| `src/adaptlearn/review_scheduler.py` | `build_review_plan` 把 retrievability→retention、card.stability→stability 塞進 ReviewItem |
+| `src/adaptlearn/database.py` | `review_plan` 表加 `retention REAL`、`stability REAL` 欄位 + migration（ADD COLUMN IF NOT EXISTS 手法）；`save_review_plan`/`list_review_plan` 讀寫兩欄 |
+| `webapp/main.py` | `_serialize_review_item` 加 `retention`、`stability` |
+| `webapp/frontend/src/hooks/useApi.ts` | `ReviewItem` interface 加 `retention`、`stability` |
+| `webapp/frontend/src/components/ForgettingCurve.tsx` | **新建**：吃 retention + stability + nextReviewAt，畫 SVG 衰減曲線 |
+| `webapp/frontend/src/components/StudyPanels.tsx` | `StudyPlansPanel` 整合 ForgettingCurve + 記憶徽章 +「N 天後複習」；收掉醜的 reason 除錯字串 |
+| `tests/test_unit.py` | 更新 `test_save_and_list_review_plan` 加 retention/stability round-trip；新增 build_review_plan retention 範圍測試 |
 
-## 待 Opus 規劃的子問題
+## 實作步驟（TDD where possible）
 
-1. **前端 BFS 路徑尋找算法：** 如何從 `ParsedGraph` 的 edges 建 adjacency map，跑 BFS 找最短路徑
-2. **互動模式設計：** 選起點 / 選終點 UI（點擊第一個 = 起點、點擊第二個 = 終點，或另有 UI）；如何清除選擇
-3. **視覺高亮：** 路徑上的節點/邊變色，非路徑節點變淡（opacity），路徑步數顯示
-4. **是否要切換到 `ForceGraphCanvas`** 還是在 `MindMapCanvas` 上加路徑功能？兩者取捨？
-5. **後端是否需要改動：** 目前 DOT 格式是否包含足夠的 edge 方向資訊？還是要新 API？
+### Step 1 — 後端資料欄位（TDD）
+1. `models.py`：ReviewItem 加 `retention`、`stability`（預設 0.0）
+2. **先寫測試**（`test_unit.py`）：
+   - `test_save_and_list_review_plan` 補 retention/stability round-trip 斷言
+   - 新測試 `test_build_review_plan_populates_retention`：有作答歷史的概念 → retention∈(0,1]、stability>0；無歷史 → retention=0
+3. `review_scheduler.py`：build_review_plan 塞值（讓測試綠）
+4. `database.py`：migration + save/list 讀寫兩欄（讓 round-trip 測試綠）
 
-## 已知限制
+### Step 2 — API 序列化
+`main.py` `_serialize_review_item` 加 retention、stability 兩個 float 欄位。
 
-- 力導向圖每次初始位置不同（可用 `d3-force` 的 seed 固定）
-- LLM 產出的 prerequisite 關係不一定完整，路徑可能找不到（需要 fallback UI）
-- 若只有 `related` 邊（無向），BFS 可走但語意上不是嚴格先修
+### Step 3 — 前端型別 + 曲線元件
+1. `useApi.ts`：ReviewItem 加 retention、stability
+2. 新建 `ForgettingCurve.tsx`：
+   - FSRS-5 公式：`R(t) = (1 + FACTOR·t/S)^DECAY`，`DECAY=-0.5`、`FACTOR=19/81`
+   - 從 retention 反推目前 elapsed：`elapsed = (R^(-2)-1)·S/FACTOR`
+   - 畫未來 N 天的 R(elapsed+Δ) 曲線（SVG path）
+   - 標「現在」點（綠）+「該複習」虛線（用 nextReviewAt 換算天數，琥珀色）
+   - stability=0（無歷史）→ 不畫曲線，顯示「尚無資料」
 
----
+### Step 4 — 整合進 Review 頁
+`StudyPanels.tsx` StudyPlansPanel：每個 item 加 ForgettingCurve + 「🧠 記憶 N%」徽章 + 「⏰ N 天後複習」；移除原本顯示的 reason 除錯字串。
 
-# 🟡 本日待辦（2026-06-05）
-
-## 待辦 A：移除「Gemini 已啟用」pill（UI 清理）
-
-**目標：** 頂欄右側與學習流程卡片內的「Gemini 已啟用」狀態 pill 全數移除，不在頁面上顯示。
-
-**影響範圍：**
-- `webapp/frontend/src/App.tsx`（頂欄右側 pill）
-- 學習流程相關元件（InsightFeed / HomeDashboard 等）
-
-**步驟：**
-1. grep `Gemini 已啟用` 找出所有出現位置
-2. 移除 JSX，不改任何後端邏輯
-3. `npm run build` 確認零錯誤
-
-**風險：** 低
-
----
-
-## 待辦 B：Bug 7 — ClassHeatmapPanel 課程 tab 重複名稱
-
-**症狀：** 課程篩選 tab 同名課程出現多次（Linear Algebra × 3 等）
-
-**調查順序：**
-1. `ClassHeatmapPanel.tsx` — tab 渲染邏輯是否有去重
-2. `hooks/useApi.ts` — heatmap/courses hook 回傳資料是否已含重複
-3. 後端 `/api/courses` — DB 是否有重複 row
-
-**修復目標：** 以 `course_id` 為 key 去重，tab 不重複顯示，資料不受影響
-
-**影響範圍：** `ClassHeatmapPanel.tsx`（前端去重優先）
-
-**風險：** 低
+## 品質要求 / 風險
+- **DB migration**：review_plan 加兩個 nullable REAL 欄位，低風險（同 `concepts.course_id` 手法）
+- **stale trade-off**：retention 存的是重算當下值；「N 天後複習」用 nextReviewAt 即時換算，永遠準確
+- 不新增 npm 套件（SVG 純手刻）
+- 後端 `python -m pytest tests/test_unit.py` 全綠；前端 `npm run build` 零錯誤
 
 ---
 
-## 待辦 C：ProgressPanel.tsx — 學習進度趨勢折線圖
+# ✅ 已完成（待移入 DEVLOG）
 
-**目標：** 實作前端進度頁，消耗已完成的 `/api/progress/concepts?days=30` API
-
-**規格：**
-- Recharts `LineChart`，X 軸為日期，Y 軸為 avg_score（0–1）
-- 每個概念一條線，顏色依趨勢：improving（綠）/ declining（紅）/ plateaued（灰）
-- 每條線旁顯示趨勢徽章 `↑` / `↓` / `→`
-- 無資料時顯示「尚無作答紀錄」提示
-- 掛到 `review` 分頁（StudyPlansPanel 下方）或新分頁
-
-**影響範圍：**
-- 新建 `webapp/frontend/src/components/ProgressPanel.tsx`
-- `webapp/frontend/src/App.tsx`（引入元件、加 nav tab 或插入 review 頁）
-- `hooks/useApi.ts`（新增 `useConceptProgress` hook）
-
-**風險：** 低–中（Recharts 已在 package.json）
+- **UI 動畫升級（A+C）** 2026-06-06 已推送：比比拉布 logo idle 動畫、DailyProgressRing 弧形+數字 count-up、掌握度條/進度條 mount 填充。commit `1c746d4`
+- **A2 釘版本** 2026-06-06 已推送：requirements.txt 全改 `==`。commit `31e12f0`
+- **A1 短期解（session_id scope）決策：不做。** 競賽為單人輪流 demo，現有 `course_id` active scoping（ingest 時 `set_active_course`+`reset_course_state`，出題只取 active course）已完整解決 Bug 5。session 隔離只在「多人同時連同一部署」才需要，對單人 demo 是過度工程。完整多租戶仍屬賽後 A1。
 
 ---
 
-# ✅ 已完成批次（不要重做）
+# 🩺 架構健檢結果（2026-06-05，Opus review）
 
-## 第一批：全站亮色主題遷移
-- SetupPanel、QuizPanel、StudyPanels + MasteryTable、KnowledgeGraphPanel + MindMapCanvas + ClassHeatmapPanel 全部改亮色，legacy-surface 全移除。
+> 總評分 **8 / 10**（以大二競賽標準屬高於平均）。模組化、migration、測試、降級策略都有；
+> 真正的天花板只有一個 —— **全域單例 = 單租戶**。下表依嚴重度排序，並標註競賽優先級。
 
-## 第二批：登入頁 + 像素酪梨 logo + Emil 基礎動效
-- `LandingScreen.tsx`（全螢幕極簡入口，stagger 入場 + 快速離場）
-- `PixelAvocadoLogo.tsx`（AI 暫時版，使用者將自製最終版）
-- `index.css` easing token、`scale(0.97)` 按壓、`prefers-reduced-motion`
-- App.tsx `showLanding` gate、頂欄換酪梨 logo、stat-card stagger 入場
+| # | 嚴重度 | 問題 | 證據 | 競賽優先級 |
+|---|---|---|---|---|
+| A1 | 🔴 致命 | 全域可變單例 → 整個 App 單租戶 | `webapp/main.py:45` `_service = AdaptLearnService(...)` | P2（短期解） |
+| A2 | 🟠 高 | 依賴全用 `>=` 沒釘版本，redeploy 可能無預警壞掉 | `requirements.txt` | **P1（先做）** |
+| ~~A3~~ | ✅ 已完成 | ~~圖譜死碼~~ → 已刪 `ForceGraphCanvas`/`GraphCanvas` + `react-force-graph-2d` 依賴（見 DEVLOG 2026-06-05） | — | — |
+| A4 | 🟡 中 | God object：`database.py` 806 行、`pipeline.py` 628、`App.tsx` 803 | — | 賽後 |
+| ~~A5~~ | ✅ 已完成 | ~~repo 雜物~~ → 已加進 `.gitignore`（見 DEVLOG 2026-06-05） | — | — |
+| A6 | 🟢 低 | ChromaDB 本地碟在 Render free redeploy 後歸零（已知 P6） | `vector_store.py` | 賽後 |
 
-## 第三批：LaTeX / 跨 Session / Emil 動效升級 / 繁中詳解
-- `MathRenderer.tsx`（KaTeX，`$...$` / `\(...\)`）→ 套用至 QuizPanel 題目、feedback、參考答案
-- 跨 Session 確認 modal（`sessionUploaded` prop，未上傳時彈 modal）
-- 題目卡 `.question-enter`、評分結果 `.grade-enter` / `.correct` 彈跳、答對粒子 8 顆多色分散、`.pill:hover` pixel-flash
-- `gemini_client.py` grading + question generation prompt 全改繁體中文，`$...$` 數學式指示
+### 細節與具體作法
+
+**A1 — 全域單例（最致命）**
+- 所有請求共用同一份 service / 知識圖譜 / mastery 狀態，沒有 user 概念。
+- `_get_service()` 的 `set_api_key()` 改動共享全域 → 併發請求 race condition。
+- **plan 既有的 Bug 5「跨 Session 概念殘留」其實就是這個的症狀，不是獨立 bug。**
+- 短期解（demo 夠用）＝ 下方「Bug 5 方案 B」加 `session_id` scope。
+- 中期解（賽後）：加 `users` 表 + token，service 改成 per-request 由 `user_id` 決定 scope，`set_api_key` 改傳參數、不 mutate 全域。
+
+**A2 — 釘版本（5 分鐘保命）**
+- 競賽前 `pip freeze > requirements.lock`，或把現在能跑的版本改成 `==`。
+
+### 競賽建議執行順序
+1. **A2** 釘 requirements 版本（防爆，最快）
+2. **A1 短期解** `session_id` scope（解掉 Bug 5 的根，多人試不穿幫）
+3. ~~A5 `.gitignore` 清乾淨~~ ✅ 已完成
+4. ~~A3 刪死碼~~ ✅ 已完成
+5. A1 完整多租戶、A4 拆 God object → **賽後**
+
+> ⚠️ 注意：A4（拆檔）競賽期間**不要動**，風險高於收益。
 
 ---
 
-# 🟡 剩餘待辦
+# 🟡 選配待辦（競賽後可做）
 
-## ✅ 待辦 0：UI 像素圖示全站替換 (2026-06-04)
+## Bug 5 方案 B/C — 跨 Session 概念殘留（後端根本解）
 
-PixelIcons.tsx 完成，PixelAvocadoLogo.tsx 改用 bibilavocado.png。
-
-## ✅ 待辦 1：像素酪梨 Logo + 品牌名 (2026-06-04)
-
-比比拉布 logo、品牌名 avocado、觸控板縮放 bug 全修完。
-props 格式：`PixelAvocadoLogo` / `size`（頂欄 30、登入頁 104）。
-
----
-
-## 待辦 2：Bug 5 跨 Session 概念殘留（後端根本解）
-
-**現況：** 前端方案 A（確認 modal）已完成，使用者知道在使用舊教材出題。
+**現況：** 前端方案 A（確認 modal）已完成，競賽夠用。
 
 **若之後要更根本的解法：**
 
@@ -136,228 +122,47 @@ props 格式：`PixelAvocadoLogo` / `size`（頂欄 30、登入頁 104）。
   - 需改 `database.py`（schema + query）、`pipeline.py`（ingest 寫入 session_id）、`main.py`（quiz generation 過濾）
 - **方案 C：** 前端提供「清除課程資料」按鈕，呼叫新後端 DELETE endpoint 清空 concepts/questions。
 
-**目前方案 A 已足夠競賽使用，方案 B/C 為選配。**
-
 ---
 
-## ✅ Bug 8：複習頁假通過率（2026-06-04 修）
+## P6 ChromaDB 持久化（賽後處理）
 
-後端加 `has_data` 旗標，無 attempts 時前端改顯示提示。
-
----
-
-## 待辦 3：Bug 7 — 班級熱力圖課程 tab 重複（2026-06-04 發現）
-
-**症狀：** `ClassHeatmapPanel` 的課程篩選 tab 出現同名課程多次（截圖見 2026-06-04 session）：
-Linear Algebra × 3、通用課程 × 2、General Course 單獨出現。
-
-**可能根因（待調查）：**
-1. 前端取得課程列表的 API 回傳了重複課程（`/api/courses` 或 `useHeatmap` hook 沒去重）。
-2. 後端 `courses` 表有重複 row（同名課程被多次 insert）。
-3. 前端 tab 渲染時沒做 `Array.from(new Set(...))`。
-
-**調查順序：** 先看 `ClassHeatmapPanel.tsx` 拿 courses 的邏輯 → 再看 `useApi.ts` hook → 最後查 DB。
-
-**修復目標：** tab 列表去重（以 `course_id` 為 key，不用名稱），不影響熱力圖資料本身。
-
----
-
-# 🔵 架構改善建議（2026-06-04 Opus 評估）
-
-> 評估範圍：`main.py`、`pipeline.py`、`database.py`、`config.py`。
-> 依「競賽 CP 值」排序：**P1–P2 改了同時解 bug + 解鎖已規劃功能，最值得做**；
-> P3–P4 是正確性/效能；P5–P6 是長期健康度，競賽期可延後。
-> 每項都標了 證據 / 影響 / 建議 / 影響範圍。實作前切回 Sonnet。
-
----
-
-## P1 ⭐ 全域 `reset_learning_state` 摧毀所有歷史 — 架構級根因
-
-- **證據：** `pipeline.py:146` 每次 `ingest_material` 都呼叫
-  `self.repo.reset_learning_state(include_attempts=True)`，
-  `database.py:147` 直接 `DELETE FROM concepts / edges / questions / review_plan / attempts`。
-- **問題：** schema 明明有 `course_id`（`concepts.course_id`、`courses` 表），
-  但寫入路徑每次上傳就清空整個 DB。資料模型支援多課程，寫入邏輯卻是「單課程覆蓋」。
-- **影響（三個一起爆）：**
-  1. **Bug 5 跨 Session 殘留的真正根因** — 前端方案 A（modal）只是貼 OK 繃。
-  2. **多課程不可能** — 上傳第二份教材直接洗掉第一份，`/api/courses` 列表與實際概念對不上。
-  3. **封死已規劃 Feature 2（學習進度追蹤）** — attempts 每次上傳被刪，沒有縱向歷史可追。
-- **建議（= Bug 5 方案 B 的正解）：**
-  - 移除 ingest 路徑的全域 wipe。改為查詢全部用 `course_id` 範圍化。
-  - 「目前作用中的課程」用最新 `uploaded_at` 的 course 決定（或前端傳 `active_course_id`）。
-  - `generate_diagnostics` / `list_concepts` / mastery / review 都加 `WHERE course_id = ?`。
-  - attempts 保留歷史（見 P2）。
-- **影響範圍：** `database.py`（查詢加 course 過濾 + 移除 wipe）、`pipeline.py:146` 與下游聚合、
-  `main.py`（concepts/mastery/diagnostics 等端點傳 course_id）。需 schema migration（見 P5）。
-- **風險：** 中。動到核心讀寫，需回歸測試。但這是整個系統最高槓桿的修正。
-
-### ✅ P1 解法設計（細）
-
-> **⚠️ 先決發現：** `_concept_id = uuid5(chapter + name)`（`knowledge_graph.py:480`）**沒有 course 維度**。
-> 目前靠「每次全清」才沒撞 ID。一旦停止 wipe，A 課程與 B 課程的同名同章概念會撞同一個 PK
-> → upsert 互相覆蓋，且 A 的 attempts/questions 會錯接到 B 的概念。**所以 ID 必須先 course-scope。**
-
-**Step 1 — 概念 ID 加入 course 維度（不可省）**
-- `knowledge_graph._concept_id(name, chapter, course_id)`：`raw = f"{course_id}:{chapter}:{name}"`。
-- `build_knowledge_graph(...)` 多收一個 `course_id` 參數，往下傳給 `_concept_id`（含 line 206/241/266/289 的邊解析，全用同一個 course_id 才一致）。
-- `pipeline.ingest_material`：把 `course_id` 的計算**移到 `build_knowledge_graph` 之前**
-  （它只依賴 `course_name + file_name`，現在在 `:131` 才算，提前即可），再傳進去。
-- seed template 概念（`domain_templates`）合併後也要重算 ID 帶 course_id（`_merge_concept_sets` 後補）。
-
-**Step 2 — 用「逐課程 reset」取代「全域 wipe」**
-- 移除 `pipeline.py:146` 的 `reset_learning_state(include_attempts=True)`。
-- `database.py` 新增 `reset_course_state(course_id)`：只刪該 course 的
-  `concepts`（`WHERE course_id=?`）、其衍生 `concept_edges`、`questions`、該 course 的 `review_plan`。
-  **不刪 attempts**（保留歷史，給 P2）。
-- 因 ID 是 deterministic，重傳同一檔案 → 同 course_id → 同概念 ID，attempts 仍正確掛回。
-- `concept_edges` 目前無 `course_id` 欄 → migration 加上（見 P5），或先用
-  `DELETE FROM concept_edges WHERE source_id IN (SELECT id FROM concepts WHERE course_id=?)`（在刪 concepts 之前執行）。
-
-**Step 3 — 讀取路徑全部 course-scope**
-- `database.list_concepts(course_id=None)`、`list_edges(course_id=None)` 加可選過濾。
-- 「作用中課程」決策：`database.get_active_course_id()` = `uploaded_at` 最新的 course。
-  Phase 1 後端自動取最新（前端零改動，直接解掉 Bug 5）；
-  Phase 2 再讓 `main.py` 各端點吃可選 `course_id` query param，前端做課程切換下拉。
-- 下游同步 scope：`generate_diagnostics`、`get_concept_mastery`、`get_chapter_mastery`、
-  `get_tonight_*`、`get_graphviz`、`build_and_save_review_plan` 都改用「作用中課程的 concepts」。
-- `review_plan` 也加 `course_id`（migration），或視為「僅作用中課程」的快取，rebuild 時帶 course。
-
-**Step 4 — 回歸測試**
-- 兩課程連續上傳 → 各自概念都在、互不覆蓋；`/api/courses` 與概念數一致。
-- 同檔案重傳 → 概念不重複、attempts 歷史保留。
-- 跨課程連結（`cross_course_edges`）此時才第一次真的有兩個 course 可連 → 順便驗證它能動。
-
-**前端配合（Phase 1 可不動）：** 解掉根因後，Bug 5 的確認 modal（方案 A）可保留為 UX 提示或移除。
-
-### 拆解小工單（P1）✅ 已完成 (2026-06-04)
-
-- [x] migration：schema_version 表 + `_run_migrations()` (P5)；`concept_edges.course_id` 用 subquery 取代
-- [x] `knowledge_graph._concept_id` + `build_knowledge_graph` 加 `course_id`
-- [x] `pipeline.ingest_material` course_id 提前計算並傳入；移除全域 wipe，改 `reset_course_state`
-- [x] `database`：`reset_course_state(course_id)`、`get_active_course_id()`（in-memory+DB）、`list_concepts/list_edges` 加過濾
-- [x] pipeline 下游聚合（mastery/diagnostics/review/graph）全部 scope 到作用中課程
-- [x] 回歸測試：40/41 通過（1 pre-existing 失敗）
-
-## P2 ⭐ 時間欄位全是 TEXT + 攻擊歷史被刪 → 進度追蹤無法做
-
-- **證據：** `database.py` 所有 `created_at / uploaded_at / next_review_at` 都是 `TEXT`
-  （存 `datetime.now().isoformat()`，naive 本地時間，無時區）。
-- **問題：** 排序靠 ISO 字串字典序「剛好」能用，但無法在 SQL 做日期區間運算
-  （「過去 7 天正確率趨勢」做不到）；server 上 `datetime.now()` 是 naive 時間。
-- **建議：** 欄位改 `TIMESTAMPTZ`，寫入用 `datetime.now(timezone.utc)`。
-  搭配 P1 保留 attempts 後，新增 `GET /api/progress/concepts`：
-  以 `date_trunc('day', created_at)` 分組回傳每概念每日 avg_score 趨勢（improving/declining/plateaued）。
-- **影響範圍：** `database.py`（欄位型別 + 寫入）、`models.py`、新增 `pipeline` 方法 + `main.py` 端點。
-- **風險：** 低–中。是 Feature 2 的地基，做完直接多一個競賽亮點頁面。
-
-### ✅ P2 解法設計（細）
-
-**Step 1 — 欄位 TEXT → TIMESTAMPTZ（migration）**
-- 對 `attempts.created_at`、`questions.created_at`、`courses.uploaded_at`、
-  `review_plan.next_review_at`、`class_node_stats.updated_at` 執行：
-  `ALTER TABLE x ALTER COLUMN col TYPE timestamptz USING col::timestamptz;`
-- 既有資料是 ISO 字串，`::timestamptz` 可直接轉。
-  ⚠️ 舊資料是 naive 本地時間，轉換時會被當成 server 時區 → 記錄此一次性誤差，可接受。
-
-**Step 2 — 寫入改 timezone-aware UTC**
-- 所有 `datetime.now()` → `datetime.now(timezone.utc)`（`pipeline.py`、`database.py`）。
-- psycopg2 會自動把 aware datetime 轉成 timestamptz，**不要再 `.isoformat()` 後存字串**。
-
-**Step 3 — 讀取改用原生 datetime（重要陷阱）**
-- timestamptz 欄位 `RealDictCursor` 回傳的是 `datetime` 物件，**不是字串**。
-- 把所有 `datetime.fromisoformat(row["..."])` 改成直接 `row["..."]`
-  （`list_attempts`、`list_courses`、`get_course`、`list_review_plan`、`list_class_node_stats`）。
-  這步漏改會 runtime crash，務必全掃。
-
-**Step 4 — 新增進度趨勢 API**
-- `database.concept_progress(course_id, days)`：
-  ```sql
-  SELECT concept_id,
-         date_trunc('day', created_at) AS day,
-         AVG(score) AS avg_score,
-         COUNT(*)   AS n
-  FROM attempts
-  WHERE created_at >= now() - (%s || ' days')::interval
-    AND concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-  GROUP BY concept_id, day
-  ORDER BY concept_id, day;
-  ```
-- `pipeline.get_concept_progress(days=30)`：把每概念的每日序列組起來，並判趨勢：
-  比較前半段平均 vs 後半段平均，差 > +0.05 → `improving`、< −0.05 → `declining`、否則 `plateaued`。
-- `main.py`：`GET /api/progress/concepts?days=30`（`@cached`，scope 作用中課程；依賴 P1 的 course-scope）。
-
-**Step 5 — 前端進度頁（競賽亮點，Phase 2 可選）**
-- `ProgressPanel.tsx`：用 Recharts（已在技術棧）畫每概念 avg_score 折線 + 趨勢徽章
-  （↑improving 綠 / ↓declining 紅 / →plateaued 灰）。掛到 review 或新分頁。
-
-### 拆解小工單（P2）✅ 後端已完成 (2026-06-04)
-
-- [x] migration：5 個時間欄位轉 TIMESTAMPTZ（Migration 001）
-- [x] 寫入全改 `datetime.now(timezone.utc)`，移除存字串
-- [x] 讀取移除所有 `datetime.fromisoformat(row[...])`（5 處）
-- [x] `database.concept_progress` + `pipeline.get_concept_progress` + `/api/progress/concepts`
-- [ ] （選配）`ProgressPanel.tsx` Recharts 趨勢圖
-
-> **P1/P2 依賴關係：** P2 的 Step 4 progress API 需要 P1 的 course-scope 才有意義
-> （否則跨課程 attempts 混在一起）。順序仍是 **P5 → P1 → P2**。
-
-## ✅ P3 服務單例的併發競態 — `_service_lock` 宣告了卻沒用（2026-06-05 修）
-
-- **證據：** `main.py:46` 宣告 `_service_lock = asyncio.Lock()`，註解寫「Fix #2」，
-  但 `_get_service`（`main.py:144`）切換 API key、重建 service 時**從未 acquire 這個 lock**。
-- **問題：** 兩個請求同時帶不同 key 進來，會同時 `AdaptLearnService(...)` 重建
-  → 兩個 DB pool、兩個 Chroma client，舊的可能在被其他請求使用時就 `close()`。
-- **額外成本：** 每次換 key 都重建整個 service（新 DB pool + 重開 Chroma），過重。
-- **建議：** 把 GeminiClient 的 key 切換做成「只換 client，不重建整個 service」；
-  或真的用 lock 包住重建。競賽單人 demo 風險低，但這是貨真價實的 bug，值得順手修。
-- **影響範圍：** `main.py:144-158`、`pipeline.py:__init__`（讓 key 可熱替換）。
-- **風險：** 低。
-
-## ✅ P4 掌握度聚合在 Python 端做，每次拉 5000 筆 attempts（2026-06-05 修）
-
-- **證據：** `pipeline.py` `get_concept_mastery` / `get_chapter_mastery` / `get_tonight_*`
-  各自 `list_attempts(limit=5000)` 後在 Python 用 `defaultdict` 聚合。
-- **問題：** 重複把全部 attempts 載進記憶體做平均，該用 SQL `GROUP BY concept_id` 算。
-  TTLCache 擋了一部分，但 cache miss 時三個端點各跑一次全量聚合。
-- **建議：** `database.py` 加 `concept_score_summary()`（`GROUP BY` 回傳 avg_score、count），
-  pipeline 改用它；mastery band 仍在 Python 判。
-- **影響範圍：** `database.py`（新 query）、`pipeline.py`（三處改用）。
-- **風險：** 低。純效能/整潔，行為不變。
-
-## P5 沒有 migration 機制 — schema 演進靠 ad-hoc `information_schema` 檢查
-
-- **證據：** `database.py:140` 只有一段手寫的「加 course_id 欄位」檢查。
-- **問題：** P1/P2 會再加 `session_id`、改 TIMESTAMPTZ、課程範圍欄位，繼續用手寫檢查會失控。
-- **建議：** 引入輕量 migration（編號 SQL 檔 + `schema_version` 表，或 yoyo/alembic 擇一）。
-  競賽期可先用「編號 SQL + version 表」最小方案，不引重依賴。
-- **影響範圍：** `database.py` + 新 `migrations/`。
-- **風險：** 低，但要先做才好做 P1/P2。
-
-## P6 ChromaDB 持久化在 Render free tier 是暫存碟 → 重新部署就清空
-
-- **證據：** `config.py:53` `chroma_path = data/chroma`（本地磁碟）；Render free 無持久碟。
-- **問題：** 每次 redeploy，向量庫歸零 → 跨課程語意連結（`cross_course_edges`）失效，
-  與 PostgreSQL 裡留存的 edges 不一致。
-- **建議（擇一）：** (a) 跨課程連結改用 PG `pgvector` 取代 Chroma（單一資料源）；
-  (b) 或接受「重啟後首次查詢重建」並在 ingest 時重算。競賽 demo 可只記錄此限制，不急著改。
+- **問題：** ChromaDB 存本地磁碟（`data/chroma`），Render free redeploy 後向量庫歸零，跨課程語意連結失效。
+- **建議（擇一）：** (a) 跨課程連結改用 PG `pgvector` 取代 Chroma；(b) 接受「重啟後首次查詢重建」並在 ingest 時重算。
 - **影響範圍：** `vector_store.py`、`cross_course_linker.py`、`requirements.txt`。
-- **風險：** 中。pgvector 要改依賴；競賽期建議只記錄，賽後再做。
 
 ---
 
-## 建議實作順序（若要動架構）
+# 🏆 競品分析與差異化策略（2026-06-05）
 
-1. **P5（migration 地基）→ P1（course 範圍化 + 停止 wipe）→ P2（時間欄位 + 進度 API）**
-   這三個是一條線：解掉 Bug 5 根因、解鎖多課程、解鎖 Feature 2 進度追蹤，是最高槓桿的一包。
-2. P3、P4 可獨立穿插，風險低。
-3. P6 競賽期只記錄限制，賽後處理。
+## 競品：ThetaWave AI（thetawave.ai）
 
-> ⚠️ 競賽取捨提醒：若 demo 只展示「單課程單人」流程，P1–P2 不是必須；
-> 但只要想展示「多科目知識圖譜」或「進度成長曲線」，P1–P2 就是前置條件。
+定位：「上傳資料 → 自動筆記 + 閃卡 + 心智圖」。主打**整理工具**，輸出一次性複習材料。聲稱 300,000+ 學生、100+ 所大學。
+
+## AdaptLearn 現有的硬優勢
+
+| 特性 | ThetaWave | AdaptLearn |
+|---|---|---|
+| 知識圖譜（互動式） | 心智圖（靜態輸出） | ✅ 動態概念圖 + 路徑尋找 |
+| 間隔重複 | 閃卡（無排程演算法） | ✅ FSRS-5 科學排程 |
+| 掌握度追蹤 | 無 | ✅ 每個概念量化分數 |
+| 自適應出題 | 固定生成 | ✅ 針對弱點概念出題 |
+| 跨課程連結 | 無 | ✅ semantic cross-course linking |
+| 班級熱力圖 | 無 | ✅ 錯誤率可視化 |
+
+**一句話定位：** ThetaWave 幫你「整理」資料；AdaptLearn 幫你「知道你不知道什麼」，並科學安排何時複習。
+
+## 差異化強化待辦（競賽 Demo 優先）
+
+| 優先度 | 項目 | 說明 | 狀態 |
+|---|---|---|---|
+| 🔴 P1 | **知識圖譜路徑尋找** | 選一個概念，高亮「你必須先學哪些 prerequisites」。`feat/graph-path-finding` 分支進行中，是最強 Demo 亮點。 | 🔄 進行中 |
+| 🟠 P2 | **遺忘曲線預測顯示** | Review 頁加「預計 N 天後遺忘」提示，視覺化 FSRS-5 的科學排程優勢。ThetaWave 完全沒有。 | ⬜ 待做 |
+| 🟡 P3 | **掌握度時間折線圖** | ProgressPanel 已有，加強「這週進步 X%」的量化成效呈現。 | ✅ 已完成 |
+| 🟢 P4 | **手寫筆記 OCR → 圖譜** | Ollama OCR 已支援，Demo 時主打「連手寫都能分析」。 | ✅ 技術就緒 |
 
 ---
 
-# 執行規則（延用）
+# 執行規則
 
 - 每改完一個檔案 → `npm run build` 零錯誤
 - 不新增 npm 套件（**例外：KaTeX 已加**）

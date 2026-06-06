@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { clamp } from "../utils/helpers";
+import { useCountUp } from "../hooks/useCountUp";
 
 interface Props {
   value?: number;
@@ -7,6 +9,9 @@ interface Props {
 
 export function DailyProgressRing({ value = 0, compact = false }: Props) {
   const clamped = clamp(value);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setMounted(true), 80); return () => clearTimeout(t); }, []);
+  const displayValue = useCountUp(Math.round(clamped), 800);
 
   // SVG arc parameters
   const size = 40;
@@ -14,7 +19,7 @@ export function DailyProgressRing({ value = 0, compact = false }: Props) {
   const cy = size / 2;
   const radius = 15;
   const circumference = 2 * Math.PI * radius;
-  const filled = (clamped / 100) * circumference;
+  const filled = mounted ? (clamped / 100) * circumference : 0;
   const gap = circumference - filled;
 
   // Colour transitions by performance band
@@ -64,7 +69,7 @@ export function DailyProgressRing({ value = 0, compact = false }: Props) {
           className="font-mono-data absolute inset-0 grid place-items-center text-[9px] font-semibold"
           style={{ color: "var(--text-primary)" }}
         >
-          {Math.round(clamped)}%
+          {displayValue}%
         </div>
       </div>
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useRecalculateReview } from "../hooks/useApi";
 import type { ConceptMastery } from "../hooks/useApi";
 import { safeNumber } from "../utils/helpers";
@@ -20,6 +21,8 @@ function masteryTagClass(mastery: number): string {
 
 export function MasteryTable({ conceptMastery }: Props) {
   const recalculate = useRecalculateReview();
+  const [barsMounted, setBarsMounted] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => setBarsMounted(true)); }, []);
 
   return (
     <article className="card p-6">
@@ -80,7 +83,7 @@ export function MasteryTable({ conceptMastery }: Props) {
                   <div className="mastery-bar-track mt-1.5">
                     <div
                       className="mastery-bar-fill"
-                      style={{ width: `${Math.min(pct, 100)}%` }}
+                      style={{ width: barsMounted ? `${Math.min(pct, 100)}%` : "0%" }}
                     />
                   </div>
                 </div>

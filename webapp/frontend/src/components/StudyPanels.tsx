@@ -1,6 +1,7 @@
 import { Clock3, CalendarClock } from "lucide-react";
 import type { ReviewItem, TonightDashboard } from "../hooks/useApi";
 import { formatPercent, safeNumber } from "../utils/helpers";
+import { ForgettingCurve } from "./ForgettingCurve";
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
@@ -134,9 +135,19 @@ export function StudyPlansPanel({ reviewItems, isLoading }: StudyPlansProps) {
               <article key={item.concept_id} className="card-subtle rounded-xl p-3">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium text-[color:var(--text-primary)]">{item.concept_name}</p>
-                  <span className="font-mono-data shrink-0 text-[11px] text-[color:var(--text-muted)]">
-                    {(priority * 100).toFixed(0)}%
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {item.retention > 0 && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+                      >
+                        🧠 {Math.round(item.retention * 100)}%
+                      </span>
+                    )}
+                    <span className="font-mono-data text-[11px] text-[color:var(--text-muted)]">
+                      {(priority * 100).toFixed(0)}%
+                    </span>
+                  </div>
                 </div>
                 {/* Priority bar */}
                 <div className="mastery-bar-track mt-2">
@@ -149,9 +160,12 @@ export function StudyPlansPanel({ reviewItems, isLoading }: StudyPlansProps) {
                   <span>{item.suggested_slot}</span>
                   <span>{formatTimestamp(item.next_review_at)}</span>
                 </div>
-                {item.reason && (
-                  <p className="mt-1 text-xs leading-5 text-[color:var(--text-muted)] opacity-75">{item.reason}</p>
-                )}
+                {/* Forgetting curve */}
+                <ForgettingCurve
+                  retention={item.retention}
+                  stability={item.stability}
+                  nextReviewAt={item.next_review_at}
+                />
               </article>
             );
           })}

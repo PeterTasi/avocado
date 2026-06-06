@@ -17,6 +17,7 @@ from adaptlearn.database import StudyRepository
 from adaptlearn.knowledge_graph import build_knowledge_graph
 from adaptlearn.models import Attempt, Concept, Question, ReviewItem
 from adaptlearn.pipeline import AdaptLearnService
+from adaptlearn.review_scheduler import build_review_plan
 from datetime import datetime, timedelta
 
 _TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn_test")
@@ -147,6 +148,23 @@ class TestStudyRepository:
         assert len(items) == 1
         assert items[0].concept_id == "c-1"
         assert items[0].priority == 0.8
+
+    def test_save_and_list_review_plan_retention_round_trip(self, repo):
+        item = ReviewItem(
+            concept_id="c-2",
+            concept_name="Retention Test",
+            priority=0.5,
+            next_review_at=datetime.now() + timedelta(days=3),
+            suggested_slot="evening",
+            reason="test",
+            retention=0.87,
+            stability=4.2,
+        )
+        repo.save_review_plan([item])
+        items = repo.list_review_plan()
+        assert len(items) == 1
+        assert abs(items[0].retention - 0.87) < 0.001
+        assert abs(items[0].stability - 4.2) < 0.001
 
     def test_get_metrics(self, repo):
         attempt = Attempt(
@@ -767,4 +785,33 @@ class TestPassProbabilityFormula:
         ]
         prob = _estimate_pass_probability(attempts)
         assert 0.25 <= prob <= 0.95
+
+
+class TestBuildReviewPlanRetention:
+    def _make_concept(self, cid: str) -> Concept:
+        return Concept(id=cid, name=cid, chapter="ch", description="", prerequisites=[])
+
+    def _make_attempt(self, concept_id: str, score: float = 0.9) -> Attempt:
+        return Attempt(
+            question_id="q",
+            concept_id=concept_id,
+            user_answer="x",
+            score=score,
+            is_correct=True,
+            feedback="",
+            created_at=datetime.now(),
+        )
+
+    def test_no_history_gives_zero_retention(self):
+        concept = self._make_concept("c1")
+        items = build_review_plan([concept], [])
+        assert items[0].retention == 0.0
+        assert items[0].stability == 0.0
+
+    def test_with_history_populates_retention_and_stability(self):
+        concept = self._make_concept("c2")
+        attempt = self._make_attempt("c2")
+        items = build_review_plan([concept], [attempt])
+        assert 0.0 < items[0].retention <= 1.0
+        assert items[0].stability > 0.0
 

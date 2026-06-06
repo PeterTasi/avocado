@@ -47,6 +47,8 @@ def build_review_plan(
                 next_review_at=next_review_at,
                 suggested_slot=_suggest_slot(priority),
                 reason=reason,
+                retention=round(retrievability, 4),
+                stability=round(float(card.stability or 0.0), 4),
             )
         )
 

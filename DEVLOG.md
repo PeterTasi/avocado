@@ -5,6 +5,150 @@
 
 ---
 
+## 2026-06-06 — P2 遺忘曲線預測顯示（FSRS-5 視覺化）✅
+
+- **動機：** 競賽差異化強化 P2。Review 頁複習排程只顯示 priority 數字，無法直覺呈現 FSRS-5 的科學排程優勢；ThetaWave 完全沒有遺忘模型。
+- **關鍵發現：** `_build_fsrs_card` 已算出 `retrievability`（記憶機率）和 `card.stability`（穩定度），但兩者只被塞進 `reason` 除錯字串，從未獨立暴露。不需後端重算，只要提升欄位即可。
+- **後端改動（TDD）：**
+  - `models.py`：`ReviewItem` 末尾加 `retention: float = 0.0`、`stability: float = 0.0`（有預設值，向後相容）。
+  - `review_scheduler.py`：`build_review_plan` 將 FSRS 計算值填入新欄位（`round(retrievability, 4)`、`round(float(card.stability or 0), 4)`）。
+  - `database.py`：`review_plan` 表加 `retention REAL`、`stability REAL` 兩欄（`ADD COLUMN IF NOT EXISTS` migration，同 `concepts.course_id` 低風險手法）；`save_review_plan` / `list_review_plan` 讀寫兩欄，SELECT 用 `COALESCE(retention, 0.0)` 相容舊資料。
+  - `webapp/main.py`：`_serialize_review_item` 補兩欄。
+- **測試（先紅後綠）：**
+  - `test_save_and_list_review_plan_retention_round_trip`：retention=0.87、stability=4.2 寫入再讀出，差值 < 0.001。
+  - `TestBuildReviewPlanRetention`：無歷史 → retention/stability 均 0；有作答 → retention∈(0,1]、stability>0。
+  - 全套 41 個測試，40 passed（1 既有失敗 `test_scanned_pdf_uses_configurable_ocr_page_limit` 確認與本次無關）。
+- **前端元件 `ForgettingCurve.tsx`（新建）：**
+  - FSRS-5 公式：`R(t) = (1 + FACTOR·t/S)^DECAY`，`DECAY=-0.5`、`FACTOR=19/81`
+  - 從 `retention` 反推目前 elapsed：`elapsed = ((R^(1/DECAY))-1)·S/FACTOR`
+  - 畫未來 `max(daysUntilReview×1.5, 14)` 天的 SVG 衰減曲線（60 個採樣點）
+  - 綠點標「現在記憶 N%」；琥珀虛線 + 點標「N 天後複習·剩 N%」
+  - `stability=0`（無歷史）→ 顯示「尚無作答，完成測驗後產生遺忘曲線」
+- **整合 `StudyPanels.tsx`：** 每個複習概念卡加「🧠 記憶 N%」徽章 + `ForgettingCurve`；移除原本顯示的 FSRS `reason` 除錯字串。
+- **驗證：** `npm run build` 零 TS 錯誤，後端 pytest 40/41 passed（無迴歸）。
+- **commit：** `6d554d8`
+
+---
+
+## 2026-06-06 — A2 釘死 requirements.txt 版本號 ✅
+
+- **動機：** 架構健檢 A2，競賽保命。`requirements.txt` 全用 `>=`，Render redeploy 時套件自動更新可能無預警壞掉。
+- **做法：** `pip freeze` 取得 venv 實際版本，逐一改成 `==`（fastapi==0.135.3、uvicorn==0.43.0 等共 13 個套件）。
+- **commit：** `31e12f0`
+
+---
+
+## 2026-06-06 — UI 動畫升級：比比拉布 logo + 微互動（A+C）✅
+
+- **動機：** 整體 UI/UX 升級，讓吉祥物有生命感、資料元件有動態回饋。
+- **A — Logo 動畫（`PixelAvocadoLogo.tsx`）：**
+  - 新增 `animate?: "idle" | "subtle" | "none"` prop。
+  - `"idle"`（登陸頁 size=104）：`avocado-breathe` keyframe，scale + translateY 呼吸漂浮，3.6s 循環。
+  - `"subtle"`（頂欄 size=30）：`avocado-float-subtle` keyframe，±2px 上下漂浮，4s 循環。
+  - 兩個 keyframe 加入 `index.css`。
+- **C — 微互動：**
+  - `DailyProgressRing`：mount 後 80ms 弧形從 0 畫到目標值（利用既有 SVG `stroke-dasharray` transition）；中心數字用 `useCountUp` hook 從 0 count-up（800ms）。
+  - 新 hook `hooks/useCountUp.ts`：rAF 線性 count-up，自動偵測 `prefers-reduced-motion` 直接跳終值。
+  - `MasteryTable` 掌握度橫條：`requestAnimationFrame` mount trick，從 0% 填充（觸發既有 CSS transition）。
+  - `ModuleCard` 進度條：同手法，從 0% 填充（Tailwind `transition-all duration-700`）。
+- **全部動畫自動尊重 `prefers-reduced-motion`（全域 CSS 規則已覆蓋）。**
+- **commit：** `1c746d4`
+
+---
+
+## 2026-06-06 — A1 session 隔離決策：不做 📋
+
+- **評估：** 競賽為單人輪流 demo（評審看操作，非多人同時連線）。現有 `course_id` active scoping 機制（ingest 時呼叫 `set_active_course` + `reset_course_state`，出題 / 圖譜 / 掌握度查詢全只取 active course）已完整解決 Bug 5。session 隔離只在「多人同時連同一 Render 部署」才有意義，對單人 demo 是過度工程。
+- **決定：** A1 短期解（`session_id` scope）跳過；完整多租戶仍屬賽後事項。
+
+---
+
+## 2026-06-05 — A5 清理 repo：雜物加進 .gitignore ✅
+
+- **動機:** 架構健檢 A5。repo 根目錄有非專案來源的暫存產物會被 `git add .` 誤掃進 commit。
+- **加入 `.gitignore`:** `.superpowers/`(Claude Code tooling 區)、`architecture-explain.html`、
+  `bug-report.html`(本地暫存產物區)。
+- **註:** `.github/workflows/react-doctor.yml` 是合法 CI 設定,**不 ignore**(留待之後決定是否提交)。
+
+---
+
+## 2026-06-05 — A3 刪死碼：移除未掛載的圖譜元件 ✅
+
+- **動機:** 架構健檢 A3。路徑尋找功能最後做在 `MindMapCanvas`,確認另兩個圖譜元件成為死碼。
+- **查證（刪前必做）:** `grep` 全 `src/` 確認 `ForceGraphCanvas` 與 `GraphCanvas` **零引用**;
+  `MindMapCanvas` 仍被 `KnowledgeGraphPanel.tsx` 使用 → 保留。
+- **刪除:**
+  - `components/ForceGraphCanvas.tsx`、`components/GraphCanvas.tsx` 兩檔。
+  - `package.json` 依賴 `react-force-graph-2d`(唯一使用者是 ForceGraphCanvas,已刪)。
+  - `vite.config.js` 連帶清掉 `manualChunks.forcegraph` 與 `optimizeDeps.include` 的對應項
+    (否則產生 0.03 kB 空 chunk)。
+- **驗證:** `npm run build` 兩次皆綠(`✓ built`),無壞 import、無 TS 錯誤,空 chunk 消失。
+- **保留:** `utils/graphUtils.ts`(MindMapCanvas 路徑功能在用)。
+
+---
+
+## 2026-06-05 — 架構健檢（Opus review，未動程式碼）🩺
+
+- **動機:** 競賽前請 Opus 全面檢查架構,讀實際程式碼(非僅文件)後給評分與改善清單。
+- **總評分:** **8 / 10**(以大二競賽標準屬高於平均)。模組化、migration + `schema_version`、
+  連線池、rate limit、cache、optional auth、OCR fallback chain、`run_in_threadpool`、
+  約 1000 行測試皆到位;`_estimate_pass_probability` 誠實標註為未驗證 placeholder。
+- **發現的問題(依嚴重度,已寫入 `plan.md` 健檢表 A1–A6):**
+  - **A1 🔴 致命 — 全域可變單例 → 單租戶:** `webapp/main.py:45` import 時即建 `_service`,
+    所有請求共用同一份 service / 知識圖譜 / mastery,沒有 user 概念;`_get_service()` 的
+    `set_api_key()` 改動共享全域 → 併發 race。**既有 Bug 5「跨 Session 概念殘留」即此症狀,
+    非獨立 bug**。短期解=加 `session_id` scope(plan 方案 B);中期解(賽後)=`users` 表 + token。
+  - **A2 🟠 高 — 依賴全用 `>=` 未釘版本:** `requirements.txt` redeploy 可能無預警壞掉。
+    解:`pip freeze` 或改 `==`。**列為競賽 P1(最快保命)**。
+  - **A3 🟠 高 — 三個圖譜元件並存含死碼:** `ForceGraphCanvas`(未掛載) / `MindMapCanvas` / `GraphCanvas`。
+  - **A4 🟡 中 — God object:** `database.py` 806 / `pipeline.py` 628 / `App.tsx` 803 行。
+    **競賽期間不動**(風險 > 收益),賽後再拆。
+  - **A5 🟡 中 — repo 根目錄雜物未追蹤:** `architecture-explain.html`、`bug-report.html`、
+    `.superpowers/` → 應進 `.gitignore`。
+  - **A6 🟢 低 — ChromaDB 本地碟 redeploy 歸零(已知 P6,賽後處理)。**
+- **驗證安全性:** SQL 幾乎全參數化;唯一 f-string(`database.py:194` ALTER COLUMN)的表名/欄名
+  來自寫死清單,**非使用者輸入,無注入風險**。
+- **建議執行順序:** A2 → A1 短期(`session_id`) → A5 → A3 → (賽後)A1 完整多租戶 / A4 拆檔。
+- **產出:** `plan.md` 新增「🩺 架構健檢結果」一節(嚴重度表 + 具體作法 + 優先順序)。本次未動任何程式碼。
+
+---
+
+## 2026-06-05 — 知識圖譜路徑尋找模式 ✅
+
+- **功能目標：** 在現有 `MindMapCanvas` 上加「路徑模式」，使用者點兩個概念，BFS 自動找出最短先修路徑並高亮顯示。
+
+- **架構決策：**
+  - 沿用 `MindMapCanvas.tsx`（放射狀 SVG），不切換 `ForceGraphCanvas`（未掛 UI、舊深色主題，重配成本高）。
+  - BFS 只走 `prerequisite` + `progression` 邊（有明確先後語意）；`related`/`semantic` 忽略。
+  - 後端零改動——DOT 邊方向與 `relation` 欄位已足夠。
+  - 不新增 npm 套件，BFS 自寫純函式。
+
+- **`utils/graphUtils.ts` — `findLearningPath()` BFS 純函式：**
+  - 輸入 `ParsedGraph` + `startId` + `endId`，回傳 `PathResult { found, nodeIds, edgeKeys, steps }`。
+  - 建 adjacency map 只收符合條件的邊（順向）；標準 BFS + parent map 回溯組路徑。
+  - 純函式，無 React 依賴，獨立單元測試（`graphUtils.path.test.ts`，直線路徑、多分支取最短、無路徑、起=終等 5 個案例）。
+
+- **`MindMapCanvas.tsx` — 路徑模式 state 與互動：**
+  - 新增 `pathMode`、`startId`、`endId` state；`pathResult` 用 `useMemo` 響應式重算。
+  - 點擊分流：path 模式關 → 維持原有選取/詳情卡行為；path 模式開 → 第一點設起點、第二點設終點、第三點重設起點。
+  - 空白處點擊或「清除」按鈕 → 清空起終點；切出 path 模式自動清空。
+
+- **視覺高亮（SVG render loop）：**
+  - 起點：綠框（`--high`）粗框 + 「起」標記；終點：紅框（`--low`）+ 「終」標記。
+  - 路徑中間節點：accent indigo 框、全 opacity。
+  - 非路徑節點：opacity 0.2；非路徑邊：opacity 0.15；路徑邊：粗 2.5px accent 色。
+  - 未選齊（缺起點或終點）時全部正常顯示，不變淡。
+
+- **控制列與回饋：**
+  - 「路徑模式」toggle 按鈕 + 「清除」按鈕（覆蓋層，沿用 zoom 控制區樣式）。
+  - 提示條：「點第一個概念設為起點，再點第二個設為終點」。
+  - 找到路徑 → 顯示「從 [A] 到 [B] · 共 N 步」+ 有序概念名列。
+  - 找不到 → fallback 文案提示 LLM prerequisite 關係可能尚未建立。
+
+- **Bug 修正（同日）：** `clearPath useCallback` 宣告在 `onMouseDown` 之後，造成 TS block-scoped forward reference 錯誤，修正宣告順序。
+
+---
+
 ## 2026-06-05 — P3 修復（_service_lock）+ P4 效能優化（mastery SQL GROUP BY）✅
 
 - **P3 — Gemini API key 熱替換，不重建 service：**

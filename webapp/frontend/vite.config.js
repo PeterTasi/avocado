@@ -23,7 +23,6 @@ export default defineConfig({
           charts: ["recharts"],
           icons: ["lucide-react"],
           query: ["@tanstack/react-query"],
-          forcegraph: ["react-force-graph-2d"],
         },
         chunkFileNames: "assets/[name]-[hash].js",
         entryFileNames: "assets/[name]-[hash].js",
@@ -35,6 +34,6 @@ export default defineConfig({
     minify: "esbuild",
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "recharts", "lucide-react", "@tanstack/react-query", "react-force-graph-2d"],
+    include: ["react", "react-dom", "recharts", "lucide-react", "@tanstack/react-query"],
   },
 });

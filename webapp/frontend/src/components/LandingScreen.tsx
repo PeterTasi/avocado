@@ -31,7 +31,7 @@ export function LandingScreen({ onEnter }: Props) {
       {/* Content — stagger children via .landing-item */}
       <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center">
         <div className="landing-item flex justify-center">
-          <PixelAvocadoLogo size={104} />
+          <PixelAvocadoLogo size={104} animate="idle" />
         </div>
 
         <div className="landing-item">

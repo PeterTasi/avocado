@@ -68,6 +68,8 @@ class ReviewItem:
     next_review_at: datetime
     suggested_slot: str
     reason: str
+    retention: float = 0.0
+    stability: float = 0.0
 
 
 @dataclass(slots=True)

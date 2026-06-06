@@ -165,6 +165,8 @@ def _serialize_review_item(item) -> dict[str, Any]:
         "next_review_at": item.next_review_at.isoformat(timespec="seconds"),
         "suggested_slot": item.suggested_slot,
         "reason": item.reason,
+        "retention": item.retention,
+        "stability": item.stability,
     }
 
 

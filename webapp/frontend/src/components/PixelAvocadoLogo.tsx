@@ -5,9 +5,16 @@ interface Props {
   size?: number;
   className?: string;
   withPulse?: boolean;
+  animate?: "idle" | "subtle" | "none";
 }
 
-export const PixelAvocadoLogo: FC<Props> = ({ size = 32, className }) => {
+const animationStyle: Record<"idle" | "subtle" | "none", React.CSSProperties> = {
+  idle:   { animation: "avocado-breathe 3.6s ease-in-out infinite" },
+  subtle: { animation: "avocado-float-subtle 4s ease-in-out infinite" },
+  none:   {},
+};
+
+export const PixelAvocadoLogo: FC<Props> = ({ size = 32, className, animate = "none" }) => {
   return (
     <img
       src={bibilavocado}
@@ -16,7 +23,7 @@ export const PixelAvocadoLogo: FC<Props> = ({ size = 32, className }) => {
       className={className}
       alt="比比拉布"
       aria-hidden="true"
-      style={{ imageRendering: "pixelated" }}
+      style={{ imageRendering: "pixelated", ...animationStyle[animate] }}
     />
   );
 };

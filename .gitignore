@@ -27,6 +27,11 @@ gemini_arch_pack.zip
 # Claude Code tooling
 .claude/
 .agents/
+.superpowers/
 skills-lock.json
 prompt.txt
 LibreUIUX-Claude-Code/
+
+# 本地暫存產物（非專案來源）
+architecture-explain.html
+bug-report.html

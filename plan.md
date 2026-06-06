@@ -5,94 +5,71 @@
 
 ---
 
-# 🎬 UI 動畫升級：Logo 生命感 + 微互動（2026-06-05）
+# 🔮 P2 — 遺忘曲線預測顯示（2026-06-06）
 
-> 分支：`feat/graph-path-finding`（直接在現有分支追加，不開新分支）
-> 目標：不新增 npm 套件、純 CSS animation + 輕量 React hook、尊重 `prefers-reduced-motion`
+> 分支：`feat/graph-path-finding`（沿用現有分支）
+> 目標：Review 頁每個複習概念畫一條 FSRS-5 迷你遺忘曲線，視覺化「記憶隨時間衰減」+ 標出「現在」與「該複習」點。差異化賣點，ThetaWave 沒有。
+> 視覺方向已用 brainstorm companion 確認 = **B 迷你遺忘曲線**。
 
-## 範圍
+## 關鍵發現
+遺忘預測需要的數字 FSRS **已經算出來了**，目前藏在 `reason` 除錯字串裡：
+- `retrievability`（現在記得的機率）＝ `_build_fsrs_card` 已算
+- `card.stability`（穩定度，畫未來曲線用）＝ 已算
+- `next_review_at`（FSRS 決定的該複習時間）＝ 已有獨立欄位
 
-**A — 比比拉布 Logo 動畫**（`PixelAvocadoLogo.tsx`）
-- 登陸頁大圖（size=104）：閒置呼吸 + 輕微上下漂浮，讓吉祥物「活著」
-- 頂欄小圖（size=30）：極輕微的漂浮，不搶注意力
-
-**C — 元件微互動**（多個元件）
-- 掌握度橫條：mount 時從 0 填充到實際值（動畫填充）
-- DailyProgressRing：mount 時弧形從 0 畫到目標值
-- MetricCardsGrid 數字：mount 時從 0 count-up 到實際數字
-- 答題回饋：答對時 ✓ 圖示加 scale-bounce，答錯時 ✗ 加 shake（已有 keyframe，補齊觸發）
+→ 只要把 `retrievability`、`stability` 從字串**提升成獨立欄位**，前端就能畫曲線。
 
 ## 影響範圍
 
-| 檔案 | 變更類型 |
+| 檔案 | 變更 |
 |---|---|
-| `webapp/frontend/src/components/PixelAvocadoLogo.tsx` | 新增 `animate` prop，加 CSS class |
-| `webapp/frontend/src/index.css` | 新增 `@keyframes avocado-breathe`、`avocado-float`、`bar-fill-in`、`count-up`（用 CSS counter trick 或 JS） |
-| `webapp/frontend/src/components/DailyProgressRing.tsx` | mount 時 `strokeDashoffset` 從滿值動畫到目標值（useEffect + CSS transition） |
-| `webapp/frontend/src/components/MetricCardsGrid.tsx` | 新增 `useCountUp` hook，數字 mount 時 count-up |
-| `webapp/frontend/src/components/MasteryTable.tsx` | `.mastery-bar-fill` 寬度從 0 → 目標（透過 CSS class toggle on mount） |
+| `src/adaptlearn/models.py` | `ReviewItem` 加 `retention: float = 0.0`、`stability: float = 0.0`（有預設值，放欄位最後） |
+| `src/adaptlearn/review_scheduler.py` | `build_review_plan` 把 retrievability→retention、card.stability→stability 塞進 ReviewItem |
+| `src/adaptlearn/database.py` | `review_plan` 表加 `retention REAL`、`stability REAL` 欄位 + migration（ADD COLUMN IF NOT EXISTS 手法）；`save_review_plan`/`list_review_plan` 讀寫兩欄 |
+| `webapp/main.py` | `_serialize_review_item` 加 `retention`、`stability` |
+| `webapp/frontend/src/hooks/useApi.ts` | `ReviewItem` interface 加 `retention`、`stability` |
+| `webapp/frontend/src/components/ForgettingCurve.tsx` | **新建**：吃 retention + stability + nextReviewAt，畫 SVG 衰減曲線 |
+| `webapp/frontend/src/components/StudyPanels.tsx` | `StudyPlansPanel` 整合 ForgettingCurve + 記憶徽章 +「N 天後複習」；收掉醜的 reason 除錯字串 |
+| `tests/test_unit.py` | 更新 `test_save_and_list_review_plan` 加 retention/stability round-trip；新增 build_review_plan retention 範圍測試 |
 
-## 實作步驟
+## 實作步驟（TDD where possible）
 
-### Step 1 — CSS keyframes（`index.css`）
-新增以下動畫，放在 `/* ─── Landing screen animations ─────────────────────────── */` 下方：
-```css
-/* Logo idle */
-@keyframes avocado-breathe {
-  0%, 100% { transform: scale(1) translateY(0); }
-  40%       { transform: scale(1.035) translateY(-3px); }
-  70%       { transform: scale(1.02) translateY(-1px); }
-}
-@keyframes avocado-float-subtle {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-2px); }
-}
-/* Mastery bar fill-in */
-@keyframes bar-fill-in {
-  from { width: 0; }
-  to   { width: var(--bar-target-width); }
-}
-.mastery-bar-fill { animation: bar-fill-in 0.7s cubic-bezier(0.34,1.56,0.64,1) both; }
-```
+### Step 1 — 後端資料欄位（TDD）
+1. `models.py`：ReviewItem 加 `retention`、`stability`（預設 0.0）
+2. **先寫測試**（`test_unit.py`）：
+   - `test_save_and_list_review_plan` 補 retention/stability round-trip 斷言
+   - 新測試 `test_build_review_plan_populates_retention`：有作答歷史的概念 → retention∈(0,1]、stability>0；無歷史 → retention=0
+3. `review_scheduler.py`：build_review_plan 塞值（讓測試綠）
+4. `database.py`：migration + save/list 讀寫兩欄（讓 round-trip 測試綠）
 
-### Step 2 — `PixelAvocadoLogo.tsx`
-新增 `animate?: "idle" | "subtle" | "none"` prop（預設 `"none"`）：
-- `"idle"` → `animation: avocado-breathe 3.6s ease-in-out infinite`（用於 size=104）
-- `"subtle"` → `animation: avocado-float-subtle 4s ease-in-out infinite`（用於 size=30 頂欄）
-更新 `LandingScreen.tsx` 傳 `animate="idle"`；更新 `App.tsx` 頂欄傳 `animate="subtle"`。
+### Step 2 — API 序列化
+`main.py` `_serialize_review_item` 加 retention、stability 兩個 float 欄位。
 
-### Step 3 — `DailyProgressRing.tsx`
-```tsx
-// mount 時 strokeDashoffset 從 circumference → 目標值，利用 useEffect + CSS transition
-const [animated, setAnimated] = useState(false);
-useEffect(() => { const t = setTimeout(() => setAnimated(true), 80); return () => clearTimeout(t); }, []);
-// SVG arc strokeDashoffset: animated ? targetOffset : circumference
-// 在 SVG 的 <circle> 加 style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.34,1.56,0.64,1)" }}
-```
+### Step 3 — 前端型別 + 曲線元件
+1. `useApi.ts`：ReviewItem 加 retention、stability
+2. 新建 `ForgettingCurve.tsx`：
+   - FSRS-5 公式：`R(t) = (1 + FACTOR·t/S)^DECAY`，`DECAY=-0.5`、`FACTOR=19/81`
+   - 從 retention 反推目前 elapsed：`elapsed = (R^(-2)-1)·S/FACTOR`
+   - 畫未來 N 天的 R(elapsed+Δ) 曲線（SVG path）
+   - 標「現在」點（綠）+「該複習」虛線（用 nextReviewAt 換算天數，琥珀色）
+   - stability=0（無歷史）→ 不畫曲線，顯示「尚無資料」
 
-### Step 4 — `useCountUp` hook（新建 `src/hooks/useCountUp.ts`）
-```ts
-// 輕量 count-up：mount 後 600ms 線性從 0 → target（requestAnimationFrame）
-// 用在 MetricCardsGrid 的數字顯示
-// 尊重 prefers-reduced-motion：若 matchMedia 匹配則直接跳到最終值
-```
+### Step 4 — 整合進 Review 頁
+`StudyPanels.tsx` StudyPlansPanel：每個 item 加 ForgettingCurve + 「🧠 記憶 N%」徽章 + 「⏰ N 天後複習」；移除原本顯示的 reason 除錯字串。
 
-### Step 5 — `MetricCardsGrid.tsx`
-把 stat 數字用 `useCountUp(value, { duration: 600 })` 包起來。只處理純數字值（百分比、整數），字串直接顯示。
+## 品質要求 / 風險
+- **DB migration**：review_plan 加兩個 nullable REAL 欄位，低風險（同 `concepts.course_id` 手法）
+- **stale trade-off**：retention 存的是重算當下值；「N 天後複習」用 nextReviewAt 即時換算，永遠準確
+- 不新增 npm 套件（SVG 純手刻）
+- 後端 `python -m pytest tests/test_unit.py` 全綠；前端 `npm run build` 零錯誤
 
-### Step 6 — `MasteryTable.tsx` / 掌握度橫條
-Mount 後加 CSS class，讓 `bar-fill-in` keyframe 執行。用 `useEffect` + `requestAnimationFrame` 在 next tick 加 class（避免 SSR 和初始渲染問題）：
-```tsx
-const [mounted, setMounted] = useState(false);
-useEffect(() => { requestAnimationFrame(() => setMounted(true)); }, []);
-// style={{ "--bar-target-width": `${pct}%`, width: mounted ? `${pct}%` : "0" } as React.CSSProperties}
-```
+---
 
-## 品質要求
-- `prefers-reduced-motion`：已有全域規則，無需額外處理
-- 不新增 npm 套件
-- 每個 Step 完成後跑 `npm run build` 確認零 TS 錯誤
-- Logo 動畫 duration ≥ 3.5s（不能讓人覺得閃爍或焦慮）
+# ✅ 已完成（待移入 DEVLOG）
+
+- **UI 動畫升級（A+C）** 2026-06-06 已推送：比比拉布 logo idle 動畫、DailyProgressRing 弧形+數字 count-up、掌握度條/進度條 mount 填充。commit `1c746d4`
+- **A2 釘版本** 2026-06-06 已推送：requirements.txt 全改 `==`。commit `31e12f0`
+- **A1 短期解（session_id scope）決策：不做。** 競賽為單人輪流 demo，現有 `course_id` active scoping（ingest 時 `set_active_course`+`reset_course_state`，出題只取 active course）已完整解決 Bug 5。session 隔離只在「多人同時連同一部署」才需要，對單人 demo 是過度工程。完整多租戶仍屬賽後 A1。
 
 ---
 

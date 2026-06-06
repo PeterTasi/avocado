@@ -146,6 +146,14 @@ class StudyRepository:
             """)
             if not cur.fetchone():
                 cur.execute("ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)")
+            # Migration: add retention/stability to review_plan if missing
+            cur.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'review_plan' AND column_name = 'retention'
+            """)
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE review_plan ADD COLUMN retention REAL NOT NULL DEFAULT 0.0")
+                cur.execute("ALTER TABLE review_plan ADD COLUMN stability REAL NOT NULL DEFAULT 0.0")
 
         # P5: run versioned migrations after base schema is ready
         self._run_migrations()
@@ -525,8 +533,8 @@ class StudyRepository:
             cur.executemany(
                 """
                 INSERT INTO review_plan
-                (concept_id, concept_name, priority, next_review_at, suggested_slot, reason)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (concept_id, concept_name, priority, next_review_at, suggested_slot, reason, retention, stability)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     (
@@ -536,6 +544,8 @@ class StudyRepository:
                         item.next_review_at,
                         item.suggested_slot,
                         item.reason,
+                        item.retention,
+                        item.stability,
                     )
                     for item in review_items
                 ],
@@ -545,7 +555,8 @@ class StudyRepository:
         with self._connect() as cur:
             cur.execute(
                 """
-                SELECT concept_id, concept_name, priority, next_review_at, suggested_slot, reason
+                SELECT concept_id, concept_name, priority, next_review_at, suggested_slot, reason,
+                       COALESCE(retention, 0.0) AS retention, COALESCE(stability, 0.0) AS stability
                 FROM review_plan
                 ORDER BY priority DESC
                 LIMIT %s
@@ -564,6 +575,8 @@ class StudyRepository:
                     next_review_at=row["next_review_at"],
                     suggested_slot=row["suggested_slot"],
                     reason=row["reason"],
+                    retention=float(row["retention"]),
+                    stability=float(row["stability"]),
                 )
             )
         return review_items

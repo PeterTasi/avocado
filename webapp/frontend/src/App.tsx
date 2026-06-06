@@ -451,7 +451,7 @@ export default function App() {
             onClick={() => navigateTo("home")}
             className="flex items-center gap-2.5"
           >
-            <PixelAvocadoLogo size={30} animate="subtle" />
+            <PixelAvocadoLogo size={30} />
             <span className="font-display text-[17px] font-extrabold text-[color:var(--text-primary)]">avocado</span>
           </button>
 

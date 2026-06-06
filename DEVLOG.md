@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-06-06 — P2 遺忘曲線預測顯示（FSRS-5 視覺化）✅
+
+- **動機：** 競賽差異化強化 P2。Review 頁複習排程只顯示 priority 數字，無法直覺呈現 FSRS-5 的科學排程優勢；ThetaWave 完全沒有遺忘模型。
+- **關鍵發現：** `_build_fsrs_card` 已算出 `retrievability`（記憶機率）和 `card.stability`（穩定度），但兩者只被塞進 `reason` 除錯字串，從未獨立暴露。不需後端重算，只要提升欄位即可。
+- **後端改動（TDD）：**
+  - `models.py`：`ReviewItem` 末尾加 `retention: float = 0.0`、`stability: float = 0.0`（有預設值，向後相容）。
+  - `review_scheduler.py`：`build_review_plan` 將 FSRS 計算值填入新欄位（`round(retrievability, 4)`、`round(float(card.stability or 0), 4)`）。
+  - `database.py`：`review_plan` 表加 `retention REAL`、`stability REAL` 兩欄（`ADD COLUMN IF NOT EXISTS` migration，同 `concepts.course_id` 低風險手法）；`save_review_plan` / `list_review_plan` 讀寫兩欄，SELECT 用 `COALESCE(retention, 0.0)` 相容舊資料。
+  - `webapp/main.py`：`_serialize_review_item` 補兩欄。
+- **測試（先紅後綠）：**
+  - `test_save_and_list_review_plan_retention_round_trip`：retention=0.87、stability=4.2 寫入再讀出，差值 < 0.001。
+  - `TestBuildReviewPlanRetention`：無歷史 → retention/stability 均 0；有作答 → retention∈(0,1]、stability>0。
+  - 全套 41 個測試，40 passed（1 既有失敗 `test_scanned_pdf_uses_configurable_ocr_page_limit` 確認與本次無關）。
+- **前端元件 `ForgettingCurve.tsx`（新建）：**
+  - FSRS-5 公式：`R(t) = (1 + FACTOR·t/S)^DECAY`，`DECAY=-0.5`、`FACTOR=19/81`
+  - 從 `retention` 反推目前 elapsed：`elapsed = ((R^(1/DECAY))-1)·S/FACTOR`
+  - 畫未來 `max(daysUntilReview×1.5, 14)` 天的 SVG 衰減曲線（60 個採樣點）
+  - 綠點標「現在記憶 N%」；琥珀虛線 + 點標「N 天後複習·剩 N%」
+  - `stability=0`（無歷史）→ 顯示「尚無作答，完成測驗後產生遺忘曲線」
+- **整合 `StudyPanels.tsx`：** 每個複習概念卡加「🧠 記憶 N%」徽章 + `ForgettingCurve`；移除原本顯示的 FSRS `reason` 除錯字串。
+- **驗證：** `npm run build` 零 TS 錯誤，後端 pytest 40/41 passed（無迴歸）。
+- **commit：** `6d554d8`
+
+---
+
+## 2026-06-06 — A2 釘死 requirements.txt 版本號 ✅
+
+- **動機：** 架構健檢 A2，競賽保命。`requirements.txt` 全用 `>=`，Render redeploy 時套件自動更新可能無預警壞掉。
+- **做法：** `pip freeze` 取得 venv 實際版本，逐一改成 `==`（fastapi==0.135.3、uvicorn==0.43.0 等共 13 個套件）。
+- **commit：** `31e12f0`
+
+---
+
+## 2026-06-06 — UI 動畫升級：比比拉布 logo + 微互動（A+C）✅
+
+- **動機：** 整體 UI/UX 升級，讓吉祥物有生命感、資料元件有動態回饋。
+- **A — Logo 動畫（`PixelAvocadoLogo.tsx`）：**
+  - 新增 `animate?: "idle" | "subtle" | "none"` prop。
+  - `"idle"`（登陸頁 size=104）：`avocado-breathe` keyframe，scale + translateY 呼吸漂浮，3.6s 循環。
+  - `"subtle"`（頂欄 size=30）：`avocado-float-subtle` keyframe，±2px 上下漂浮，4s 循環。
+  - 兩個 keyframe 加入 `index.css`。
+- **C — 微互動：**
+  - `DailyProgressRing`：mount 後 80ms 弧形從 0 畫到目標值（利用既有 SVG `stroke-dasharray` transition）；中心數字用 `useCountUp` hook 從 0 count-up（800ms）。
+  - 新 hook `hooks/useCountUp.ts`：rAF 線性 count-up，自動偵測 `prefers-reduced-motion` 直接跳終值。
+  - `MasteryTable` 掌握度橫條：`requestAnimationFrame` mount trick，從 0% 填充（觸發既有 CSS transition）。
+  - `ModuleCard` 進度條：同手法，從 0% 填充（Tailwind `transition-all duration-700`）。
+- **全部動畫自動尊重 `prefers-reduced-motion`（全域 CSS 規則已覆蓋）。**
+- **commit：** `1c746d4`
+
+---
+
+## 2026-06-06 — A1 session 隔離決策：不做 📋
+
+- **評估：** 競賽為單人輪流 demo（評審看操作，非多人同時連線）。現有 `course_id` active scoping 機制（ingest 時呼叫 `set_active_course` + `reset_course_state`，出題 / 圖譜 / 掌握度查詢全只取 active course）已完整解決 Bug 5。session 隔離只在「多人同時連同一 Render 部署」才有意義，對單人 demo 是過度工程。
+- **決定：** A1 短期解（`session_id` scope）跳過；完整多租戶仍屬賽後事項。
+
+---
+
 ## 2026-06-05 — A5 清理 repo：雜物加進 .gitignore ✅
 
 - **動機:** 架構健檢 A5。repo 根目錄有非專案來源的暫存產物會被 `git add .` 誤掃進 commit。

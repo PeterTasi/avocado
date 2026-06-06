@@ -266,24 +266,17 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 ## 待處理事項
 
-### 未修 Bug
+> 競賽核心 Demo 亮點（知識圖譜路徑尋找、遺忘曲線、掌握度趨勢、手寫 OCR）皆已完成。
+> 剩餘項目全為賽後 / 選配，詳見 `plan.md`。
 
-- **Bug 5 方案 B/C（選配）：** 後端加 `session_id` 欄位限制出題範圍（方案 B）；或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端確認 modal）已完成，競賽夠用。
-
-### 架構技術債
+### 未完成（賽後 / 選配）
 
 | # | 狀態 | 說明 |
 |---|------|------|
-| P1 / P2 / P5 | ✅ 已修 | Course-scope + TIMESTAMPTZ + Migration — 見 DEVLOG 2026-06-04 |
-| **P3** | ✅ 已修 | `GeminiClient.set_api_key()` 熱替換，不重建 service — 見 DEVLOG 2026-06-05 |
-| **P4** | ✅ 已修 | `database.concept_score_summary()` SQL GROUP BY，pipeline 改用 dict — 見 DEVLOG 2026-06-05 |
-| **P6** | 待做 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零（賽後處理） |
-
-### 本日完成（2026-06-05，已推送）
-
-- ✅ **移除「Gemini 已啟用」pill：** 頂欄、學習流程卡、系統狀態卡等 5 處全部移除。
-- ✅ **Bug 7：** `ClassHeatmapPanel` 課程 tab 重複名稱 → 以 `subject` 去重，保留最新一筆。
-- ✅ **ProgressPanel.tsx（P2 Step 5）：** Recharts 折線圖 + 趨勢徽章（↑/↓/→），掛入複習頁底部。
+| Bug 5 B/C | 選配 | 後端 `session_id` scope（方案 B）或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端 modal）已完成，競賽夠用 |
+| P6 | 賽後 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零 |
+| A1 | 賽後 | 全域單例 → 完整多租戶（短期解已決策不做） |
+| A4 | 賽後 | 拆 God object（`database.py` / `pipeline.py` / `App.tsx`）— 競賽期間勿動 |
 
 ---
 

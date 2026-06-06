@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import { clamp } from "../utils/helpers";
 
 const ModuleSparkline = lazy(() => import("./ModuleSparkline"));
@@ -21,6 +21,8 @@ interface Props {
 export function ModuleCard({ item, chartsReady }: Props) {
   const Icon = item.icon;
   const trendColor = item.delta >= 0 ? "#34d399" : "#fb7185";
+  const [barMounted, setBarMounted] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => setBarMounted(true)); }, []);
 
   return (
     <article className="glass-panel rounded-[26px] p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-white/18">
@@ -43,7 +45,7 @@ export function ModuleCard({ item, chartsReady }: Props) {
       <div className="mb-3 h-2 overflow-hidden rounded-full bg-white/12">
         <div
           className="h-full rounded-full bg-gradient-to-r from-white to-cyan-200 shadow-[0_0_18px_rgba(191,219,254,0.36)] transition-all duration-700"
-          style={{ width: `${clamp(item.progress)}%` }}
+          style={{ width: barMounted ? `${clamp(item.progress)}%` : "0%" }}
         />
       </div>
 

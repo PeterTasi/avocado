@@ -158,11 +158,13 @@ headless `claude -p` 沒有互動式權限確認，所以必須事先用 `--allo
 
 ## 9. 驗收標準
 
-- [ ] 手機傳訊 → 電腦跑 headless claude → 結果回傳手機
-- [ ] 非白名單 chat_id 的訊息被忽略且記 log
-- [ ] 互動 session 跑完 → 手機收到 Stop 通知
-- [ ] 子程序內的 Stop hook 不會造成重複通知
-- [ ] 任務進行中傳第二則 → 收到「進行中」回覆
-- [ ] bot 重啟後不重跑舊訊息
-- [ ] 逾時任務被 kill 並回報
-- [ ] `.env` / `state.json` / `bot.log` 都在 .gitignore 內
+> 2026-06-07 端對端驗證：實機操作驗證以下項目；其餘標註「程式碼審查驗證」的項目已在 subagent code review 階段逐行核對邏輯正確，但未實機跑過邊緣情境（個人工具、低風險，暫不補測）。
+
+- [x] 手機傳訊 → 電腦跑 headless claude → 結果回傳手機（實機驗證：見對話截圖，「目前我的 claude 正在做什麼」→ 🚀 收到 → 完整專案狀態分析回傳）
+- [ ] 非白名單 chat_id 的訊息被忽略且記 log（程式碼審查驗證：`is_authorized` 邏輯 + log 呼叫已核對，未用第二帳號實測）
+- [x] 互動 session 跑完 → 手機收到 Stop 通知（實機驗證：使用者確認收到「✅ 任務完成」推播）
+- [x] 子程序內的 Stop hook 不會造成重複通知（實機驗證：使用者確認派發任務時沒有混入多餘的完成通知）
+- [ ] 任務進行中傳第二則 → 收到「進行中」回覆（程式碼審查驗證：`busy` guard 邏輯已核對，未實機連續觸發測試）
+- [ ] bot 重啟後不重跑舊訊息（程式碼審查驗證：`load_offset`/`save_offset` 持久化邏輯已核對且有單元測試，未實機重啟測試）
+- [ ] 逾時任務被 kill 並回報（程式碼審查驗證：`subprocess.run(timeout=...)` + `TimeoutExpired` 處理已核對，未調短 timeout 實測）
+- [x] `.env` / `state.json` / `bot.log` 都在 .gitignore 內（已核對 `.gitignore` 內容與實際檔案）

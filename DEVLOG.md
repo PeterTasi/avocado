@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-06-09 — ingest 速度 + 真實進度條（進行中，分支 fix/ingest-speed-progress）
+
+- **起點（使用者回報）：** async ingest 已不再 502，但 28 頁手寫教材處理逾 210 秒卡在第三階段「建立圖譜與向量索引」，體驗差。
+- **診斷：**
+  1. **向量索引慢（真兇）：** `vector_store.py` 沒指定 embedding function → ChromaDB 用預設本地 ONNX 模型（all-MiniLM ~80MB）。Render free tier 下載 + 載入 + 慢 CPU 推論、加上 P6 每次 redeploy 磁碟歸零要重下載 → 卡數分鐘近 OOM。
+  2. **進度條是假的：** `SetupPanel.tsx` 用 `elapsedSec`（>5s / >15s）硬切步驟打勾，完全沒用後端真實 `stage`（輪詢回應其實有帶，前端丟掉）。截圖的「前兩步打勾、卡第三步」只是「已過 15 秒」假象。
+- **決策（OCR 不動）：** OCR 早在 141a6bd 改為「Gemini 原生 PDF 一次送」，且那正是當初 502 元兇（DEVLOG 2026-06-03），已用 timeout + async 壓下；不可再回頭加速 OCR。本次只動：(1) 向量 embedding 改 Gemini API（有金鑰時）繞過本地模型、無金鑰回退；(2) 前端進度接後端真實 stage + 第三階段細分。
+- **影響範圍：** `gemini_client.py`（新增 `embed_texts`）、`vector_store.py`（可選 embedder + collection 依 backend 命名避維度衝突）、`pipeline.py`（傳 embedder + 細分 stage）、`useApi.ts`（回拋 stage）、`SetupPanel.tsx`（真實 stage 驅動）。詳見 plan.md「進行中」。
+
+---
+
 ## 2026-06-08 — Bug 5 方案 C「清除課程資料」完成 ✅
 
 - **動機：** 方案 A（前端確認 modal）只是過濾，跨 session 概念仍殘留在 DB。方案 C 提供後端根本解——一鍵徹底清除某課程所有衍生資料。

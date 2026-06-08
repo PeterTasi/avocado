@@ -6,6 +6,39 @@
 
 ---
 
+# 🟢 進行中 — ingest 速度 + 真實進度條（分支 `fix/ingest-speed-progress`，2026-06-09）
+
+> **背景：** async ingest 已根治 502，但 28 頁手寫教材處理仍卡在第三階段（「建立圖譜與向量索引」）逾 210 秒，使用體驗差。診斷後鎖定兩個問題。
+
+## 問題 1：向量索引慢（第三階段真兇）
+
+- **成因：** `vector_store.py` 未指定 embedding function → ChromaDB 用預設本地 ONNX 模型（all-MiniLM，~80MB）。Render free tier（512MB RAM、慢 CPU、P6 每次 redeploy 磁碟歸零要重下載）下，首次 ingest 要「下載模型 + 載入 + CPU 推論」→ 卡數分鐘、近 OOM。
+- **方案：** 有 Gemini 金鑰時改用 Gemini embedding API（text-embedding-004）自算向量傳給 Chroma，繞過本地模型；無金鑰回退原本地模型。
+- **與 P6 關係：** 此改動讓向量計算不再依賴本地模型下載，順手減輕 P6 的 redeploy 重載痛點（但 Chroma 持久化本身仍是 P6 範疇）。
+
+## 問題 2：進度條是假的
+
+- **成因：** `SetupPanel.tsx` 進度純看 `elapsedSec`（>5 打勾步驟1、>15 打勾步驟2），**完全沒用後端真實 `stage`**。後端輪詢回應其實有帶 `stage`，但前端丟掉。
+- **方案：** 輪詢時把真實 `stage` 透過 callback 拋回元件，步驟改由真實 stage 驅動；第三階段在 `pipeline.py` 細分多個 `_stage`；文案改成手寫較慢的合理預期。
+
+## 影響範圍
+
+| 檔案 | 改動 |
+|---|---|
+| `src/adaptlearn/gemini_client.py` | 新增 `embed_texts()`（google-genai `embed_content`，含錯誤降級） |
+| `src/adaptlearn/vector_store.py` | 可選 embedder：有金鑰自算向量傳 Chroma、繞過本地模型；collection 依 backend 命名避免維度衝突（ONNX 384 vs Gemini 768）；查詢同 embedder |
+| `src/adaptlearn/pipeline.py` | 傳 `self.gemini` 當 embedder；第三階段細分 `_stage` |
+| `webapp/frontend/src/hooks/useApi.ts` | 輪詢回拋真實 `stage` |
+| `webapp/frontend/src/components/SetupPanel.tsx` | 步驟由真實 stage 驅動 + 文案 |
+| `webapp/static/*` | `npm run build` 重建並 commit |
+
+## 風險
+- 維度衝突 → collection 名稱帶 backend 自動隔離（本地舊 `data/chroma` 不受影響；Render P6 反正歸零）。
+- 金鑰缺失 → Gemini embedding 失敗要優雅回退本地模型，不可讓 ingest 崩。
+- 無 DB schema migration，不動 PostgreSQL。
+
+---
+
 # 🟡 選配待辦（競賽後可做）
 
 ## 失敗測試：OCR 頁數上限訊息對不上（pre-existing，141a6bd 後壞）

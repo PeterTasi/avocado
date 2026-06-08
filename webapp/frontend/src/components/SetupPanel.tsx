@@ -4,6 +4,14 @@ import { useCourses, useDeleteCourse, useIngestMaterial, useSaveApiKey } from ".
 import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
+// Backend ingest stages in order (from pipeline.py _stage labels). Used to map the
+// live stage string to the visual progress steps. Module-scope so it isn't rebuilt
+// every render.
+const STAGE_ORDER = [
+  "排隊中", "解析教材內容", "建立知識圖譜",
+  "儲存概念與章節", "建立向量索引", "尋找跨課程關聯", "完成",
+];
+
 interface Props {
   apiKey: string;
   setApiKey: (v: string) => void;
@@ -76,7 +84,7 @@ export function SetupPanel({
   }, [courseToDelete, deleteCourse]);
 
   useEffect(() => {
-    if (!ingestMaterial.isPending) { setElapsedSec(0); setStage(""); return; }
+    if (!ingestMaterial.isPending) { setElapsedSec(0); return; }
     const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [ingestMaterial.isPending]);
@@ -130,10 +138,6 @@ export function SetupPanel({
 
   // Drive the progress steps from the real backend stage (falls back to a coarse
   // time-based guess only before the first stage is reported, e.g. a sync server).
-  const STAGE_ORDER = [
-    "排隊中", "解析教材內容", "建立知識圖譜",
-    "儲存概念與章節", "建立向量索引", "尋找跨課程關聯", "完成",
-  ];
   const stageIndex = STAGE_ORDER.indexOf(stage);
   const effectiveIndex = stageIndex >= 0 ? stageIndex : elapsedSec > 15 ? 2 : elapsedSec > 5 ? 1 : 0;
   const step1Done = effectiveIndex >= 2;

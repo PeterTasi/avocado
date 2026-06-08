@@ -8,6 +8,21 @@
 
 # 🟢 進行中 — ingest 速度 + 真實進度條（分支 `fix/ingest-speed-progress`，2026-06-09）
 
+> **狀態：程式已完成並 push 到 `origin/fix/ingest-speed-progress`，尚未 merge 到 main、尚未在 Render 驗收。**
+> 實作細節見 DEVLOG 2026-06-09。下面是明天接續的待辦。
+
+## ⏭️ 明天接續（按順序）
+
+- [ ] **1. （可選）本地先驗一次：** `.env` 設好 `GEMINI_API_KEY` → `uvicorn webapp.main:app --reload` → 上傳那份 28 頁手寫，確認①第三階段不再卡數分鐘、②進度條顯示真實階段（解析→抽取→儲存概念→建立向量索引→尋找跨課程關聯）。
+- [ ] **2. 確認 Render 有設 `GEMINI_API_KEY`（關鍵！）：** `render.yaml` 裡這把 key 是 `sync: false`，要在 Render Dashboard → Environment 手動填。**沒設的話會回退本地模型 → 一樣慢**，這次加速等於沒生效。
+- [ ] **3. merge 到 main 觸發部署：** `git checkout main && git merge fix/ingest-speed-progress && git push origin main`。Render 從 main 自動部署。
+- [ ] **4. Render 端對端驗收：** redeploy 完成後上正式站傳 28 頁手寫，確認不再卡、進度真實、知識圖譜涵蓋整份。
+- [ ] **5. 驗收通過後：** 把本段從 plan.md 移除，DEVLOG 那筆「待辦」打勾標記完成。
+
+> **注意：** 這個分支沒有 `.github/workflows/react-doctor.yml`（那是 session 開始時就存在的未追蹤檔，與本任務無關，刻意不納入；目前 OAuth token 也無 `workflow` scope 可推送 workflow 檔）。
+
+---
+
 > **背景：** async ingest 已根治 502，但 28 頁手寫教材處理仍卡在第三階段（「建立圖譜與向量索引」）逾 210 秒，使用體驗差。診斷後鎖定兩個問題。
 
 ## 問題 1：向量索引慢（第三階段真兇）

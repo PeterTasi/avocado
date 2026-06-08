@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 from adaptlearn.config import Settings
 from adaptlearn.database import StudyRepository
 from adaptlearn.knowledge_graph import build_knowledge_graph
-from adaptlearn.models import Attempt, Concept, Question, ReviewItem
+from adaptlearn.models import Attempt, Concept, Course, CrossCourseEdge, Question, ReviewItem
 from adaptlearn.pipeline import AdaptLearnService
 from adaptlearn.review_scheduler import build_review_plan
 from datetime import datetime, timedelta
@@ -204,6 +204,39 @@ class TestStudyRepository:
         repo.reset_learning_state(include_attempts=False)
         assert len(repo.list_concepts()) == 0
         assert len(repo.list_questions()) == 0
+
+    def test_reset_course_state_clears_cross_edges_and_class_stats(self, repo):
+        """Bug 5 方案 C：reset_course_state 必須一併清掉 cross_course_edges 與 class_node_stats。"""
+        course_a = Course(id="course-a", subject="A")
+        course_b = Course(id="course-b", subject="B")
+        repo.save_course(course_a)
+        repo.save_course(course_b)
+
+        concept_a = Concept(id="concept-a", name="A1", chapter="Ch1", description="d", course_id="course-a")
+        concept_b = Concept(id="concept-b", name="B1", chapter="Ch1", description="d", course_id="course-b")
+        repo.upsert_concepts([concept_a, concept_b])
+        repo.save_cross_course_edges([
+            CrossCourseEdge(from_concept_id="concept-a", to_concept_id="concept-b", similarity=0.9),
+        ])
+        repo.update_class_node_stats("course-a")
+
+        repo.reset_course_state("course-a")
+
+        remaining_edges = repo.list_cross_course_edges()
+        assert all(e.from_concept_id != "concept-a" and e.to_concept_id != "concept-a" for e in remaining_edges)
+        assert repo.list_class_node_stats("course-a") == []
+        assert all(c.id != "concept-a" for c in repo.list_concepts())
+        # course-b's data must survive untouched
+        assert any(c.id == "concept-b" for c in repo.list_concepts())
+
+    def test_delete_course_removes_course_record(self, repo):
+        course = Course(id="course-x", subject="X")
+        repo.save_course(course)
+        assert repo.get_course("course-x") is not None
+
+        repo.delete_course("course-x")
+
+        assert repo.get_course("course-x") is None
 
 
 class TestAdaptLearnService:
@@ -717,6 +750,36 @@ class TestCourseCreation:
         courses = service.list_courses()
         assert len(courses) >= 1
         assert any(c.subject == "Graph Theory" for c in courses)
+
+    def test_clear_course_removes_course_and_concepts(self, service):
+        """Bug 5 方案 C：clear_course 必須讓課程與其概念徹底消失。"""
+        text = (
+            "Graph graph graph theory studies vertices edges connectivity. "
+            "Trees are connected acyclic graphs with n vertices and n-1 edges. "
+            "Spanning spanning spanning trees include all vertices with minimum edges. "
+            "Bipartite bipartite graphs can be 2-colored without adjacent same-color vertices. "
+            "Eulerian Eulerian paths visit every edge exactly once in a graph."
+        )
+        service.ingest_material(
+            file_name="graph_theory.txt",
+            file_bytes=text.encode("utf-8"),
+            course_name="Graph Theory",
+            template_mode="generic",
+        )
+        course = next(c for c in service.list_courses() if c.subject == "Graph Theory")
+        concept_ids_before = {c.id for c in service.repo.list_concepts(course_id=course.id)}
+        assert concept_ids_before
+
+        service.clear_course(course.id)
+
+        assert all(c.id != course.id for c in service.list_courses())
+        assert service.repo.list_concepts(course_id=course.id) == []
+        remaining_ids = {c.id for c in service.repo.list_concepts()}
+        assert concept_ids_before.isdisjoint(remaining_ids)
+
+    def test_clear_course_unknown_id_raises(self, service):
+        with pytest.raises(ValueError):
+            service.clear_course("does-not-exist")
 
 
 class TestPassProbabilityFormula:

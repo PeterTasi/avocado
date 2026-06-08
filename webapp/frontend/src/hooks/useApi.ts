@@ -295,6 +295,24 @@ export function useCourses() {
   });
 }
 
+export function useDeleteCourse() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (courseId: string) => {
+      return apiFetch(`/api/courses/${courseId}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      queryClient.invalidateQueries({ queryKey: ["concepts"] });
+      queryClient.invalidateQueries({ queryKey: ["mastery"] });
+      queryClient.invalidateQueries({ queryKey: ["graph"] });
+      queryClient.invalidateQueries({ queryKey: ["heatmap"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+    },
+  });
+}
+
 export function useClassHeatmap(courseId: string | null) {
   return useQuery({
     queryKey: ["heatmap", courseId],

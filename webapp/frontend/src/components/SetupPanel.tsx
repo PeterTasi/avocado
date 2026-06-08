@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
-import type { Concept } from "../hooks/useApi";
+import { Loader2, Trash2 } from "lucide-react";
+import { useCourses, useDeleteCourse, useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
+import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
 interface Props {
@@ -60,9 +60,19 @@ export function SetupPanel({
 }: Props) {
   const saveApiKey = useSaveApiKey();
   const ingestMaterial = useIngestMaterial();
+  const { data: coursesData } = useCourses();
+  const deleteCourse = useDeleteCourse();
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const courses = coursesData?.items ?? [];
+
+  const handleDeleteCourse = useCallback(async () => {
+    if (!courseToDelete) return;
+    await deleteCourse.mutateAsync(courseToDelete.id);
+    setCourseToDelete(null);
+  }, [courseToDelete, deleteCourse]);
 
   useEffect(() => {
     if (!ingestMaterial.isPending) { setElapsedSec(0); return; }
@@ -121,6 +131,42 @@ export function SetupPanel({
   const step2Done = elapsedSec > 15;
 
   return (
+    <>
+    {/* Delete-course confirmation modal (Bug 5 方案 C) */}
+    {courseToDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div className="card mx-4 max-w-sm p-6 shadow-xl">
+          <p className="text-base font-semibold text-[color:var(--text-primary)]">清除「{courseToDelete.subject}」的所有資料？</p>
+          <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
+            將永久刪除此課程的概念、題目、作答紀錄、複習計畫與知識圖譜向量索引，且無法復原。
+          </p>
+          {deleteCourse.isError && (
+            <p className="mt-2 text-xs text-[color:var(--low)]">
+              {deleteCourse.error instanceof Error ? deleteCourse.error.message : "刪除失敗，請稍後再試。"}
+            </p>
+          )}
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setCourseToDelete(null)}
+              disabled={deleteCourse.isPending}
+              className="btn-ghost px-4 py-2 text-sm disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteCourse}
+              disabled={deleteCourse.isPending}
+              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+              style={{ background: "var(--low)" }}
+            >
+              {deleteCourse.isPending ? "刪除中..." : "永久刪除"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <article className="card p-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -305,6 +351,38 @@ export function SetupPanel({
         sessionUploaded={sessionUploaded}
         isError={conceptsError}
       />
+
+      {/* Course management — Bug 5 方案 C: 清除課程資料 */}
+      {courses.length > 0 && (
+        <div className="mt-6">
+          <p className="section-eyebrow">已上傳課程</p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {courses.map((course) => (
+              <li
+                key={course.id}
+                className="card-subtle flex items-center justify-between gap-3 px-4 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{course.subject}</p>
+                  <p className="truncate text-xs text-[color:var(--text-muted)]">
+                    {course.filename} · {new Date(course.uploaded_at).toLocaleString("zh-TW")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCourseToDelete(course)}
+                  title="清除此課程的所有資料"
+                  aria-label={`清除課程「${course.subject}」`}
+                  className="btn-ghost shrink-0 grid h-8 w-8 place-items-center p-0 text-[color:var(--text-muted)] hover:text-[color:var(--low)]"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </article>
+    </>
   );
 }

@@ -217,6 +217,12 @@ class StudyRepository:
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
             """, (course_id,))
             cur.execute("""
+                DELETE FROM cross_course_edges
+                WHERE from_concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+                   OR to_concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
+            """, (course_id, course_id))
+            cur.execute("DELETE FROM class_node_stats WHERE course_id = %s", (course_id,))
+            cur.execute("""
                 DELETE FROM concept_edges
                 WHERE source_id IN (SELECT id FROM concepts WHERE course_id = %s)
             """, (course_id,))
@@ -229,6 +235,13 @@ class StudyRepository:
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
             """, (course_id,))
             cur.execute("DELETE FROM concepts WHERE course_id = %s", (course_id,))
+
+    def delete_course(self, course_id: str) -> None:
+        """Remove the course record itself (call after reset_course_state)."""
+        with self._connect() as cur:
+            cur.execute("DELETE FROM courses WHERE id = %s", (course_id,))
+            if self._active_course_id == course_id:
+                self._active_course_id = None
 
     def set_active_course(self, course_id: str) -> None:
         """Mark a course as active within this process (called by ingest_material)."""

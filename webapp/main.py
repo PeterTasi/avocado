@@ -339,6 +339,18 @@ def list_courses() -> dict[str, Any]:
     }
 
 
+@app.delete("/api/courses/{course_id}")
+@limiter.limit("10/minute")
+def delete_course(request: Request, course_id: str) -> dict[str, Any]:
+    try:
+        _get_service().clear_course(course_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review", "questions", "course")
+    return {"ok": True, "deleted": True, "course_id": course_id}
+
+
 @app.get("/api/cross-course-edges")
 @cached(_cache)
 def cross_course_edges() -> dict[str, Any]:

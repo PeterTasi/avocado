@@ -419,6 +419,14 @@ class AdaptLearnService:
     def list_courses(self) -> list[Course]:
         return self.repo.list_courses()
 
+    def clear_course(self, course_id: str) -> None:
+        """Permanently remove a course and all data derived from it (Bug 5 方案 C)."""
+        if not self.repo.get_course(course_id):
+            raise ValueError(f"找不到課程：{course_id}")
+        self.repo.reset_course_state(course_id)
+        self.repo.delete_course(course_id)
+        self.vector_store.delete_course(course_id)
+
     def list_cross_course_edges(self) -> list[CrossCourseEdge]:
         return self.repo.list_cross_course_edges()
 

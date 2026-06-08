@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-06-08 — Bug 5 方案 C「清除課程資料」完成 ✅
+
+- **動機：** 方案 A（前端確認 modal）只是過濾，跨 session 概念仍殘留在 DB。方案 C 提供後端根本解——一鍵徹底清除某課程所有衍生資料。
+- **決策：** ①整門課完全刪除（含 `courses` 列，課程從清單消失）②刪除按鈕放 SetupPanel 課程清單。
+- **後端改動：**
+  - `database.py`：`reset_course_state` 補清 `cross_course_edges`、`class_node_stats`；新增 `delete_course(course_id)` 刪 `courses` 列並重置 `_active_course_id`
+  - `vector_store.py`：新增 `delete_course(course_id)`，用 `collection.delete(where={"course_id": ...})` 清向量
+  - `pipeline.py`：新增 `clear_course(course_id)` 統籌 PG + 向量，課程不存在時拋 `ValueError`
+  - `main.py`：新增 `DELETE /api/courses/{course_id}`（`@limiter.limit("10/minute")`），404 對應 `ValueError`，成功後 `invalidate_cache`
+- **測試（TDD，先紅後綠）：** `test_reset_course_state_clears_cross_edges_and_class_stats`、`test_delete_course_removes_course_record`、`test_clear_course_removes_course_and_concepts`、`test_clear_course_unknown_id_raises`。全套 51 個測試 50 passed（1 既有失敗 `test_scanned_pdf_uses_configurable_ocr_page_limit` 與本次無關）。
+- **前端：** `useApi.ts` 新增 `useDeleteCourse`（成功後 invalidate courses/concepts/mastery/graph/heatmap/health）；`SetupPanel.tsx` 新增「已上傳課程」清單區塊（每列垃圾桶按鈕）+ 確認 modal（沿用方案 A 樣式，紅色「永久刪除」按鈕）。
+- **驗證：** `npm run build` 零 TS 錯誤；以 Playwright 對正式環境（render.com production DB）做端對端驗證——上傳一次性測試課程 `__VERIFY_DELETE_TEST__` → UI 點擊刪除 → 確認 modal → 「刪除中...」狀態 → 課程從清單消失 → API 二次確認 DB 已無該筆記錄。
+- **附帶發現：** 測試套件透過 `config.py` 的 `load_dotenv` 連到正式 production DB（非本地 test DB），本次規劃時誤建的 `course-a`/`course-b` 測試列已用新做的 `DELETE /api/courses/{id}` 端點清除（順便驗證了端點本身）。**此為既有風險，建議賽後檢視測試環境隔離。**
+
+---
+
 ## 2026-06-06 — P2 遺忘曲線預測顯示（FSRS-5 視覺化）✅
 
 - **動機：** 競賽差異化強化 P2。Review 頁複習排程只顯示 priority 數字，無法直覺呈現 FSRS-5 的科學排程優勢；ThetaWave 完全沒有遺忘模型。

@@ -117,6 +117,12 @@ class ConceptVectorStore:
 
         return cross_links[:n_results]
 
+    def delete_course(self, course_id: str) -> None:
+        """Remove all vectors belonging to a single course."""
+        if not self.enabled or not self._collection or not course_id:
+            return
+        self._collection.delete(where={"course_id": course_id})
+
     def close(self) -> None:
         """Release singleton resources for this instance."""
         key = str(self.storage_path.resolve())

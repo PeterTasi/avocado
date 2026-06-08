@@ -47,6 +47,12 @@ _GEMINI_TIMEOUT_MS = 120_000
 _CONCEPT_CHUNK_CHARS = 20_000
 _CONCEPT_MAX_CHUNKS = 6
 
+# Embedding model for the vector store. Using the Gemini embedding API offloads vector
+# computation to Google, so the host (e.g. Render free tier) doesn't have to download
+# and run ChromaDB's default local ONNX model (~80 MB) — the bottleneck that made big
+# ingests stall for minutes. 768-dim output.
+_EMBED_MODEL = "text-embedding-004"
+
 # Specific exceptions we expect from the Gemini API. Anything listed here is caught in
 # _generate_content and turned into graceful degradation (last_error set, "" returned)
 # instead of propagating as an HTTP 500.
@@ -119,6 +125,47 @@ class GeminiClient:
         self.last_error = str(last_error) if last_error else "Gemini returned no response."
         logger.warning("All Gemini model candidates failed: %s", self.last_error)
         return ""
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]] | None:
+        """Embed a batch of texts via the Gemini embedding API.
+
+        Returns a list of vectors (one per input) on success, or None on any failure
+        or when the client is disabled — callers treat None as "fall back to the local
+        ChromaDB embedding model". Errors degrade gracefully (last_error set) rather than
+        raising, so a flaky embedding call never crashes an ingest.
+        """
+        if not self.enabled or not self._client or not texts:
+            return None
+        try:
+            response = self._client.models.embed_content(
+                model=_EMBED_MODEL,
+                contents=texts,
+            )
+        except _API_ERRORS as exc:
+            logger.warning("Gemini embedding error: %s", exc)
+            self.last_error = str(exc)
+            return None
+        except Exception as exc:  # noqa: BLE001 — never let embedding crash an ingest
+            logger.error("Unexpected Gemini embedding error: %s", exc)
+            self.last_error = str(exc)
+            return None
+
+        embeddings = getattr(response, "embeddings", None) or []
+        vectors: list[list[float]] = []
+        for item in embeddings:
+            values = getattr(item, "values", None)
+            if values is None:
+                logger.warning("Gemini embedding response missing values; falling back.")
+                return None
+            vectors.append([float(v) for v in values])
+
+        if len(vectors) != len(texts):
+            logger.warning(
+                "Gemini embedding count mismatch (got %d, want %d); falling back.",
+                len(vectors), len(texts),
+            )
+            return None
+        return vectors
 
     def transcribe_images(
         self,

@@ -44,6 +44,9 @@ class AdaptLearnService:
             base_url=settings.ollama_url,
         )
         self.vector_store = ConceptVectorStore(settings.chroma_path)
+        # Use Gemini for embeddings when a key is present so vector indexing doesn't fall
+        # back to ChromaDB's heavy local ONNX model (the stage-3 bottleneck on Render free).
+        self.vector_store.set_embedder(self.gemini)
 
     def set_api_key(self, api_key: str) -> None:
         self.gemini.set_api_key(api_key)
@@ -160,15 +163,18 @@ class AdaptLearnService:
         for concept in concepts:
             concept.course_id = course_id
 
-        _stage("儲存與建立關聯")
+        _stage("儲存概念與章節")
         # P1: course-scoped reset (keeps attempts from other courses + all history)
         self.repo.set_active_course(course_id)
         self.repo.reset_course_state(course_id)
         self.repo.upsert_concepts(concepts)
         self.repo.replace_edges(edges)
+
+        _stage("建立向量索引")
         self.vector_store.upsert_concepts(concepts, replace_existing=False, course_id=course_id)
 
         # Module D: discover cross-course links
+        _stage("尋找跨課程關聯")
         cross_edges = find_cross_course_links(
             new_concepts=concepts,
             course_id=course_id,

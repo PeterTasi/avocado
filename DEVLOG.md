@@ -608,6 +608,7 @@ Google AI Studio 從 2026 年 4 月起確實會發 `AQ.` 新格式金鑰,且 Goo
 ---
 
 ## 待辦(clear 後再處理)
+- [ ] **async ingest 正式站端對端驗收**(feat/async-ingest 已併 main，205baa8):Render redeploy 後，親自上正式站傳一份 50 頁講義，確認(1)不再 502、(2)輪詢進度有跑、(3)知識圖譜涵蓋整份而非前 6 頁。本機只做了單元驗證，冷啟動 + 背景任務這條路需真實 Render 環境確認。
 - [ ] **安全**:debug 過程中金鑰曾在對話明文出現,建議事後更換或對金鑰加上 API 限制。
 - [ ] **最終 end-to-end 驗證**:Render 換上新金鑰 + 設 `GEMINI_MODEL` + 重新部署後,
       重新上傳手寫 PDF 確認跑出真實概念。

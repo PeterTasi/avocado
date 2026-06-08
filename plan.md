@@ -6,24 +6,15 @@
 
 ---
 
-# 🔵 進行中：大 PDF 502 修復（async ingest）
-
-**分支：** `feat/async-ingest`（2026-06-09 開）
-
-**問題：** 50 頁講義上傳時 Render 回 502。主因＝同步長請求 + free tier 冷啟動疊加超過閘道逾時。另含隱藏缺陷：文字型 PDF 只分析前 18000 字（約 6 頁），知識圖譜漏掉大半。
-
-**方案 A（背景任務 + 輪詢）+ 順手修分塊：**
-
-1. `webapp/main.py` — `POST /api/material/ingest` 改成建立背景任務、立刻回 `job_id`（202）；新增 `GET /api/material/ingest/status/{job_id}`；加 `MAX_UPLOAD_BYTES`（25MB）檔案大小守門（413）。in-memory job store（單實例 free tier 夠用，重啟即失，可接受）。
-2. `src/adaptlearn/pipeline.py` — `ingest_material` 加 optional `progress` callback，分階段回報。
-3. `src/adaptlearn/gemini_client.py` — `extract_concepts` 由 `text[:18000]` 改成分塊（20000 字/塊，上限 6 塊）逐塊抽概念 + round-robin 去重合併，涵蓋整份。`knowledge_graph.py` 不需改（合併在 client 內，下游 `_records_to_concepts` 照常 cap 24）。
-4. `webapp/frontend/src/hooks/useApi.ts` — `useIngestMaterial` 的 `mutationFn` 改 POST→輪詢 status 直到 done/error；`mutateAsync` 維持 pending，SetupPanel 現有進度 UI 不動。
-
-**風險：** job store 重啟即失（前端會 timeout 報錯）；`file.read()` 仍整份進記憶體 → 用 25MB 守門降低 OOM 風險。
-
----
-
 # 🟡 選配待辦（競賽後可做）
+
+## 失敗測試：OCR 頁數上限訊息對不上（pre-existing，141a6bd 後壞）
+
+- **測試：** `tests/test_unit.py::TestAdaptLearnService::test_scanned_pdf_uses_configurable_ocr_page_limit`
+- **現象：** 2 頁掃描 PDF + `max_ocr_pages=1`，測試期待 ValueError 含「上限 1 頁」，實際回「這份檔案幾乎沒有可讀文字…」。
+- **成因：** 141a6bd 原生 PDF 旁路改動後，page-limit 的提示訊息路徑變了；測試斷言沒跟著更新。經 `git stash` 確認在 main 上就失敗，與 async ingest(feat/async-ingest)無關。
+- **處理建議：** 另開 `fix/` 分支，對齊 `pdf_parser` 實際訊息或更新測試斷言；非緊急（純訊息文字）。
+
 
 ## Bug 5 方案 B — 跨 Session 概念殘留（後端根本解，暫不做）
 

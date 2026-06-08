@@ -13,6 +13,13 @@
   2. **進度條是假的：** `SetupPanel.tsx` 用 `elapsedSec`（>5s / >15s）硬切步驟打勾，完全沒用後端真實 `stage`（輪詢回應其實有帶，前端丟掉）。截圖的「前兩步打勾、卡第三步」只是「已過 15 秒」假象。
 - **決策（OCR 不動）：** OCR 早在 141a6bd 改為「Gemini 原生 PDF 一次送」，且那正是當初 502 元兇（DEVLOG 2026-06-03），已用 timeout + async 壓下；不可再回頭加速 OCR。本次只動：(1) 向量 embedding 改 Gemini API（有金鑰時）繞過本地模型、無金鑰回退；(2) 前端進度接後端真實 stage + 第三階段細分。
 - **影響範圍：** `gemini_client.py`（新增 `embed_texts`）、`vector_store.py`（可選 embedder + collection 依 backend 命名避維度衝突）、`pipeline.py`（傳 embedder + 細分 stage）、`useApi.ts`（回拋 stage）、`SetupPanel.tsx`（真實 stage 驅動）。詳見 plan.md「進行中」。
+- **實作完成（ded28ee, feec804）：**
+  - `embed_texts()` 用 text-embedding-004，錯誤一律回 None 優雅降級。
+  - `vector_store` 有金鑰 → `adaptlearn_concepts_gemini` collection、自算 768 維向量傳 Chroma 繞過本地模型；無金鑰 → 原 `adaptlearn_concepts`（本地 384 維）；embedding 失敗 → 跳過向量寫入不中斷 ingest。三條路徑以暫存 Chroma + fake embedder 驗過。
+  - 第三階段細分為「儲存概念與章節 / 建立向量索引 / 尋找跨課程關聯」；前端 `SetupPanel` 進度改由後端真實 `stage` 驅動（取代假的 `elapsedSec` 計時），第三步顯示精確子階段。
+  - `npm run build` 零錯誤；react-doctor diff 由 75→81、「No issues found」。
+- **驗證：** `pytest` 47 passed / 4 failed，4 個失敗皆 pre-existing（3 個 integration 測試假設同步 ingest、在 main 即壞；1 個 OCR 頁數訊息），本分支零新增失敗（已 checkout main 對照確認）。
+- **待辦：** Render redeploy 後正式站端對端驗收：上傳 28 頁手寫，確認第三階段不再卡數分鐘、進度條顯示真實階段。
 
 ---
 

@@ -5,6 +5,7 @@ import logging
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Callable
 
 from .chandra_client import ChandraClient
 from .class_heatmap import compute_class_heatmap, get_weak_concepts
@@ -64,7 +65,13 @@ class AdaptLearnService:
         file_bytes: bytes,
         course_name: str,
         template_mode: str = "generic",
+        progress: Callable[[str], None] | None = None,
     ) -> dict[str, object]:
+        def _stage(label: str) -> None:
+            if progress is not None:
+                progress(label)
+
+        _stage("解析教材內容")
         extracted_material = extract_material_text(
             file_name=file_name,
             file_bytes=file_bytes,
@@ -115,6 +122,7 @@ class AdaptLearnService:
                     "或先把 PDF 做 OCR（可搜尋文字），或明確選擇課程模板。"
                 )
         else:
+            _stage("建立知識圖譜")
             concepts, edges = build_knowledge_graph(
                 text=material_text,
                 course_name=course_name,
@@ -152,6 +160,7 @@ class AdaptLearnService:
         for concept in concepts:
             concept.course_id = course_id
 
+        _stage("儲存與建立關聯")
         # P1: course-scoped reset (keeps attempts from other courses + all history)
         self.repo.set_active_course(course_id)
         self.repo.reset_course_state(course_id)

@@ -5,6 +5,9 @@ import json
 import logging
 import secrets
 import sys
+import threading
+import time
+import uuid
 from contextlib import asynccontextmanager
 from functools import wraps
 from pathlib import Path
@@ -15,7 +18,6 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.concurrency import run_in_threadpool
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -125,6 +127,71 @@ def invalidate_cache(*patterns: str) -> None:
         _cache_large.pop(k, None)
 
 
+# --- Async ingest job store --------------------------------------------------
+# A 50-page upload runs OCR/LLM for minutes. A synchronous request stays open that
+# whole time and Render's proxy returns 502 once it exceeds the gateway timeout
+# (cold-start spin-up compounds this). Instead, POST starts a background thread and
+# returns a job_id immediately; the frontend polls for status. In-memory store is
+# fine for a single-instance free tier — jobs are lost on restart (acceptable: the
+# frontend surfaces a timeout/error).
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB guard against OOM on the 512 MB free tier
+_INGEST_JOB_TTL = 1800  # prune finished jobs after 30 min
+
+_ingest_jobs: dict[str, dict[str, Any]] = {}
+_ingest_jobs_lock = threading.Lock()
+
+
+def _set_job(job_id: str, **fields: Any) -> None:
+    with _ingest_jobs_lock:
+        job = _ingest_jobs.setdefault(job_id, {})
+        job.update(fields)
+        job["updated_at"] = time.time()
+
+
+def _get_job(job_id: str) -> dict[str, Any] | None:
+    with _ingest_jobs_lock:
+        job = _ingest_jobs.get(job_id)
+        return dict(job) if job else None
+
+
+def _prune_jobs() -> None:
+    now = time.time()
+    with _ingest_jobs_lock:
+        stale = [
+            k for k, v in _ingest_jobs.items()
+            if v.get("status") in ("done", "error")
+            and now - v.get("updated_at", now) > _INGEST_JOB_TTL
+        ]
+        for k in stale:
+            _ingest_jobs.pop(k, None)
+
+
+def _run_ingest_job(
+    job_id: str,
+    service: AdaptLearnService,
+    file_name: str,
+    file_bytes: bytes,
+    course_name: str,
+    template_mode: str,
+) -> None:
+    try:
+        _set_job(job_id, status="processing", stage="解析教材內容")
+        result = service.ingest_material(
+            file_name=file_name,
+            file_bytes=file_bytes,
+            course_name=course_name,
+            template_mode=template_mode,
+            progress=lambda stage: _set_job(job_id, stage=stage),
+        )
+        invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review")
+        _set_job(job_id, status="done", stage="完成", result=result)
+    except ValueError as exc:
+        _set_job(job_id, status="error", error=str(exc))
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the poller
+        logger.exception("ingest job %s failed", job_id)
+        _set_job(job_id, status="error", error=f"教材處理失敗：{exc}")
+
+
 class ApiKeyRequest(BaseModel):
     api_key: str = ""
 
@@ -209,27 +276,53 @@ async def ingest_material(
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="上傳檔案是空的，請確認內容。")
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        size_mb = len(file_bytes) // (1024 * 1024)
+        limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"檔案太大（{size_mb} MB），目前上限 {limit_mb} MB。請壓縮 PDF 或拆分重點章節後再上傳。",
+        )
 
     service = _get_service(api_key_override=api_key)
-    try:
-        # ingest_material is synchronous and can run for many seconds (OCR + LLM calls).
-        # Run it in a threadpool so the single uvicorn worker's event loop stays free to
-        # answer health checks — otherwise a long ingest blocks the worker and the hosting
-        # proxy (Render) returns a 502 Bad Gateway.
-        result = await run_in_threadpool(
-            service.ingest_material,
-            file_name=file.filename,
-            file_bytes=file_bytes,
-            course_name=course_name.strip() or "Course",
-            template_mode=template_mode,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"教材處理失敗：{exc}") from exc
 
-    invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review")
-    return {"ok": True, **result}
+    # Ingest runs for minutes on large files — too long for a synchronous request without
+    # tripping the proxy's 502 gateway timeout. Start a background thread and return a
+    # job_id; the client polls /api/material/ingest/status/{job_id}.
+    _prune_jobs()
+    job_id = uuid.uuid4().hex
+    _set_job(job_id, status="processing", stage="排隊中", filename=file.filename)
+    threading.Thread(
+        target=_run_ingest_job,
+        args=(
+            job_id,
+            service,
+            file.filename,
+            file_bytes,
+            course_name.strip() or "Course",
+            template_mode,
+        ),
+        daemon=True,
+    ).start()
+    return JSONResponse(status_code=202, content={"job_id": job_id, "status": "processing"})
+
+
+@app.get("/api/material/ingest/status/{job_id}")
+@limiter.limit("120/minute")
+def ingest_status(request: Request, job_id: str) -> dict[str, Any]:
+    job = _get_job(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404, detail="找不到這個處理任務（可能已完成過期或伺服器重啟）。"
+        )
+    status = job.get("status", "processing")
+    payload: dict[str, Any] = {"status": status, "stage": job.get("stage", "")}
+    if status == "done":
+        payload["ok"] = True
+        payload.update(job.get("result") or {})
+    elif status == "error":
+        payload["detail"] = job.get("error", "教材處理失敗")
+    return payload
 
 
 @app.get("/api/concepts")

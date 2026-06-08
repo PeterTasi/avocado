@@ -40,6 +40,13 @@ logger = logging.getLogger("adaptlearn.gemini")
 # still fails fast and degrades gracefully instead of blocking the worker indefinitely.
 _GEMINI_TIMEOUT_MS = 120_000
 
+# Concept extraction chunking. A typical slide deck (text-sparse) fits in one chunk;
+# a dense multi-page text doc is split so the whole document is analyzed, not just the
+# first ~6 pages. Bounded by _CONCEPT_MAX_CHUNKS so very large files don't fan out
+# into unbounded Gemini calls.
+_CONCEPT_CHUNK_CHARS = 20_000
+_CONCEPT_MAX_CHUNKS = 6
+
 # Specific exceptions we expect from the Gemini API. Anything listed here is caught in
 # _generate_content and turned into graceful degradation (last_error set, "" returned)
 # instead of propagating as an HTTP 500.
@@ -207,7 +214,33 @@ class GeminiClient:
         if not self.enabled or not self._client:
             return []
 
-        excerpt = text[:18000]
+        # A single 18k-char excerpt only covers the first ~6 pages of a lecture deck,
+        # so long materials lost most of their content. Now that ingest runs as a
+        # background job (no proxy timeout), we chunk the whole document and merge.
+        chunks = _chunk_text(text, chunk_size=_CONCEPT_CHUNK_CHARS, max_chunks=_CONCEPT_MAX_CHUNKS)
+        if not chunks:
+            return []
+        # Spread the concept budget across chunks, with headroom for cross-chunk dupes.
+        per_chunk = max(8, (max_concepts + len(chunks) - 1) // len(chunks) + 4)
+        chunk_records: list[list[dict[str, Any]]] = []
+        for chunk in chunks:
+            recs = self._extract_concepts_chunk(chunk, course_name, per_chunk)
+            if recs:
+                chunk_records.append(recs)
+        if len(chunks) > 1:
+            logger.info(
+                "extract_concepts: %d chars -> %d chunks, %d raw records (merged round-robin)",
+                len(text), len(chunks), sum(len(r) for r in chunk_records),
+            )
+        return _round_robin_dedupe(chunk_records)
+
+    def _extract_concepts_chunk(
+        self,
+        text: str,
+        course_name: str,
+        max_concepts: int,
+    ) -> list[dict[str, Any]]:
+        excerpt = text
         prompt = f"""
 You are an expert course analyst.
 From the material below, extract at most {max_concepts} core concepts.
@@ -476,3 +509,54 @@ def _build_model_candidates(primary_model: str) -> list[str]:
         seen.add(model)
         deduped.append(model)
     return deduped
+
+
+def _chunk_text(text: str, chunk_size: int, max_chunks: int) -> list[str]:
+    """Split text into <=max_chunks pieces of ~chunk_size chars, breaking on newlines
+    where possible. Text beyond max_chunks*chunk_size is dropped (logged, no silent cap)."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    n = len(text)
+    while start < n and len(chunks) < max_chunks:
+        end = min(start + chunk_size, n)
+        if end < n:
+            # Back up to a newline within the last 1000 chars for a cleaner split.
+            nl = text.rfind("\n", start + chunk_size - 1000, end)
+            if nl > start:
+                end = nl
+        chunks.append(text[start:end])
+        start = end
+
+    if start < n:
+        logger.warning(
+            "extract_concepts: dropped %d/%d chars (max_chunks=%d reached); "
+            "raise _CONCEPT_MAX_CHUNKS to analyze the full document.",
+            n - start, n, max_chunks,
+        )
+    return chunks
+
+
+def _round_robin_dedupe(chunk_records: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Interleave concept records across chunks (round-robin) so the final list spans the
+    whole document rather than front-loading early chunks; dedupe by normalized name."""
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if not chunk_records:
+        return merged
+    max_len = max(len(r) for r in chunk_records)
+    for i in range(max_len):
+        for recs in chunk_records:
+            if i >= len(recs):
+                continue
+            rec = recs[i]
+            key = str(rec.get("name", "")).strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                merged.append(rec)
+    return merged

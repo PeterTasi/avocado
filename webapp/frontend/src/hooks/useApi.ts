@@ -181,15 +181,40 @@ export function useReviewPlan() {
   });
 }
 
+// Poll the async ingest job until it finishes. The POST returns immediately with a
+// job_id (so the proxy never sees a long request → no 502); the real work runs in a
+// backend thread. Resolves with the final result dict, or throws on error/timeout.
+async function pollIngestStatus(jobId: string): Promise<unknown> {
+  const POLL_INTERVAL_MS = 1500;
+  const MAX_WAIT_MS = 5 * 60 * 1000; // ceiling so a stuck job doesn't spin forever
+  const deadline = Date.now() + MAX_WAIT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    const status = (await apiFetch(`/api/material/ingest/status/${jobId}`)) as {
+      status: string;
+      detail?: string;
+    } & Record<string, unknown>;
+    if (status.status === "done") return status;
+    if (status.status === "error") {
+      throw new Error(status.detail || "教材處理失敗，請稍後再試。");
+    }
+  }
+  throw new Error("教材處理逾時，請稍後再試或改用較小的檔案。");
+}
+
 export function useIngestMaterial() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (formData: FormData) => {
-      return apiFetch("/api/material/ingest", {
+      const start = (await apiFetch("/api/material/ingest", {
         method: "POST",
         body: formData,
-      });
+      })) as { job_id?: string };
+      // Backward-compat: a server that still answers synchronously returns the result.
+      if (!start.job_id) return start;
+      return pollIngestStatus(start.job_id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health"] });

@@ -597,6 +597,16 @@ Google AI Studio 從 2026 年 4 月起確實會發 `AQ.` 新格式金鑰,且 Goo
 
 ---
 
+## 2026-06-09 — 大 PDF 502 修復（async ingest，分支 feat/async-ingest）
+
+- **回報：** 朋友試用上傳 50 頁老師講義 → Render 502。
+- **診斷：** 502 是 Render 閘道對「單一請求處理太久」主動切線，非程式報錯。`/api/material/ingest` 是同步長請求，前端要掛著等整份處理完；free tier 冷啟動（休眠後 ~50s）疊加處理時間 → 超過閘道上限。先前 `run_in_threadpool` 只讓 health check 不被卡，沒讓請求本身變快。
+- **隱藏缺陷：** 文字型 PDF 走 `build_knowledge_graph → extract_concepts`，後者 `text[:18000]`（約前 6 頁）→ 50 頁講義其實只分析了開頭，知識圖譜漏掉大半（主場景剛好是上課講義）。
+- **決策：** 走方案 A（背景任務 + 前端輪詢，根本消滅 502），順手修分塊涵蓋整份，並加檔案大小守門（OOM 風險）。文字型確認 → 主因是逾時/冷啟動而非 OCR。
+- 實作見 plan.md「進行中」段。
+
+---
+
 ## 待辦(clear 後再處理)
 - [ ] **安全**:debug 過程中金鑰曾在對話明文出現,建議事後更換或對金鑰加上 API 限制。
 - [ ] **最終 end-to-end 驗證**:Render 換上新金鑰 + 設 `GEMINI_MODEL` + 重新部署後,

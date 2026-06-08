@@ -273,10 +273,10 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 | # | 狀態 | 說明 |
 |---|------|------|
-| Bug 5 B/C | 選配 | 後端 `session_id` scope（方案 B）或「清除課程資料」DELETE endpoint（方案 C）。方案 A（前端 modal）已完成，競賽夠用 |
+| Bug 5 B | 選配 | 後端 `session_id` scope（需 DB schema migration）。方案 A（前端 modal）+ 方案 C（清除課程資料 DELETE endpoint）皆已完成，競賽夠用 |
 | P6 | 賽後 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零 |
 | A1 | 賽後 | 全域單例 → 完整多租戶（短期解已決策不做） |
-| A4 | 賽後 | 拆 God object（`database.py` / `pipeline.py` / `App.tsx`）— 競賽期間勿動 |
+| A4 | 賽後 | 拆 God object（`database.py` 806 行 / `pipeline.py` 628 行 / `App.tsx` 803 行 / `SetupPanel.tsx` 388 行 — react-doctor 標記 too-large，2026-06-08 加課程清單後增大）— 競賽期間勿動，純可維護性問題、不影響功能 |
 
 ---
 

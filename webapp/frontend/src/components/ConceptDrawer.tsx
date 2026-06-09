@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { Concept } from "../hooks/useApi";
+import type { Concept, ConceptDetail } from "../hooks/useApi";
 import { useConceptDetail } from "../hooks/useApi";
 import { PixelAvocadoLogo } from "./PixelAvocadoLogo";
 import { MathRenderer } from "./MathRenderer";
@@ -18,6 +18,41 @@ const LABELS = {
   en: { def: "Definition", points: "Key Points", example: "Example", mistakes: "Common Mistakes" },
 };
 
+// module-scope pure renderer（不用元件 state）
+function renderDetail(d: ConceptDetail | undefined, l: "zh" | "en") {
+  if (!d) return null;
+  const t = LABELS[l];
+  const text = (s: string) => (d.has_formula ? <MathRenderer text={s} /> : <>{s}</>);
+  return (
+    <>
+      <div className="concept-block">
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.def}</p>
+        <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{text(d.definition)}</p>
+      </div>
+      {d.key_points.length > 0 && (
+        <div className="concept-block">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.points}</p>
+          <ul className="list-disc pl-5 text-sm leading-7 text-[color:var(--text-secondary)]">
+            {d.key_points.map((p, i) => <li key={`${l}:${i}:${p}`}>{text(p)}</li>)}
+          </ul>
+        </div>
+      )}
+      {d.example && (
+        <div className="concept-block">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.example}</p>
+          <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{text(d.example)}</p>
+        </div>
+      )}
+      {d.common_mistakes && (
+        <div className="concept-block rounded-lg border border-[color:var(--low)] px-3 py-2" style={{ background: "var(--low-soft)" }}>
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--low)]">{t.mistakes}</p>
+          <p className="text-sm leading-6 text-[color:var(--low)]">{text(d.common_mistakes)}</p>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
   // Esc 關閉
   useEffect(() => {
@@ -32,40 +67,6 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
   const wantEn = lang === "en" || lang === "both";
   const zh = useConceptDetail(wantZh && concept ? concept.id : null, "zh");
   const en = useConceptDetail(wantEn && concept ? concept.id : null, "en");
-
-  const renderDetail = (d: typeof zh.data, l: "zh" | "en") => {
-    if (!d) return null;
-    const t = LABELS[l];
-    const text = (s: string) => (d.has_formula ? <MathRenderer text={s} /> : <>{s}</>);
-    return (
-      <>
-        <div className="concept-block">
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.def}</p>
-          <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{text(d.definition)}</p>
-        </div>
-        {d.key_points.length > 0 && (
-          <div className="concept-block">
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.points}</p>
-            <ul className="list-disc pl-5 text-sm leading-7 text-[color:var(--text-secondary)]">
-              {d.key_points.map((p, i) => <li key={i}>{text(p)}</li>)}
-            </ul>
-          </div>
-        )}
-        {d.example && (
-          <div className="concept-block">
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--text-muted)]">{t.example}</p>
-            <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{text(d.example)}</p>
-          </div>
-        )}
-        {d.common_mistakes && (
-          <div className="concept-block rounded-lg border border-[color:var(--low)] px-3 py-2" style={{ background: "var(--low-soft)" }}>
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[color:var(--low)]">{t.mistakes}</p>
-            <p className="text-sm leading-6 text-[color:var(--low)]">{text(d.common_mistakes)}</p>
-          </div>
-        )}
-      </>
-    );
-  };
 
   const loading = (wantZh && zh.isLoading) || (wantEn && en.isLoading);
   const busy = (wantZh && zh.isFetching) || (wantEn && en.isFetching);

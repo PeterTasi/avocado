@@ -199,6 +199,7 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
   }
 
   // 4) 還原成既有 Layout 結構（略過固定根節點，渲染端自有中心節點）
+  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
   const concepts: ConceptNode[] = [];
   const chapters: ChapterNode[] = [];
   for (const p of pts) {
@@ -206,7 +207,7 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
     if (p.isChapter) {
       chapters.push({ id: p.id, name: p.chapter, x: p.x, y: p.y, color: colorByChapter.get(p.chapter)! });
     } else {
-      const node = graph.nodes.find((n) => n.id === p.id)!;
+      const node = nodeById.get(p.id)!;
       const m = masteryByName.get(node.name.toLowerCase());
       concepts.push({ id: p.id, name: node.name, chapter: p.chapter, x: p.x, y: p.y,
         status: m?.status ?? "new", mastery: m?.mastery ?? 0, chapterColor: colorByChapter.get(p.chapter)! });

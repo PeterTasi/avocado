@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-06-09 — 朋友試用回饋 4 項改善 ✅
+
+- **起點（朋友試用回饋）：** (1) 心智圖節點黏在一起；(2) 概念清單要一直下滑、想點進去看詳解；(3) 重點只有一句話、跟測驗難度落差大、看了答不出來；(4) 想要學習內容能切中文／英文／中英（通用需求，朋友讀生物但考英文只是舉例）。
+- **設計（brainstorming → spec → plan）：** 文件見 `docs/superpowers/specs|plans/2026-06-09-trial-feedback-improvements*`。關鍵決策：
+  - **深度詳解採 lazy 生成**：ingest 不預生（維持原速，瓶頸是 OCR），改在使用者點開概念卡時才生成「該一個概念 × 當下語言」的定義/重點/範例/誤區，存進新表快取。
+  - **語言只影響學習內容**（概念詳解＋測驗），UI 維持中文；概念頁與測驗頁各自獨立切換（中/EN/中英）。
+  - **心智圖自寫力導向佈局**（不加 npm 套件）取代固定半徑放射，解節點重疊。
+  - **概念清單改卡片網格＋右側抽屜**，抽屜走 spring 回彈、酪梨 logo 蓋章進場、區塊接力浮現、Esc 可關＋提示。
+- **實作（14 tasks，subagent-driven，Sonnet 執行）：**
+  - 後端：`models.ConceptDetail`；`database` migration 002 `concept_details` 表（PK concept_id+language）＋ get/save；`gemini_client.generate_concept_detail`（含降級）＋ `generate_questions` 加 `language`(zh/en/both)；`pipeline.get_or_generate_concept_detail`（lazy 快取）＋ `generate_diagnostics` 加 language；`main.py` 新增 `GET /api/concepts/{id}/detail?lang=` ＋ diagnostics 接 language。
+  - 前端：`useConceptDetail` hook；`index.css` 抽屜動畫；新 `ConceptDrawer.tsx`（Esc／中英堆疊／KaTeX）；`ConceptSection.tsx` 改卡片網格＋語言切換＋掌握度狀態色；`SetupPanel` 接 `useConceptMastery`；`QuizPanel` 測驗語言切換；`MindMapCanvas.buildLayout` 改力導向。
+- **驗證：** 新增 9 個後端測試全通過（含真實 DB 的 concept_details get/save）；`npm run build` 全程零錯誤。完整套件 **56 passed / 4 failed**，4 個 failed 皆為 plan.md 記載之 pre-existing（3× integration async ingest 行為、1× OCR 頁數上限訊息），與本次無關。
+- **待人工驗收：** 力導向佈局與抽屜動畫屬視覺品質，需在 graph/概念頁實際操作確認（節點不重疊、抽屜流暢、語言切換正確、中英對照堆疊）。
+
 ## 2026-06-09 — ingest 速度 + 真實進度條 ✅
 
 - **起點（使用者回報）：** async ingest 已不再 502，但 28 頁手寫教材處理逾 210 秒卡在第三階段「建立圖譜與向量索引」，體驗差。

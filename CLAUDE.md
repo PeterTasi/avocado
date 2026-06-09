@@ -117,10 +117,11 @@ cd webapp/frontend && npm run build
 | POST | `/api/config/api-key` | Switch Gemini API key at runtime |
 | POST | `/api/material/ingest` | Upload file → build concept graph |
 | GET | `/api/concepts` | List all concepts |
+| GET | `/api/concepts/{id}/detail` | 概念深度詳解（lazy 生成+快取，`?lang=zh\|en`；定義/重點/範例/誤區/公式旗標） |
 | GET | `/api/graph` | Graphviz DOT string |
 | GET | `/api/mastery/concepts` | Per-concept mastery scores |
 | GET | `/api/mastery/chapters` | Per-chapter mastery |
-| POST | `/api/diagnostics/generate` | Generate adaptive quiz questions |
+| POST | `/api/diagnostics/generate` | Generate adaptive quiz questions（body 可帶 `language: zh\|en\|both`） |
 | GET | `/api/questions` | List questions |
 | POST | `/api/questions/{id}/grade` | Grade a student answer |
 | POST | `/api/review/recalculate` | Rebuild FSRS review plan |
@@ -136,7 +137,9 @@ cd webapp/frontend && npm run build
 
 ## Database Schema (PostgreSQL)
 
-Tables: `courses`, `concepts`, `concept_edges`, `cross_course_edges`, `questions`, `attempts`, `review_plan`, `class_node_stats`, `schema_version`.
+Tables: `courses`, `concepts`, `concept_edges`, `cross_course_edges`, `questions`, `attempts`, `review_plan`, `class_node_stats`, `concept_details`, `schema_version`.
+
+> `concept_details`（migration 002）：概念深度詳解快取，PK `(concept_id, language)`，欄位 definition / key_points_json / example / common_mistakes / has_formula。lazy 生成（點開概念卡才生），不在 ingest 預生。
 
 `StudyRepository` (`database.py`) manages all queries. Uses `ThreadedConnectionPool(minconn=1, maxconn=10)`. Schema is auto-created on startup via `initialize()`; migrations run via `_run_migrations()`.
 

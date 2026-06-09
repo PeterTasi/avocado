@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
-import { useCourses, useDeleteCourse, useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
+import { useCourses, useConceptMastery, useDeleteCourse, useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
 import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
@@ -70,6 +70,7 @@ export function SetupPanel({
   const [stage, setStage] = useState("");
   const ingestMaterial = useIngestMaterial(setStage);
   const { data: coursesData } = useCourses();
+  const conceptMastery = useConceptMastery();
   const deleteCourse = useDeleteCourse();
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -367,6 +368,7 @@ export function SetupPanel({
         search={search}
         sessionUploaded={sessionUploaded}
         isError={conceptsError}
+        masteryItems={conceptMastery.data?.items ?? []}
       />
 
       {/* Course management — Bug 5 方案 C: 清除課程資料 */}

@@ -99,51 +99,97 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
     if (!byChapter.has(ch)) byChapter.set(ch, []);
     byChapter.get(ch)!.push(node);
   }
-
   const chapterNames = Array.from(byChapter.keys());
   const N = chapterNames.length;
-  const concepts: ConceptNode[] = [];
-  const chapters: ChapterNode[] = [];
+
+  // 1) 初始座標：沿用放射狀（收斂快又穩）
+  type P = { id: string; x: number; y: number; r: number; chapter: string; isChapter: boolean };
+  const pts: P[] = [];
+  const colorByChapter = new Map<string, string>();
 
   chapterNames.forEach((chapter, i) => {
-    const baseAngle = (2 * Math.PI * i) / N - Math.PI / 2;
+    const baseAngle = (2 * Math.PI * i) / Math.max(1, N) - Math.PI / 2;
     const color = CHAPTER_PALETTE[i % CHAPTER_PALETTE.length];
-
-    // Chapter node
-    chapters.push({
-      id: `__ch__${chapter}`,
-      name: chapter,
-      x: CX + R_CHAPTER * Math.cos(baseAngle),
-      y: CY + R_CHAPTER * Math.sin(baseAngle),
-      color,
-    });
-
-    // Concepts
+    colorByChapter.set(chapter, color);
+    pts.push({ id: `__ch__${chapter}`, x: CX + R_CHAPTER * Math.cos(baseAngle),
+               y: CY + R_CHAPTER * Math.sin(baseAngle), r: 26, chapter, isChapter: true });
     const nodes = byChapter.get(chapter)!;
     const M = nodes.length;
-    // Fan arc: grows with M but stays within ±75°
-    const fanHalf = Math.min((Math.PI / 3) * (M / 4 + 0.4), Math.PI * 0.6);
-
     nodes.forEach((node, j) => {
-      const angle =
-        M === 1
-          ? baseAngle
-          : baseAngle + fanHalf * ((j / (M - 1)) * 2 - 1);
-
-      const m = masteryByName.get(node.name.toLowerCase());
-      concepts.push({
-        id: node.id,
-        name: node.name,
-        chapter,
-        x: CX + R_CONCEPT * Math.cos(angle),
-        y: CY + R_CONCEPT * Math.sin(angle),
-        status: m?.status ?? "new",
-        mastery: m?.mastery ?? 0,
-        chapterColor: color,
-      });
+      const fanHalf = Math.min((Math.PI / 3) * (M / 4 + 0.4), Math.PI * 0.6);
+      const angle = M === 1 ? baseAngle : baseAngle + fanHalf * ((j / (M - 1)) * 2 - 1);
+      pts.push({ id: node.id, x: CX + R_CONCEPT * Math.cos(angle),
+                 y: CY + R_CONCEPT * Math.sin(angle),
+                 r: pillWidth(displayName(node.name)) / 2 + 14, chapter, isChapter: false });
     });
   });
 
+  // edges：概念↔所屬章節 + graph.edges（prerequisite/progression）
+  const idIndex = new Map(pts.map((p, i) => [p.id, i]));
+  const links: [number, number][] = [];
+  for (const p of pts) {
+    if (!p.isChapter) {
+      const ci = idIndex.get(`__ch__${p.chapter}`);
+      const pi = idIndex.get(p.id);
+      if (ci != null && pi != null) links.push([ci, pi]);
+    }
+  }
+  for (const e of graph.edges) {
+    const a = idIndex.get(e.source), b = idIndex.get(e.target);
+    if (a != null && b != null) links.push([a, b]);
+  }
+
+  // 2) 模擬：斥力(反平方) + 邊吸引 + 弱向心
+  const ITER = 280, REPULSE = 5200, SPRING = 0.02, CENTER = 0.012, MIN_D = 1;
+  for (let it = 0; it < ITER; it++) {
+    const fx = new Array(pts.length).fill(0);
+    const fy = new Array(pts.length).fill(0);
+    for (let i = 0; i < pts.length; i++) {
+      for (let k = i + 1; k < pts.length; k++) {
+        const dx = pts[i].x - pts[k].x, dy = pts[i].y - pts[k].y;
+        const d2 = dx * dx + dy * dy || MIN_D;
+        const minSep = pts[i].r + pts[k].r;
+        const force = REPULSE / d2;
+        const d = Math.sqrt(d2);
+        const boost = d < minSep ? 2.2 : 1;
+        const ux = dx / d, uy = dy / d;
+        fx[i] += ux * force * boost; fy[i] += uy * force * boost;
+        fx[k] -= ux * force * boost; fy[k] -= uy * force * boost;
+      }
+    }
+    for (const [a, b] of links) {
+      const dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
+      fx[a] += dx * SPRING; fy[a] += dy * SPRING;
+      fx[b] -= dx * SPRING; fy[b] -= dy * SPRING;
+    }
+    const damp = 0.85;
+    for (let i = 0; i < pts.length; i++) {
+      fx[i] += (CX - pts[i].x) * CENTER;
+      fy[i] += (CY - pts[i].y) * CENTER;
+      pts[i].x += fx[i] * damp; pts[i].y += fy[i] * damp;
+    }
+  }
+
+  // 3) clamp 進畫布
+  const PAD = 60;
+  for (const p of pts) {
+    p.x = Math.max(PAD, Math.min(SVG_W - PAD, p.x));
+    p.y = Math.max(PAD, Math.min(SVG_H - PAD, p.y));
+  }
+
+  // 4) 還原成既有 Layout 結構
+  const concepts: ConceptNode[] = [];
+  const chapters: ChapterNode[] = [];
+  for (const p of pts) {
+    if (p.isChapter) {
+      chapters.push({ id: p.id, name: p.chapter, x: p.x, y: p.y, color: colorByChapter.get(p.chapter)! });
+    } else {
+      const node = graph.nodes.find((n) => n.id === p.id)!;
+      const m = masteryByName.get(node.name.toLowerCase());
+      concepts.push({ id: p.id, name: node.name, chapter: p.chapter, x: p.x, y: p.y,
+        status: m?.status ?? "new", mastery: m?.mastery ?? 0, chapterColor: colorByChapter.get(p.chapter)! });
+    }
+  }
   return { concepts, chapters };
 }
 

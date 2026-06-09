@@ -109,6 +109,7 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
   const gradeQuestion = useGradeQuestion();
 
   const [questionCount, setQuestionCount] = useState(9);
+  const [quizLang, setQuizLang] = useState<"zh" | "en" | "both">("zh");
   const [answerText, setAnswerText] = useState("");
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
   const [showParticles, setShowParticles] = useState(false);
@@ -118,12 +119,12 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
   const currentQuestion = questions[questionIndex] ?? null;
 
   const doGenerate = useCallback(async () => {
-    const result = await generateDiagnostics.mutateAsync(questionCount);
+    const result = await generateDiagnostics.mutateAsync({ questionCount, language: quizLang });
     setQuestions(result.items ?? []);
     setQuestionIndex(0);
     setAnswerText("");
     setGradeResult(null);
-  }, [questionCount, generateDiagnostics, setQuestions, setQuestionIndex]);
+  }, [questionCount, quizLang, generateDiagnostics, setQuestions, setQuestionIndex]);
 
   const handleGenerate = useCallback(() => {
     if (!sessionUploaded) {
@@ -226,6 +227,14 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
             onChange={(e) => setQuestionCount(Number(e.target.value))}
             className="input h-10 w-20 px-3 text-sm"
           />
+        </div>
+        <div className="inline-flex rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-sunken)] p-0.5 text-[11px]">
+          {(["zh", "en", "both"] as const).map((l) => (
+            <button key={l} type="button" onClick={() => setQuizLang(l)}
+              className={`rounded-md px-2.5 py-1 font-semibold transition ${quizLang === l ? "bg-white text-[color:var(--accent)] shadow-sm" : "text-[color:var(--text-secondary)]"}`}>
+              {l === "zh" ? "中文" : l === "en" ? "EN" : "中英"}
+            </button>
+          ))}
         </div>
         <button
           type="button"

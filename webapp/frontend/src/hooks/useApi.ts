@@ -260,11 +260,11 @@ export function useGenerateDiagnostics() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (questionCount: number) => {
+    mutationFn: async ({ questionCount, language }: { questionCount: number; language: "zh" | "en" | "both" }) => {
       return apiFetch("/api/diagnostics/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question_count: questionCount }),
+        body: JSON.stringify({ question_count: questionCount, language }),
       }) as Promise<{ items: Question[] }>;
     },
     onSuccess: () => {

@@ -398,6 +398,59 @@ Concepts:
                 )
         return cleaned
 
+    def generate_concept_detail(
+        self, name: str, chapter: str, description: str, language: str
+    ) -> dict[str, Any]:
+        """生成單一概念的深度詳解（lazy）。失敗時優雅降級，不丟例外。"""
+        fallback = {
+            "definition": description or name,
+            "key_points": [],
+            "example": "",
+            "common_mistakes": "",
+            "has_formula": False,
+        }
+        if not self.enabled:
+            return fallback
+
+        lang_rule = (
+            "Write ALL fields in Traditional Chinese (繁體中文)."
+            if language == "zh"
+            else "Write ALL fields in English."
+        )
+        prompt = f"""
+You are an expert tutor writing study notes for ONE concept.
+{lang_rule}
+For any math, wrap expressions in $...$ (e.g. $A^{{-1}}$) and set has_formula true.
+
+Concept: {name}
+Chapter: {chapter}
+Short hint: {description}
+
+Return ONLY valid JSON with schema:
+{{
+  "definition": "2-3 sentence complete definition",
+  "key_points": ["exam-critical point", "..."],
+  "example": "one concrete example or application",
+  "common_mistakes": "a frequent misunderstanding and the correction",
+  "has_formula": true|false
+}}
+""".strip()
+
+        payload = _parse_json_payload(self._generate_content(prompt))
+        if not isinstance(payload, dict):
+            return fallback
+
+        key_points = payload.get("key_points", [])
+        if not isinstance(key_points, list):
+            key_points = []
+        return {
+            "definition": str(payload.get("definition", "")).strip() or fallback["definition"],
+            "key_points": [str(p).strip() for p in key_points if str(p).strip()],
+            "example": str(payload.get("example", "")).strip(),
+            "common_mistakes": str(payload.get("common_mistakes", "")).strip(),
+            "has_formula": bool(payload.get("has_formula", False)),
+        }
+
     def grade_answer(
         self,
         question_text: str,

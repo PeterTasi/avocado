@@ -347,14 +347,26 @@ Material:
         self,
         concepts: list[dict[str, str]],
         per_concept: int = 3,
+        language: str = "zh",
     ) -> list[dict[str, str]]:
-        if not self.enabled or not self._client or not concepts:
+        if not self.enabled or not concepts:
             return []
+
+        if language == "en":
+            lang_rule = "Write questions, answers, and rationale in English."
+        elif language == "both":
+            lang_rule = (
+                "Write each question, answer, and rationale BILINGUALLY: "
+                "first the English version, then the Traditional Chinese (繁體中文) version, "
+                "separated by a newline."
+            )
+        else:
+            lang_rule = "Write questions, answers, and rationale in Traditional Chinese (繁體中文)."
 
         concept_json = json.dumps(concepts, ensure_ascii=False)
         prompt = f"""
 You are an adaptive tutor. Generate {per_concept} diagnostic questions per concept across difficulty levels.
-Write questions, answers, and rationale in Traditional Chinese (繁體中文).
+{lang_rule}
 For any mathematical expressions, wrap them in $...$ (e.g. $A^{{-1}}$, $\\lambda_1$).
 
 Return ONLY valid JSON array with schema:
@@ -362,9 +374,9 @@ Return ONLY valid JSON array with schema:
   {{
     "concept": "concept name",
     "difficulty": "basic|intermediate|advanced",
-    "question": "question text in Traditional Chinese",
-    "answer": "reference answer in Traditional Chinese",
-    "rationale": "how to solve and why, in Traditional Chinese"
+    "question": "question text",
+    "answer": "reference answer",
+    "rationale": "how to solve and why"
   }}
 ]
 

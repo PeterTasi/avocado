@@ -12,6 +12,7 @@ def build_questions_for_concepts(
     concepts: list[Concept],
     gemini_client,
     per_concept: int = 3,
+    language: str = "zh",
 ) -> list[Question]:
     if not concepts:
         return []
@@ -26,7 +27,7 @@ def build_questions_for_concepts(
         for concept in concepts
     ]
 
-    generated = gemini_client.generate_questions(concepts=llm_input, per_concept=per_concept)
+    generated = gemini_client.generate_questions(concepts=llm_input, per_concept=per_concept, language=language)
     questions = _map_llm_questions(generated, concepts)
 
     counts = Counter(question.concept_id for question in questions)

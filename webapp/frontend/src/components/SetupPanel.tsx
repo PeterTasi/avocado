@@ -4,6 +4,14 @@ import { useCourses, useDeleteCourse, useIngestMaterial, useSaveApiKey } from ".
 import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
+// Backend ingest stages in order (from pipeline.py _stage labels). Used to map the
+// live stage string to the visual progress steps. Module-scope so it isn't rebuilt
+// every render.
+const STAGE_ORDER = [
+  "排隊中", "解析教材內容", "建立知識圖譜",
+  "儲存概念與章節", "建立向量索引", "尋找跨課程關聯", "完成",
+];
+
 interface Props {
   apiKey: string;
   setApiKey: (v: string) => void;
@@ -59,7 +67,8 @@ export function SetupPanel({
   conceptsError,
 }: Props) {
   const saveApiKey = useSaveApiKey();
-  const ingestMaterial = useIngestMaterial();
+  const [stage, setStage] = useState("");
+  const ingestMaterial = useIngestMaterial(setStage);
   const { data: coursesData } = useCourses();
   const deleteCourse = useDeleteCourse();
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -127,8 +136,16 @@ export function SetupPanel({
     ? ingestMaterial.error.message
     : "";
 
-  const step1Done = elapsedSec > 5;
-  const step2Done = elapsedSec > 15;
+  // Drive the progress steps from the real backend stage (falls back to a coarse
+  // time-based guess only before the first stage is reported, e.g. a sync server).
+  const stageIndex = STAGE_ORDER.indexOf(stage);
+  const effectiveIndex = stageIndex >= 0 ? stageIndex : elapsedSec > 15 ? 2 : elapsedSec > 5 ? 1 : 0;
+  const step1Done = effectiveIndex >= 2;
+  const step2Active = effectiveIndex === 2;
+  const step2Done = effectiveIndex >= 3;
+  const step3Active = effectiveIndex >= 3;
+  // Show the precise sub-stage label once we're inside the graph/vector phase.
+  const step3Label = step3Active && stageIndex >= 3 ? stage : "建立圖譜與向量索引";
 
   return (
     <>
@@ -308,17 +325,17 @@ export function SetupPanel({
             解析文件與頁面
             {step1Done && <span className="ml-auto text-[10px] text-[color:var(--high)]">✓</span>}
           </div>
-          <div className={`progress-step ${step2Done ? "done" : step1Done ? "active" : ""}`}>
+          <div className={`progress-step ${step2Done ? "done" : step2Active ? "active" : ""}`}>
             <span className="progress-step-dot" />
             抽取概念與章節
             {step2Done && <span className="ml-auto text-[10px] text-[color:var(--high)]">✓</span>}
           </div>
-          <div className={`progress-step ${step2Done ? "active" : ""}`}>
+          <div className={`progress-step ${step3Active ? "active" : ""}`}>
             <span className="progress-step-dot" />
-            建立圖譜與向量索引
+            {step3Label}
           </div>
           <p className="text-right text-[11px] tabular-nums text-[color:var(--text-muted)]">
-            已等待 {elapsedSec} 秒，掃描 PDF 通常需要 1–2 分鐘
+            已等待 {elapsedSec} 秒 · 手寫／掃描檔較久，通常需 1–4 分鐘
           </p>
         </div>
       )}

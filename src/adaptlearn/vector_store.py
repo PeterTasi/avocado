@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Protocol
 
 try:
     import chromadb
@@ -10,6 +11,22 @@ except Exception:  # pragma: no cover
     chromadb = None  # type: ignore[assignment]
 
 from .models import Concept
+
+logger = logging.getLogger("adaptlearn.vector_store")
+
+# Collection names are scoped by embedding backend so vectors of different
+# dimensionality never share a collection (ChromaDB default ONNX = 384 dims,
+# Gemini text-embedding-004 = 768). Mixing dims in one collection errors.
+_COLLECTION_LOCAL = "adaptlearn_concepts"
+_COLLECTION_GEMINI = "adaptlearn_concepts_gemini"
+
+
+class Embedder(Protocol):
+    """Minimal interface the vector store needs from an embedding provider."""
+
+    enabled: bool
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]] | None: ...
 
 
 class ConceptVectorStore:
@@ -32,7 +49,7 @@ class ConceptVectorStore:
 
         self.storage_path = storage_path
         self.enabled = chromadb is not None
-        self._collection = None
+        self._embedder: Embedder | None = None
 
         if not self.enabled:
             self._initialized = True
@@ -42,18 +59,49 @@ class ConceptVectorStore:
         key = str(self.storage_path.resolve())
         if key not in ConceptVectorStore._clients:
             ConceptVectorStore._clients[key] = chromadb.PersistentClient(path=str(self.storage_path))
-        self._collection = ConceptVectorStore._clients[key].get_or_create_collection("adaptlearn_concepts")
         self._initialized = True
 
+    def set_embedder(self, embedder: Embedder | None) -> None:
+        """Provide an embedding provider (e.g. the Gemini client).
+
+        When the embedder is enabled, vectors are computed via its API and passed
+        explicitly to ChromaDB, bypassing the heavy local ONNX model — the bottleneck
+        that stalled big ingests on Render free tier. When absent/disabled, ChromaDB's
+        default local embedding function is used instead.
+        """
+        self._embedder = embedder
+
+    def _backend_active(self) -> bool:
+        return self._embedder is not None and getattr(self._embedder, "enabled", False)
+
+    def _get_collection(self):
+        """Return the collection for the current embedding backend, or None."""
+        if not self.enabled:
+            return None
+        key = str(self.storage_path.resolve())
+        client = ConceptVectorStore._clients.get(key)
+        if client is None:
+            return None
+        name = _COLLECTION_GEMINI if self._backend_active() else _COLLECTION_LOCAL
+        return client.get_or_create_collection(name)
+
+    def _embed(self, texts: list[str]) -> list[list[float]] | None:
+        if not self._backend_active() or not self._embedder:
+            return None
+        return self._embedder.embed_texts(texts)
+
     def upsert_concepts(self, concepts: list[Concept], replace_existing: bool = False, course_id: str = "") -> None:
-        if not self.enabled or not self._collection or not concepts:
+        if not self.enabled or not concepts:
+            return
+        collection = self._get_collection()
+        if collection is None:
             return
 
         if replace_existing:
-            existing = self._collection.get(include=[])
+            existing = collection.get(include=[])
             existing_ids = existing.get("ids", [])
             if existing_ids:
-                self._collection.delete(ids=existing_ids)
+                collection.delete(ids=existing_ids)
 
         ids = [concept.id for concept in concepts]
         docs = [f"{concept.name}. {concept.description}" for concept in concepts]
@@ -61,13 +109,39 @@ class ConceptVectorStore:
             {"chapter": concept.chapter, "name": concept.name, "course_id": course_id or "default"}
             for concept in concepts
         ]
-        self._collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
+
+        embeddings = self._embed(docs)
+        if self._backend_active() and embeddings is None:
+            # The Gemini collection stores 768-dim vectors and must be queried/written
+            # with explicit embeddings. If embedding failed, writing text would let
+            # ChromaDB fall back to its 384-dim local model → dimension clash. Skip the
+            # vector upsert this round (best-effort; cross-course links degrade, ingest
+            # still succeeds — concepts/graph are already in PostgreSQL).
+            logger.warning(
+                "Gemini embedding unavailable; skipping vector upsert for %d concept(s).",
+                len(concepts),
+            )
+            return
+
+        if embeddings is not None:
+            collection.upsert(ids=ids, documents=docs, metadatas=metadatas, embeddings=embeddings)
+        else:
+            collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
 
     def query_related(self, query: str, n_results: int = 5, exclude_course_id: str = "") -> list[dict]:
-        if not self.enabled or not self._collection or not query.strip():
+        if not self.enabled or not query.strip():
+            return []
+        collection = self._get_collection()
+        if collection is None:
             return []
 
-        raw = self._collection.query(query_texts=[query], n_results=n_results)
+        if self._backend_active():
+            vectors = self._embed([query])
+            if not vectors:
+                return []
+            raw = collection.query(query_embeddings=vectors, n_results=n_results)
+        else:
+            raw = collection.query(query_texts=[query], n_results=n_results)
         raw_ids = raw.get("ids") or []
         raw_metadatas = raw.get("metadatas") or []
         raw_distances = raw.get("distances") or []
@@ -97,7 +171,7 @@ class ConceptVectorStore:
                            source_course_id: str, n_results: int = 5,
                            similarity_threshold: float = 0.82) -> list[dict]:
         """Find concepts from other courses that are semantically similar."""
-        if not self.enabled or not self._collection:
+        if not self.enabled:
             return []
 
         query_text = f"{concept_name}. {concept_description}"
@@ -119,9 +193,12 @@ class ConceptVectorStore:
 
     def delete_course(self, course_id: str) -> None:
         """Remove all vectors belonging to a single course."""
-        if not self.enabled or not self._collection or not course_id:
+        if not self.enabled or not course_id:
             return
-        self._collection.delete(where={"course_id": course_id})
+        collection = self._get_collection()
+        if collection is None:
+            return
+        collection.delete(where={"course_id": course_id})
 
     def close(self) -> None:
         """Release singleton resources for this instance."""
@@ -129,7 +206,7 @@ class ConceptVectorStore:
         with self._lock:
             self._instances.pop(key, None)
             self._clients.pop(key, None)
-        self._collection = None
+        self._embedder = None
         self._initialized = False
 
     @classmethod

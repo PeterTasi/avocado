@@ -198,6 +198,7 @@ class ApiKeyRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     question_count: int = Field(default=9, ge=1, le=30)
+    language: str = Field(default="zh")
 
 
 class GradeRequest(BaseModel):
@@ -383,7 +384,10 @@ def chapter_mastery() -> dict[str, Any]:
 @app.post("/api/diagnostics/generate")
 @limiter.limit("10/minute")
 def generate_diagnostics(request: Request, payload: GenerateRequest) -> dict[str, Any]:
-    questions = _get_service().generate_diagnostics(question_count=payload.question_count)
+    lang = payload.language if payload.language in ("zh", "en", "both") else "zh"
+    questions = _get_service().generate_diagnostics(
+        question_count=payload.question_count, language=lang
+    )
     invalidate_cache("questions")
     return {"items": [_serialize_question(question) for question in questions]}
 

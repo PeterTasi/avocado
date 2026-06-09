@@ -202,7 +202,7 @@ class AdaptLearnService:
             "llm_last_error": self.gemini.last_error,
         }
 
-    def generate_diagnostics(self, question_count: int = 9) -> list[Question]:
+    def generate_diagnostics(self, question_count: int = 9, language: str = "zh") -> list[Question]:
         # P1: scope to active course
         active_course_id = self.repo.get_active_course_id()
         concepts = self.repo.list_concepts(course_id=active_course_id)
@@ -217,6 +217,7 @@ class AdaptLearnService:
             concepts=target_concepts,
             gemini_client=self.gemini,
             per_concept=3,
+            language=language,
         )
         questions = questions[:question_count]
 

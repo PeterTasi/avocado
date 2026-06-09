@@ -11,7 +11,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
-from .models import Attempt, ClassNodeStats, Concept, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
+from .models import Attempt, ClassNodeStats, Concept, ConceptDetail, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
 
 logger = logging.getLogger("adaptlearn.db")
 
@@ -173,6 +173,7 @@ class StudyRepository:
 
         migrations = [
             (1, self._migration_001_add_timestamptz),
+            (2, self._migration_002_concept_details),
         ]
         for version, fn in migrations:
             if version not in applied:
@@ -205,6 +206,23 @@ class StudyRepository:
                         USING {col}::timestamptz
                     """)
                     logger.info("Converted %s.%s to TIMESTAMPTZ", table, col)
+
+    def _migration_002_concept_details(self) -> None:
+        """Lazy 概念深度詳解快取表（每概念 × 語言一列）。append-only，不動既有表。"""
+        with self._connect() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS concept_details (
+                    concept_id TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    definition TEXT NOT NULL DEFAULT '',
+                    key_points_json TEXT NOT NULL DEFAULT '[]',
+                    example TEXT NOT NULL DEFAULT '',
+                    common_mistakes TEXT NOT NULL DEFAULT '',
+                    has_formula BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    PRIMARY KEY (concept_id, language)
+                )
+            """)
 
     # ── P1: Course-scoped state management ────────────────────────
 
@@ -340,6 +358,57 @@ class StudyRepository:
                 )
             )
         return concepts
+
+    def get_concept_detail(self, concept_id: str, language: str) -> ConceptDetail | None:
+        with self._connect() as cur:
+            cur.execute(
+                """
+                SELECT concept_id, language, definition, key_points_json,
+                       example, common_mistakes, has_formula
+                FROM concept_details
+                WHERE concept_id = %s AND language = %s
+                """,
+                (concept_id, language),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        return ConceptDetail(
+            concept_id=row["concept_id"],
+            language=row["language"],
+            definition=row["definition"],
+            key_points=json.loads(row["key_points_json"]) if row["key_points_json"] else [],
+            example=row["example"],
+            common_mistakes=row["common_mistakes"],
+            has_formula=bool(row["has_formula"]),
+        )
+
+    def save_concept_detail(self, detail: ConceptDetail) -> None:
+        with self._connect() as cur:
+            cur.execute(
+                """
+                INSERT INTO concept_details
+                    (concept_id, language, definition, key_points_json,
+                     example, common_mistakes, has_formula)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (concept_id, language) DO UPDATE SET
+                    definition = EXCLUDED.definition,
+                    key_points_json = EXCLUDED.key_points_json,
+                    example = EXCLUDED.example,
+                    common_mistakes = EXCLUDED.common_mistakes,
+                    has_formula = EXCLUDED.has_formula,
+                    created_at = now()
+                """,
+                (
+                    detail.concept_id,
+                    detail.language,
+                    detail.definition,
+                    json.dumps(detail.key_points, ensure_ascii=False),
+                    detail.example,
+                    detail.common_mistakes,
+                    detail.has_formula,
+                ),
+            )
 
     def replace_edges(self, edges: list[ConceptEdge]) -> None:
         """Insert edges (UPSERT). Course-scoped deletion is handled by reset_course_state."""

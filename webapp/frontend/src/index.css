@@ -56,6 +56,7 @@
   --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 
   /* Legacy var aliases (still referenced by un-migrated components' CSS) */
   --text-tertiary: var(--text-muted);
@@ -497,4 +498,58 @@ a { color: inherit; text-decoration: none; }
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ─── 概念抽屜 ───────────────────────────────────────────────── */
+.concept-scrim {
+  position: absolute; inset: 0;
+  background: rgba(16, 24, 40, .18);
+  opacity: 0; pointer-events: none;
+  transition: opacity .4s var(--ease-out, ease);
+}
+.concept-stage.open .concept-scrim { opacity: 1; pointer-events: auto; }
+
+.concept-grid {
+  transition: filter .45s ease, transform .45s ease, opacity .45s ease;
+}
+.concept-stage.open .concept-grid {
+  filter: blur(2px); transform: scale(.985); opacity: .55;
+}
+
+.concept-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: min(420px, 88%);
+  background: var(--bg-surface); border-left: 1px solid var(--border);
+  box-shadow: -18px 0 40px rgba(16, 24, 40, .12);
+  transform: translateX(100%);
+  transition: transform .55s var(--ease-spring);
+  display: flex; flex-direction: column;
+  z-index: 20;
+}
+.concept-stage.open .concept-drawer { transform: translateX(0); }
+
+/* 酪梨 logo 蓋章進場 */
+.concept-drawer-avo {
+  transform: scale(0) rotate(-18deg); transform-origin: bottom center;
+}
+.concept-stage.open .concept-drawer-avo {
+  animation: avo-stamp .5s var(--ease-spring) .08s forwards;
+}
+@keyframes avo-stamp {
+  60% { transform: scale(1.12) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* 區塊接力浮現 */
+.concept-block { opacity: 0; transform: translateY(8px); }
+.concept-stage.open .concept-block { animation: concept-rise .45s var(--ease-spring) forwards; }
+.concept-stage.open .concept-block:nth-child(1) { animation-delay: .16s; }
+.concept-stage.open .concept-block:nth-child(2) { animation-delay: .23s; }
+.concept-stage.open .concept-block:nth-child(3) { animation-delay: .30s; }
+.concept-stage.open .concept-block:nth-child(4) { animation-delay: .37s; }
+@keyframes concept-rise { to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-drawer, .concept-grid, .concept-drawer-avo, .concept-block { transition: none; animation: none; }
+  .concept-drawer-avo, .concept-block { transform: none; opacity: 1; }
 }

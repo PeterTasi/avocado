@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-06-09 — ingest 速度 + 真實進度條（進行中，分支 fix/ingest-speed-progress）
+## 2026-06-09 — ingest 速度 + 真實進度條 ✅
 
 - **起點（使用者回報）：** async ingest 已不再 502，但 28 頁手寫教材處理逾 210 秒卡在第三階段「建立圖譜與向量索引」，體驗差。
 - **診斷：**
@@ -19,7 +19,7 @@
   - 第三階段細分為「儲存概念與章節 / 建立向量索引 / 尋找跨課程關聯」；前端 `SetupPanel` 進度改由後端真實 `stage` 驅動（取代假的 `elapsedSec` 計時），第三步顯示精確子階段。
   - `npm run build` 零錯誤；react-doctor diff 由 75→81、「No issues found」。
 - **驗證：** `pytest` 47 passed / 4 failed，4 個失敗皆 pre-existing（3 個 integration 測試假設同步 ingest、在 main 即壞；1 個 OCR 頁數訊息），本分支零新增失敗（已 checkout main 對照確認）。
-- **待辦：** Render redeploy 後正式站端對端驗收：上傳 28 頁手寫，確認第三階段不再卡數分鐘、進度條顯示真實階段。
+- **驗收（2026-06-09）：** Render 正式站端對端驗收通過。28 頁手寫上傳不再卡在第三階段，進度條顯示真實後端 stage。merge 到 main 並 push（commit 7e2806f）。
 
 ---
 

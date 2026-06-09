@@ -211,7 +211,8 @@ async function pollIngestStatus(
   onStage?: (stage: string) => void,
 ): Promise<unknown> {
   const POLL_INTERVAL_MS = 1500;
-  const MAX_WAIT_MS = 5 * 60 * 1000; // ceiling so a stuck job doesn't spin forever
+  // 本地 Ollama OCR 處理多頁手寫教材較慢但穩定，給足時間（無 API 限流會被打斷的問題）
+  const MAX_WAIT_MS = 12 * 60 * 1000; // ceiling so a stuck job doesn't spin forever
   const deadline = Date.now() + MAX_WAIT_MS;
 
   while (Date.now() < deadline) {

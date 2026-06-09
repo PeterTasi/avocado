@@ -73,6 +73,17 @@ class ReviewItem:
 
 
 @dataclass(slots=True)
+class ConceptDetail:
+    concept_id: str
+    language: str  # "zh" | "en"
+    definition: str = ""
+    key_points: list[str] = field(default_factory=list)
+    example: str = ""
+    common_mistakes: str = ""
+    has_formula: bool = False
+
+
+@dataclass(slots=True)
 class ClassNodeStats:
     course_id: str
     concept_id: str

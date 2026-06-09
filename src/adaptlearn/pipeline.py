@@ -15,7 +15,7 @@ from .database import StudyRepository
 from .domain_templates import get_seed_concepts
 from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
-from .models import Attempt, Concept, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
+from .models import Attempt, Concept, ConceptDetail, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
 from .ollama_client import OllamaClient
 from .pdf_parser import extract_material_text
 from .quiz_engine import build_questions_for_concepts
@@ -490,6 +490,39 @@ class AdaptLearnService:
             })
 
         return result
+
+    def get_or_generate_concept_detail(self, concept_id: str, language: str) -> ConceptDetail:
+        """Lazy：先查快取，未命中才呼叫 Gemini 生成並存。"""
+        if language not in ("zh", "en"):
+            language = "zh"
+
+        cached = self.repo.get_concept_detail(concept_id, language)
+        if cached is not None:
+            return cached
+
+        concept = next(
+            (c for c in self.repo.list_concepts() if c.id == concept_id), None
+        )
+        if concept is None:
+            raise ValueError(f"找不到概念：{concept_id}")
+
+        raw = self.gemini.generate_concept_detail(
+            name=concept.name,
+            chapter=concept.chapter,
+            description=concept.description,
+            language=language,
+        )
+        detail = ConceptDetail(
+            concept_id=concept_id,
+            language=language,
+            definition=raw["definition"],
+            key_points=raw["key_points"],
+            example=raw["example"],
+            common_mistakes=raw["common_mistakes"],
+            has_formula=raw["has_formula"],
+        )
+        self.repo.save_concept_detail(detail)
+        return detail
 
     def _select_weak_concepts(
         self,

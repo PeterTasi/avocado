@@ -59,6 +59,16 @@ export interface Concept {
   prerequisites: string[];
 }
 
+export interface ConceptDetail {
+  concept_id: string;
+  language: string;
+  definition: string;
+  key_points: string[];
+  example: string;
+  common_mistakes: string;
+  has_formula: boolean;
+}
+
 export interface Question {
   id: string;
   concept_id: string;
@@ -130,6 +140,17 @@ export function useConcepts() {
     queryKey: ["concepts"],
     queryFn: () => apiFetch("/api/concepts") as Promise<{ items: Concept[] }>,
     staleTime: 60000,
+  });
+}
+
+export function useConceptDetail(conceptId: string | null, lang: "zh" | "en") {
+  return useQuery({
+    queryKey: ["concept-detail", conceptId, lang],
+    enabled: !!conceptId,
+    staleTime: Infinity, // 後端已快取，不需重抓
+    queryFn: async () => {
+      return apiFetch(`/api/concepts/${conceptId}/detail?lang=${lang}`) as Promise<ConceptDetail>;
+    },
   });
 }
 

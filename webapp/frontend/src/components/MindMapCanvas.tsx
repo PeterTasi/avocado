@@ -102,25 +102,36 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
   const chapterNames = Array.from(byChapter.keys());
   const N = chapterNames.length;
 
-  // 1) 初始座標：沿用放射狀（收斂快又穩）
-  type P = { id: string; x: number; y: number; r: number; chapter: string; isChapter: boolean };
+  // 每個節點以「矩形」表示（pill 寬扁），用碰撞分離保證不重疊。
+  type P = {
+    id: string; x: number; y: number;
+    hw: number; hh: number;          // 半寬 / 半高（含 logo/padding）
+    chapter: string; isChapter: boolean; fixed: boolean;
+  };
   const pts: P[] = [];
   const colorByChapter = new Map<string, string>();
 
+  // 固定的中心根節點（課程圖譜）— 當作障礙物，避免被蓋住。
+  pts.push({ id: "__root__", x: CX, y: CY, hw: 38, hh: 38, chapter: "", isChapter: false, fixed: true });
+
+  // 1) 初始座標：放射狀當起點（收斂快、結果穩定、不亂飄）
   chapterNames.forEach((chapter, i) => {
     const baseAngle = (2 * Math.PI * i) / Math.max(1, N) - Math.PI / 2;
     const color = CHAPTER_PALETTE[i % CHAPTER_PALETTE.length];
     colorByChapter.set(chapter, color);
     pts.push({ id: `__ch__${chapter}`, x: CX + R_CHAPTER * Math.cos(baseAngle),
-               y: CY + R_CHAPTER * Math.sin(baseAngle), r: 26, chapter, isChapter: true });
+               y: CY + R_CHAPTER * Math.sin(baseAngle), hw: 24, hh: 24,
+               chapter, isChapter: true, fixed: false });
     const nodes = byChapter.get(chapter)!;
     const M = nodes.length;
     nodes.forEach((node, j) => {
       const fanHalf = Math.min((Math.PI / 3) * (M / 4 + 0.4), Math.PI * 0.6);
-      const angle = M === 1 ? baseAngle : baseAngle + fanHalf * ((j / (M - 1)) * 2 - 1);
-      pts.push({ id: node.id, x: CX + R_CONCEPT * Math.cos(angle),
-                 y: CY + R_CONCEPT * Math.sin(angle),
-                 r: pillWidth(displayName(node.name)) / 2 + 14, chapter, isChapter: false });
+      const angle = M === 1 ? baseAngle + (j - (M - 1) / 2) * 0.5
+                            : baseAngle + fanHalf * ((j / (M - 1)) * 2 - 1);
+      const ring = R_CONCEPT + (j % 2) * 46; // 交錯兩環，分散初始重疊
+      pts.push({ id: node.id, x: CX + ring * Math.cos(angle), y: CY + ring * Math.sin(angle),
+                 hw: pillWidth(displayName(node.name)) / 2, hh: PILL_H / 2,
+                 chapter, isChapter: false, fixed: false });
     });
   });
 
@@ -128,7 +139,7 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
   const idIndex = new Map(pts.map((p, i) => [p.id, i]));
   const links: [number, number][] = [];
   for (const p of pts) {
-    if (!p.isChapter) {
+    if (!p.isChapter && !p.fixed) {
       const ci = idIndex.get(`__ch__${p.chapter}`);
       const pi = idIndex.get(p.id);
       if (ci != null && pi != null) links.push([ci, pi]);
@@ -139,48 +150,59 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
     if (a != null && b != null) links.push([a, b]);
   }
 
-  // 2) 模擬：斥力(反平方) + 邊吸引 + 弱向心
-  const ITER = 280, REPULSE = 5200, SPRING = 0.02, CENTER = 0.012, MIN_D = 1;
+  // 2) 迭代：弱彈簧（連線靠攏）+ 弱向心，再做「矩形碰撞分離」硬約束
+  const ITER = 500;
+  const SPRINGK = 0.06, REST = 36, GRAV = 0.008, GAP = 18, MAXSTEP = 40;
+  const clampStep = (v: number) => Math.max(-MAXSTEP, Math.min(MAXSTEP, v));
+
   for (let it = 0; it < ITER; it++) {
-    const fx = new Array(pts.length).fill(0);
-    const fy = new Array(pts.length).fill(0);
-    for (let i = 0; i < pts.length; i++) {
-      for (let k = i + 1; k < pts.length; k++) {
-        const dx = pts[i].x - pts[k].x, dy = pts[i].y - pts[k].y;
-        const d2 = dx * dx + dy * dy || MIN_D;
-        const minSep = pts[i].r + pts[k].r;
-        const force = REPULSE / d2;
-        const d = Math.sqrt(d2);
-        const boost = d < minSep ? 2.2 : 1;
-        const ux = dx / d, uy = dy / d;
-        fx[i] += ux * force * boost; fy[i] += uy * force * boost;
-        fx[k] -= ux * force * boost; fy[k] -= uy * force * boost;
-      }
-    }
+    // 2a) 彈簧 + 向心（溫和吸引）
     for (const [a, b] of links) {
       const dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
-      fx[a] += dx * SPRING; fy[a] += dy * SPRING;
-      fx[b] -= dx * SPRING; fy[b] -= dy * SPRING;
+      const dist = Math.hypot(dx, dy) || 1;
+      const f = (SPRINGK * (dist - REST)) / dist;
+      const sx = clampStep(dx * f), sy = clampStep(dy * f);
+      if (!pts[a].fixed) { pts[a].x += sx; pts[a].y += sy; }
+      if (!pts[b].fixed) { pts[b].x -= sx; pts[b].y -= sy; }
     }
-    const damp = 0.85;
+    for (const p of pts) {
+      if (p.fixed) continue;
+      p.x += (CX - p.x) * GRAV;
+      p.y += (CY - p.y) * GRAV;
+    }
+    // 2b) 矩形碰撞分離（硬約束：兩 AABB 重疊就沿最小重疊軸推開）
     for (let i = 0; i < pts.length; i++) {
-      fx[i] += (CX - pts[i].x) * CENTER;
-      fy[i] += (CY - pts[i].y) * CENTER;
-      pts[i].x += fx[i] * damp; pts[i].y += fy[i] * damp;
+      for (let k = i + 1; k < pts.length; k++) {
+        const A = pts[i], B = pts[k];
+        if (A.fixed && B.fixed) continue;
+        let dx = B.x - A.x, dy = B.y - A.y;
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) { dx = (k - i) * 0.5; dy = 0.3; }
+        const ox = A.hw + B.hw + GAP - Math.abs(dx);
+        const oy = A.hh + B.hh + GAP - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue; // 沒重疊
+        let pushX = 0, pushY = 0;
+        if (ox < oy) pushX = (dx < 0 ? -ox : ox);
+        else pushY = (dy < 0 ? -oy : oy);
+        if (A.fixed) { B.x += pushX; B.y += pushY; }
+        else if (B.fixed) { A.x -= pushX; A.y -= pushY; }
+        else { A.x -= pushX / 2; A.y -= pushY / 2; B.x += pushX / 2; B.y += pushY / 2; }
+      }
     }
   }
 
-  // 3) clamp 進畫布
-  const PAD = 60;
+  // 3) clamp 進畫布（含節點半徑，避免出界被裁切）
+  const PAD = 24;
   for (const p of pts) {
-    p.x = Math.max(PAD, Math.min(SVG_W - PAD, p.x));
-    p.y = Math.max(PAD, Math.min(SVG_H - PAD, p.y));
+    if (p.fixed) continue;
+    p.x = Math.max(PAD + p.hw, Math.min(SVG_W - PAD - p.hw, p.x));
+    p.y = Math.max(PAD + p.hh, Math.min(SVG_H - PAD - p.hh, p.y));
   }
 
-  // 4) 還原成既有 Layout 結構
+  // 4) 還原成既有 Layout 結構（略過固定根節點，渲染端自有中心節點）
   const concepts: ConceptNode[] = [];
   const chapters: ChapterNode[] = [];
   for (const p of pts) {
+    if (p.fixed) continue;
     if (p.isChapter) {
       chapters.push({ id: p.id, name: p.chapter, x: p.x, y: p.y, color: colorByChapter.get(p.chapter)! });
     } else {

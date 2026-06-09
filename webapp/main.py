@@ -360,6 +360,7 @@ def get_concept_detail(request: Request, concept_id: str, lang: str = "zh") -> d
         "example": detail.example,
         "common_mistakes": detail.common_mistakes,
         "has_formula": detail.has_formula,
+        "degraded": detail.degraded,
     }
 
 

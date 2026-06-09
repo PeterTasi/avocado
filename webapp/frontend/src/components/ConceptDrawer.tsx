@@ -68,6 +68,12 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
   };
 
   const loading = (wantZh && zh.isLoading) || (wantEn && en.isLoading);
+  const busy = (wantZh && zh.isFetching) || (wantEn && en.isFetching);
+  const degraded = (wantEn && en.data?.degraded) || (wantZh && zh.data?.degraded);
+  const retry = () => {
+    if (wantEn) en.refetch();
+    if (wantZh) zh.refetch();
+  };
 
   return (
     <>
@@ -86,7 +92,25 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
         </div>
 
         <div className="flex-1 space-y-4 overflow-auto px-4 py-4">
-          {loading && <p className="text-xs text-[color:var(--text-muted)]">生成中…（首次約數秒）</p>}
+          {loading && (
+            <p className="flex items-center gap-2 text-xs text-[color:var(--text-muted)]">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[color:var(--accent)] border-t-transparent" />
+              AI 生成中…（首次約數秒）
+            </p>
+          )}
+          {!loading && degraded && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--medium)] px-3 py-2 text-xs text-[color:var(--medium)]"
+                 style={{ background: "var(--medium-soft, #fdf3e0)" }}>
+              <span>⚠ AI 生成失敗（可能 Gemini 額度用盡），暫顯示原文。</span>
+              <button onClick={retry} disabled={busy}
+                className="shrink-0 rounded-md border border-[color:var(--medium)] px-2 py-0.5 font-semibold disabled:opacity-50">
+                {busy ? "重試中…" : "重試"}
+              </button>
+            </div>
+          )}
+          {!loading && busy && !degraded && (
+            <p className="text-[11px] text-[color:var(--text-muted)]">更新中…</p>
+          )}
           {!loading && wantEn && renderDetail(en.data, "en")}
           {!loading && wantEn && wantZh && <hr className="border-[color:var(--border)]" />}
           {!loading && wantZh && renderDetail(zh.data, "zh")}

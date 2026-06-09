@@ -51,3 +51,24 @@ def test_unknown_concept_raises():
     svc = _service()
     with pytest.raises(ValueError):
         svc.get_or_generate_concept_detail("c-missing", "zh")
+
+
+class _DegradedGemini:
+    def __init__(self):
+        self.calls = 0
+
+    def generate_concept_detail(self, name, chapter, description, language):
+        self.calls += 1
+        return {"definition": description, "key_points": [], "example": "",
+                "common_mistakes": "", "has_formula": False, "degraded": True}
+
+
+def test_degraded_result_not_cached():
+    svc = _service()
+    svc.gemini = _DegradedGemini()
+    d1 = svc.get_or_generate_concept_detail("c-1", "en")
+    assert d1.degraded is True
+    assert svc.repo.saved == []  # 降級不快取
+    # 再次請求會重試（不走快取）
+    svc.get_or_generate_concept_detail("c-1", "en")
+    assert svc.gemini.calls == 2

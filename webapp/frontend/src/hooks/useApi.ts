@@ -67,6 +67,7 @@ export interface ConceptDetail {
   example: string;
   common_mistakes: string;
   has_formula: boolean;
+  degraded?: boolean;
 }
 
 export interface Question {

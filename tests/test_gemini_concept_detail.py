@@ -20,6 +20,7 @@ def test_generate_concept_detail_parses(monkeypatch):
     assert detail["definition"].startswith("細胞膜運輸")
     assert detail["key_points"] == ["被動運輸不耗能", "主動運輸耗ATP"]
     assert detail["has_formula"] is False
+    assert detail["degraded"] is False
 
 
 def test_generate_concept_detail_degrades_on_empty(monkeypatch):
@@ -29,3 +30,4 @@ def test_generate_concept_detail_degrades_on_empty(monkeypatch):
     )
     assert detail["definition"]
     assert detail["key_points"] == []
+    assert detail["degraded"] is True

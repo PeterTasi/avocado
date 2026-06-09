@@ -513,6 +513,7 @@ class AdaptLearnService:
             description=concept.description,
             language=language,
         )
+        degraded = bool(raw.get("degraded", False))
         detail = ConceptDetail(
             concept_id=concept_id,
             language=language,
@@ -521,8 +522,11 @@ class AdaptLearnService:
             example=raw["example"],
             common_mistakes=raw["common_mistakes"],
             has_formula=raw["has_formula"],
+            degraded=degraded,
         )
-        self.repo.save_concept_detail(detail)
+        # 只快取成功生成的結果；降級（如額度用盡）不存，下次重試
+        if not degraded:
+            self.repo.save_concept_detail(detail)
         return detail
 
     def _select_weak_concepts(

@@ -420,6 +420,7 @@ Concepts:
             "example": "",
             "common_mistakes": "",
             "has_formula": False,
+            "degraded": True,  # 降級：未生成（無金鑰或 API 失敗），顯示原文
         }
         if not self.enabled:
             return fallback
@@ -461,6 +462,7 @@ Return ONLY valid JSON with schema:
             "example": str(payload.get("example", "")).strip(),
             "common_mistakes": str(payload.get("common_mistakes", "")).strip(),
             "has_formula": bool(payload.get("has_formula", False)),
+            "degraded": False,  # 成功生成
         }
 
     def grade_answer(

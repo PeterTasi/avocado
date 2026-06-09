@@ -81,6 +81,7 @@ class ConceptDetail:
     example: str = ""
     common_mistakes: str = ""
     has_formula: bool = False
+    degraded: bool = False  # True = AI 生成失敗、顯示原文（不快取，下次重試）
 
 
 @dataclass(slots=True)

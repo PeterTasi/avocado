@@ -607,10 +607,15 @@ def _candidate_json_strings(raw: str) -> list[str]:
 
 
 def _build_model_candidates(primary_model: str) -> list[str]:
+    # 最新優先，額度用盡(429)/暫時不可用(503)時依序往下換。
+    # 後面幾個是較舊但免費額度較高的 flash 模型，當墊底備援。
     candidates = [
         primary_model.strip(),
         "gemini-flash-latest",
         "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
     ]
 
     deduped: list[str] = []

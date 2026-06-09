@@ -343,6 +343,25 @@ def list_concepts() -> dict[str, Any]:
     }
 
 
+@app.get("/api/concepts/{concept_id}/detail")
+@limiter.limit("60/minute")
+def get_concept_detail(request: Request, concept_id: str, lang: str = "zh") -> dict[str, Any]:
+    language = lang if lang in ("zh", "en") else "zh"
+    try:
+        detail = _get_service().get_or_generate_concept_detail(concept_id, language)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "concept_id": detail.concept_id,
+        "language": detail.language,
+        "definition": detail.definition,
+        "key_points": detail.key_points,
+        "example": detail.example,
+        "common_mistakes": detail.common_mistakes,
+        "has_formula": detail.has_formula,
+    }
+
+
 @app.get("/api/graph")
 @cached(_cache)
 def get_graph() -> dict[str, str]:

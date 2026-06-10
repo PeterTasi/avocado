@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 
 from .chandra_client import ChandraClient
@@ -17,7 +19,7 @@ from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
 from .models import Attempt, Concept, ConceptDetail, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
 from .ollama_client import OllamaClient
-from .pdf_parser import extract_material_text
+from .pdf_parser import ExtractedMaterial, extract_material_text
 from .quiz_engine import build_questions_for_concepts
 from .review_scheduler import build_review_plan
 from .vector_store import ConceptVectorStore
@@ -74,16 +76,49 @@ class AdaptLearnService:
             if progress is not None:
                 progress(label)
 
-        _stage("解析教材內容")
-        extracted_material = extract_material_text(
-            file_name=file_name,
-            file_bytes=file_bytes,
-            gemini_client=self.gemini,
-            chandra_client=self.chandra,
-            ollama_client=self.ollama,
-            ocr_context=course_name,
-            max_ocr_pages=self.settings.max_ocr_pages,
-        )
+        _ocr_cache_dir = Path("data/ocr_cache")
+        _file_hash = hashlib.sha256(file_bytes).hexdigest()
+        _cache_file = _ocr_cache_dir / f"{_file_hash}.json"
+
+        extracted_material = None
+        if _cache_file.exists():
+            try:
+                cached = json.loads(_cache_file.read_text(encoding="utf-8"))
+                if isinstance(cached.get("text"), str):
+                    extracted_material = ExtractedMaterial(
+                        text=cached["text"],
+                        source_type=cached.get("source_type", "cache"),
+                        ocr_used=bool(cached.get("ocr_used", False)),
+                    )
+                    logger.info("OCR cache hit: %s", _file_hash[:12])
+            except Exception as e:
+                logger.warning("OCR cache read failed (will re-run OCR): %s", e)
+
+        if extracted_material is None:
+            _stage("解析教材內容")
+            extracted_material = extract_material_text(
+                file_name=file_name,
+                file_bytes=file_bytes,
+                gemini_client=self.gemini,
+                chandra_client=self.chandra,
+                ollama_client=self.ollama,
+                ocr_context=course_name,
+                max_ocr_pages=self.settings.max_ocr_pages,
+            )
+            # 寫快取（只在成功且有文字時）
+            if extracted_material.text.strip():
+                try:
+                    _ocr_cache_dir.mkdir(parents=True, exist_ok=True)
+                    _cache_file.write_text(
+                        json.dumps({
+                            "text": extracted_material.text,
+                            "source_type": extracted_material.source_type,
+                            "ocr_used": extracted_material.ocr_used,
+                        }, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                except Exception as e:
+                    logger.warning("OCR cache write failed: %s", e)
         material_text = extracted_material.text
         text_chars = len(material_text.strip())
         low_text_mode = text_chars < 40

@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-06-10 — 比賽前衝刺包決策（待辦 E，6 項）📋
+
+- **起點：** 使用者請 Claude 做專案健檢。健檢發現兩個真實風險：(1) `conftest.py` 只修 import path，pytest 的 DB 測試仍直連 Render 正式庫；(2) `API_ACCESS_KEY` 守門做好了但 Render 沒設，公網任何人可刪課程/換金鑰/燒額度。
+- **決策（使用者選定 6 項）：** E1 測試 DB 隔離、E2 API key 守門啟用（前端 fetch wrapper 注入 + `?key=` URL 解鎖）、E3 逐頁 OCR 進度（= 待辦 D 階段二）、E4 OCR 結果快取（sha256 → data/ocr_cache）、E5 首頁空狀態三步驟引導、E6 全離線 LLM fallback（`OLLAMA_LLM_MODEL` 文字模型接建圖譜/出題/批改，海報級賣點）。備用 Gemini 金鑰（原項 3）為使用者手動任務，不入計畫。
+- **分工：** Opus/Fable 出架構（plan.md 待辦 E，含影響檔案/步驟/驗收/風險），Sonnet 實作。建議順序 E1→E2→E4→E3→E5→E6。
+
 ## 2026-06-10 — 心智圖排版：力導向 → 確定性扇區排版 ✅
 
 - **症狀：** glm-ocr 驗收時發現心智圖仍是毛球——pill 不重疊（碰撞分離有效）但邊線交錯、章節圓點混在概念堆裡、概念被推進別章地盤、分支線橫跨整張圖。

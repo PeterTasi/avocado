@@ -61,6 +61,81 @@
 
 ---
 
+## 待辦 E：比賽前衝刺包（2026-06-10 規劃，Opus 架構 / Sonnet 實作）
+
+> 六項已與使用者確認。E1/E2 是風險修補（先做）、E3/E4/E5 是 demo 體驗、E6 最大（全離線能力，留最後）。
+> **各項彼此獨立，可單獨實作、單獨 commit。** 每項做完：跑測試 + `npm run build`（有前端時）+ commit。
+
+### E1：測試 DB 隔離（風險修補，~30 分）
+
+- **問題：** `pytest` 的 DB 測試直連 Render 正式庫（DEVLOG 2026-06-08 附帶發現），跑測試會污染 demo 資料。`conftest.py` 目前只處理 import path。
+- **方案：**
+  1. `conftest.py` 開頭（在任何 adaptlearn import 之前）讀 env：若設了 `TEST_DATABASE_URL` → `os.environ["DATABASE_URL"] = TEST_DATABASE_URL`（覆寫，讓測試走測試庫）。
+  2. 新增 `tests/db_guard.py`：`require_safe_db()` —— 若 `DATABASE_URL` 含 `render.com`（正式庫特徵）且未設 `ALLOW_PROD_DB_TESTS=1`，raise `unittest.SkipTest("拒絕對正式 DB 跑測試；請設 TEST_DATABASE_URL")`。
+  3. 在會碰 DB 的測試檔的 setUp/setUpClass 呼叫：`test_api_integration.py`、`test_database_concept_detail.py`、`test_pipeline_concept_detail.py`、`test_unit.py` 中需要真實 DB 的 case（先 grep `StudyRepository(`/`DATABASE_URL` 確認清單）。
+- **驗收：** 本地（DATABASE_URL=render）跑 pytest → DB 測試全部 skip 且訊息清楚；其餘測試照跑。`.env.example` 補 `TEST_DATABASE_URL` 說明。
+- **風險：** config.py 在 import 時讀 env —— 覆寫必須發生在 conftest 最頂部、任何專案 import 之前。
+
+### E2：API_ACCESS_KEY 守門啟用（風險修補，~30 分）
+
+- **問題：** 後端守門已做好（`main.py:80`、未設 key 即全開），Render 沒設 → 任何人可 DELETE 課程、換 Gemini 金鑰、燒額度。
+- **方案（前端配合，一處改完全站生效）：**
+  1. `useApi.ts` 的統一 fetch wrapper（line 8 `fetch(\`${API_BASE}${path}\`)`）：注入 header `X-API-Key`，值來自 `localStorage.getItem("adaptlearn_api_key") ?? ""`；空值不送 header。
+  2. App 啟動時讀 URL 參數：`?key=xxx` 存在 → 寫入 localStorage 後用 `history.replaceState` 清掉參數（網址不留痕）。demo 時開 `https://站台/?key=xxx` 一次即解鎖。
+  3. wrapper 收到 401 → throw 帶識別的錯誤；各 hook 既有錯誤顯示即可呈現「API 金鑰無效」中文訊息（後端已回中文 detail），不需新 UI。
+  4. **手動步驟（使用者）：** Render 環境變數設 `API_ACCESS_KEY`（隨機長字串）→ redeploy。本地 `.env` 不設（開發不受影響）。
+- **驗收：** Render 設 key 後：無 key 開站 → API 回 401、畫面顯示金鑰錯誤；帶 `?key=` 開站 → 一切正常；`/api/health` 不受影響（守門排除 health）。
+- **風險：** CORS 已允許 `X-API-Key`（main.py:69），無需動後端。key 存 localStorage 對「評審亂試」級別的威脅足夠，不防決心攻擊者（賽後 A1 再說）。
+
+### E3：逐頁 OCR 進度 + 部分成功保留（= 待辦 D 階段二，~1 小時）
+
+- **方案：**
+  1. `ollama_client.transcribe_images(images, course_name, on_progress=None)`：每頁開始辨識前呼叫 `on_progress(index, total)`；錯誤行為不變（單頁失敗回 "" 跳過 —— 頁級部分成功其實已存在，本項重點是進度可見）。
+  2. `pdf_parser.extract_material_text(..., ocr_progress=None)` 把 callback 傳給 Ollama 路徑（Chandra/Gemini 雲端路徑不需要）。
+  3. `pipeline.ingest_material`：傳 `lambda i, n: self._set_stage(f"OCR 辨識第 {i}/{n} 頁")`（沿用 2026-06-09 真實進度條的 `_stage` 機制與命名）。
+  4. 前端零改動：`useApi.ts` 輪詢已回拋 `stage`、`SetupPanel` 已顯示子階段文字。
+- **驗收：** 上傳 28 頁手寫 PDF，SetupPanel 第一階段顯示「OCR 辨識第 n/28 頁」遞增；新增 unit test：fake ollama client 驗證 callback 被逐頁呼叫。
+- **風險：** `_stage` 寫入是跨執行緒讀取（threadpool → 輪詢），沿用既有機制即可（前例已驗證安全）。
+
+### E4：OCR 結果快取（demo 保險絲，~40 分）
+
+- **方案：**
+  1. `pipeline.ingest_material` 在呼叫 `extract_material_text` 前：算 `sha256(file_bytes)`，查 `data/ocr_cache/{hash}.json` —— 命中且格式合法 → 直接用快取的 `{text, source_type, ocr_used}` 跳過 OCR；未命中 → 照跑，成功後寫入快取（`json.dump`，寫失敗只 log 不中斷）。
+  2. 只快取 OCR 段（最慢的一段）；建圖譜照常執行（1 次 Gemini 呼叫，快，且讓 DB 狀態正確重建）。
+  3. log 快取命中：`logger.info("OCR cache hit: %s", hash[:12])`（符合「no silent caps」精神）。
+- **驗收：** 同一份 28 頁 PDF 上傳第二次，OCR 階段 < 1 秒跳過；`data/ocr_cache/` 進 `.gitignore`。
+- **風險：** Render 磁碟 ephemeral → 快取重啟即失效，可接受（此功能本來就為本地 demo）。不做 LRU 上限（demo 用量小），但 log 寫入的檔案大小。
+
+### E5：首頁空狀態引導（~40 分）
+
+- **方案：**
+  1. 新元件 `webapp/frontend/src/components/EmptyStateOnboarding.tsx`：卡片含三步驟（① 上傳教材 → ② 做診斷測驗 → ③ 看圖譜與複習計畫），每步一個 Pixel 風 icon（沿用 `PixelIcons.tsx`）+ 按鈕導到對應 view（呼叫 App 傳入的 `onNavigate(view)`）。
+  2. `App.tsx` home view：`useCourses()` 載入完成且為空 → 以 EmptyStateOnboarding 取代 MetricCardsGrid/InsightFeed 區塊；有課程 → 照舊。
+  3. 風格遵循 CLAUDE.md 設計語言（`.card`、`--accent`、最多 1 個像素裝飾）。
+- **驗收：** 清空課程後首頁顯示引導卡、按鈕能跳轉；上傳課程後恢復原 dashboard；`npm run build` 零錯誤。
+- **風險：** 無。純前端、條件渲染。
+
+### E6：全離線 LLM fallback（最大項，海報級賣點，~半天）
+
+- **目標：** 場地斷網/Gemini 全掛時，整條流程（OCR→建圖譜→出題→批改）在 M4 Air 上完全離線可跑。OCR 已離線（glm-ocr），缺的是文字 LLM。
+- **方案：**
+  1. `ollama_client.py` 新增 `generate_text(prompt: str) -> str`：打同一個 `/api/generate`（無 images），model 用新 env `OLLAMA_LLM_MODEL`（如 `llama3.1:latest`，機器已 pull）；`temperature 0`；錯誤回 ""（與 OCR 同模式）。Opt-in：未設 env 即停用，Render 零回歸。`config.py` + `.env.example` 補欄位。
+  2. 抽 JSON 解析共用：`gemini_client._parse_json_payload` 移到新 `src/adaptlearn/llm_json.py`（或由 ollama 端 import gemini_client 的私有函式 —— 選前者，避免反向耦合），兩邊共用。
+  3. fallback 接點（pattern 統一：Gemini 失敗/回空 → Ollama 文字模型同 prompt 重試一次 → 再失敗走既有錯誤路徑）：
+     - 建圖譜：`knowledge_graph.py` 的 LLM 呼叫處
+     - 出題：`gemini_client.generate_questions` 的呼叫端（`pipeline.generate_diagnostics`）
+     - 批改：grade 流程的呼叫端
+     - 概念詳解**不做**（lazy + 已有 degraded UI，離線時顯示降級提示即可）
+  4. 回應加旗標（如 `llm_backend: "ollama"`）讓前端可顯示「離線模式」pill（選配，時間不夠可跳過 UI）。
+- **驗收：** 拔網路（或清掉 GEMINI_API_KEY）後：上傳 txt 教材 → 建圖譜成功（概念非模板）→ 出題成功 → 批改成功。新增 unit tests：fake ollama text client 驗證 fallback 順序（仿既有 fake gemini 測試）。
+- **風險：** llama3.1 的 JSON 輸出穩定性不如 Gemini → prompt 要加強硬 JSON 指令、共用 robust parser、失敗重試 1 次；品質較低是預期內（demo 講「降級仍可用」的故事）。記憶體：glm-ocr 2.2GB + llama3.1 4.9GB 同時駐留，16GB 可承受。
+
+### 建議執行順序
+
+E1 → E2 → E4 → E3 → E5 → E6（前五項都是小時級，E6 留完整的半天）。
+
+---
+
 # 🟡 選配待辦（競賽後可做）
 
 ## 失敗測試：OCR 頁數上限訊息對不上（pre-existing，141a6bd 後壞）

@@ -528,10 +528,15 @@ class AdaptLearnService:
 
         return result
 
-    def get_or_generate_concept_detail(self, concept_id: str, language: str) -> ConceptDetail:
-        """Lazy：先查快取，未命中才呼叫 Gemini 生成並存。"""
+    def get_or_generate_concept_detail(
+        self, concept_id: str, language: str, force: bool = False
+    ) -> ConceptDetail:
+        """Lazy：先查快取，未命中才呼叫 Gemini 生成並存。force=True 先刪快取強制重生。"""
         if language not in ("zh", "en"):
             language = "zh"
+
+        if force:
+            self.repo.delete_concept_detail(concept_id, language)
 
         cached = self.repo.get_concept_detail(concept_id, language)
         if cached is not None:

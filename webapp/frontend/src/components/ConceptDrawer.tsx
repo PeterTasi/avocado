@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Concept, ConceptDetail } from "../hooks/useApi";
 import { useConceptDetail } from "../hooks/useApi";
 import { PixelAvocadoLogo } from "./PixelAvocadoLogo";
@@ -68,12 +68,19 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
   const zh = useConceptDetail(wantZh && concept ? concept.id : null, "zh");
   const en = useConceptDetail(wantEn && concept ? concept.id : null, "en");
 
+  const [forceRetrying, setForceRetrying] = useState(false);
+
   const loading = (wantZh && zh.isLoading) || (wantEn && en.isLoading);
-  const busy = (wantZh && zh.isFetching) || (wantEn && en.isFetching);
+  const busy = forceRetrying || (wantZh && zh.isFetching) || (wantEn && en.isFetching);
   const degraded = (wantEn && en.data?.degraded) || (wantZh && zh.data?.degraded);
-  const retry = () => {
-    if (wantEn) en.refetch();
-    if (wantZh) zh.refetch();
+  const retry = async () => {
+    setForceRetrying(true);
+    try {
+      if (wantEn) await en.forceRefetch();
+      if (wantZh) await zh.forceRefetch();
+    } finally {
+      setForceRetrying(false);
+    }
   };
 
   return (

@@ -346,10 +346,12 @@ def list_concepts() -> dict[str, Any]:
 
 @app.get("/api/concepts/{concept_id}/detail")
 @limiter.limit("60/minute")
-def get_concept_detail(request: Request, concept_id: str, lang: str = "zh") -> dict[str, Any]:
+def get_concept_detail(
+    request: Request, concept_id: str, lang: str = "zh", force: bool = False
+) -> dict[str, Any]:
     language = lang if lang in ("zh", "en") else "zh"
     try:
-        detail = _get_service().get_or_generate_concept_detail(concept_id, language)
+        detail = _get_service().get_or_generate_concept_detail(concept_id, language, force=force)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {

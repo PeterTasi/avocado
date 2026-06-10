@@ -428,7 +428,11 @@ Concepts:
         lang_rule = (
             "Write ALL fields in Traditional Chinese (繁體中文)."
             if language == "zh"
-            else "Write ALL fields in English."
+            else (
+                "Write ALL fields in English only. "
+                "Do NOT use any Chinese characters anywhere in the response. "
+                "Technical terms should use their standard English names."
+            )
         )
         prompt = f"""
 You are an expert tutor writing study notes for ONE concept.

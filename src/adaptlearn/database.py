@@ -410,6 +410,13 @@ class StudyRepository:
                 ),
             )
 
+    def delete_concept_detail(self, concept_id: str, language: str) -> None:
+        with self._connect() as cur:
+            cur.execute(
+                "DELETE FROM concept_details WHERE concept_id = %s AND language = %s",
+                (concept_id, language),
+            )
+
     def replace_edges(self, edges: list[ConceptEdge]) -> None:
         """Insert edges (UPSERT). Course-scoped deletion is handled by reset_course_state."""
         if not edges:

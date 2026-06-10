@@ -148,7 +148,8 @@ export function useConcepts() {
 }
 
 export function useConceptDetail(conceptId: string | null, lang: "zh" | "en") {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: ["concept-detail", conceptId, lang],
     enabled: !!conceptId,
     staleTime: Infinity, // 後端已快取，不需重抓
@@ -156,6 +157,16 @@ export function useConceptDetail(conceptId: string | null, lang: "zh" | "en") {
       return apiFetch(`/api/concepts/${conceptId}/detail?lang=${lang}`) as Promise<ConceptDetail>;
     },
   });
+
+  const forceRefetch = () => {
+    if (!conceptId) return;
+    queryClient.removeQueries({ queryKey: ["concept-detail", conceptId, lang] });
+    return apiFetch(`/api/concepts/${conceptId}/detail?lang=${lang}&force=true`).then((data) => {
+      queryClient.setQueryData(["concept-detail", conceptId, lang], data);
+    });
+  };
+
+  return { ...query, forceRefetch };
 }
 
 export function useConceptMastery() {

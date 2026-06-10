@@ -118,8 +118,8 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
 
   const currentQuestion = questions[questionIndex] ?? null;
 
-  const doGenerate = useCallback(async () => {
-    const result = await generateDiagnostics.mutateAsync({ questionCount, language: quizLang });
+  const doGenerate = useCallback(async (lang?: "zh" | "en" | "both") => {
+    const result = await generateDiagnostics.mutateAsync({ questionCount, language: lang ?? quizLang });
     setQuestions(result.items ?? []);
     setQuestionIndex(0);
     setAnswerText("");
@@ -133,6 +133,13 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
     }
     doGenerate();
   }, [sessionUploaded, doGenerate]);
+
+  const handleLangChange = useCallback((newLang: "zh" | "en" | "both") => {
+    setQuizLang(newLang);
+    if (questions.length > 0 && !generateDiagnostics.isPending) {
+      doGenerate(newLang);
+    }
+  }, [questions.length, generateDiagnostics.isPending, doGenerate]);
 
   const handleGrade = useCallback(async () => {
     if (!currentQuestion || !answerText.trim()) return;
@@ -230,8 +237,10 @@ export function QuizPanel({ questions, setQuestions, questionIndex, setQuestionI
         </div>
         <div className="inline-flex rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-sunken)] p-0.5 text-[11px]">
           {(["zh", "en", "both"] as const).map((l) => (
-            <button key={l} type="button" onClick={() => setQuizLang(l)}
-              className={`rounded-md px-2.5 py-1 font-semibold transition ${quizLang === l ? "bg-white text-[color:var(--accent)] shadow-sm" : "text-[color:var(--text-secondary)]"}`}>
+            <button key={l} type="button"
+              onClick={() => handleLangChange(l)}
+              disabled={generateDiagnostics.isPending}
+              className={`rounded-md px-2.5 py-1 font-semibold transition disabled:opacity-50 ${quizLang === l ? "bg-white text-[color:var(--accent)] shadow-sm" : "text-[color:var(--text-secondary)]"}`}>
               {l === "zh" ? "中文" : l === "en" ? "EN" : "中英"}
             </button>
           ))}

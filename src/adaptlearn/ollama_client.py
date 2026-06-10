@@ -29,6 +29,10 @@ _OCR_PROMPT = (
     "- If a short span is unreadable, write [illegible]."
 )
 
+# OCR-specialized models (glm-ocr, deepseek-ocr) are prompt-sensitive and respond
+# best to terse task prefixes rather than verbose instruction blocks.
+_OCR_SPECIALIZED_MODELS = ("glm-ocr", "deepseek-ocr")
+
 
 class OllamaClient:
     """Local Ollama vision-model OCR client (handwriting-aware, runs on-device).
@@ -59,7 +63,7 @@ class OllamaClient:
             return ""
 
         context = course_name.strip() or "General study notes"
-        base_prompt = f"{_OCR_PROMPT}\nCourse context: {context}."
+        is_specialized = any(m in self.model.lower() for m in _OCR_SPECIALIZED_MODELS)
 
         transcripts: list[str] = []
         for index, image in enumerate(images, start=1):
@@ -67,7 +71,11 @@ class OllamaClient:
             if not isinstance(data, (bytes, bytearray)) or not data:
                 continue
             label = str(image.get("label", f"page {index}")).strip() or f"page {index}"
-            page_text = self._transcribe_one(bytes(data), f"{base_prompt}\nPage label: {label}.")
+            if is_specialized:
+                prompt = "Text Recognition:"
+            else:
+                prompt = f"{_OCR_PROMPT}\nCourse context: {context}.\nPage label: {label}."
+            page_text = self._transcribe_one(bytes(data), prompt)
             if page_text:
                 transcripts.append(page_text)
 

@@ -2,7 +2,7 @@
 
 > **這份文件只保留尚未完成的事項。**
 > 完成的功能記錄在 `DEVLOG.md`，從這裡刪除。
-> 更新於 2026-06-09。
+> 更新於 2026-06-10。
 
 ---
 
@@ -19,34 +19,45 @@
 
 ---
 
-> **背景：** async ingest 已根治 502，但 28 頁手寫教材處理仍卡在第三階段（「建立圖譜與向量索引」）逾 210 秒，使用體驗差。診斷後鎖定兩個問題。
+## 待辦 D：手寫 OCR 升級 — qwen2.5vl:7b → GLM-OCR（2026-06-10 規劃）
 
-## 問題 1：向量索引慢（第三階段真兇）
+> **背景：** 20+ 頁手寫 PDF 本地 ingest 跑 4–5 分鐘以上仍抽不出有用文字。診斷出三個疊加成因：
+> 1. `OllamaClient.transcribe_images` 逐頁序列推論，qwen2.5vl:7b 在 M4 Air 每頁 30–60 秒，28 頁 = 15–25 分鐘，超過前端 12 分鐘輪詢上限（單頁 timeout 還設 300 秒，卡一頁燒 5 分鐘）。
+> 2. 7B 通用視覺模型不是 OCR 特化，中文手寫＋數學式辨識弱，常整份回空。
+> 3. 全有或全無：fallback 鏈抽不到字直接 raise ValueError，已辨識成功的頁全丟。
+>
+> **調研結論（2026-06-10，來源見 DEVLOG）：** GLM-OCR（智譜，0.9B、下載 2.2GB）已進 Ollama 官方庫，OmniDocBench v1.5 排名第一（94.62），官方主打**手寫、雜訊掃描、中文、LaTeX 公式**，速度為開源最快一檔。對現有 `OllamaClient` 架構幾乎零改動。備選：`deepseek-ocr`（Ollama 官方庫，3B/6.7GB，91 分）、PaddleOCR-VL-MLX、deepseek-ocr.rs。
 
-- **成因：** `vector_store.py` 未指定 embedding function → ChromaDB 用預設本地 ONNX 模型（all-MiniLM，~80MB）。Render free tier（512MB RAM、慢 CPU、P6 每次 redeploy 磁碟歸零要重下載）下，首次 ingest 要「下載模型 + 載入 + CPU 推論」→ 卡數分鐘、近 OOM。
-- **方案：** 有 Gemini 金鑰時改用 Gemini embedding API（text-embedding-004）自算向量傳給 Chroma，繞過本地模型；無金鑰回退原本地模型。
-- **與 P6 關係：** 此改動讓向量計算不再依賴本地模型下載，順手減輕 P6 的 redeploy 重載痛點（但 Chroma 持久化本身仍是 P6 範疇）。
+### 階段一：模型替換驗證（先做，趨近零程式碼）
 
-## 問題 2：進度條是假的
+- `ollama --version` 確認版本夠新（deepseek-ocr 要 v0.13.0+，glm-ocr 比照辦理）→ `ollama pull glm-ocr`
+- `.env`：`OLLAMA_OCR_MODEL=glm-ocr`、`MAX_OCR_PAGES=30`（不調高的話 20+ 頁會跳過本地直接掉 Gemini）
+- 實測 28 頁手寫 PDF，驗證品質與速度（預期每頁從 30–60 秒降到數秒）
+- **兩個可能要動程式碼的點：**
+  - OCR 特化模型對 prompt 敏感，官方建議 `Text Recognition:` 風格短指令 → 視結果在 `ollama_client.py` 加 per-model 短 prompt 分支
+  - 官方範例走 `/api/chat`，現行打 `/api/generate` → 煙霧測試，不行就加 chat 端點支援
+- 品質不過關 → 退 `deepseek-ocr` 再試；都不行則維持 qwen2.5vl，只做階段二/三
 
-- **成因：** `SetupPanel.tsx` 進度純看 `elapsedSec`（>5 打勾步驟1、>15 打勾步驟2），**完全沒用後端真實 `stage`**。後端輪詢回應其實有帶 `stage`，但前端丟掉。
-- **方案：** 輪詢時把真實 `stage` 透過 callback 拋回元件，步驟改由真實 stage 驅動；第三階段在 `pipeline.py` 細分多個 `_stage`；文案改成手寫較慢的合理預期。
+### 階段二：體驗保險（不論用哪個模型都該做）
 
-## 影響範圍
+- **部分成功保留：** 逐頁 transcripts 累積，單頁失敗/超時不丟整份；鏈尾「全空才 raise」改成「有部分文字就繼續建圖」
+- **逐頁真實進度：** `_stage` 細化「OCR 第 n/N 頁」，前端輪詢顯示（接續 2026-06-09 真實進度條的做法）
+- **影響檔案：** `ollama_client.py`（per-page callback）、`pdf_parser.py`（部分成功邏輯）、`pipeline.py`（`_stage`）、`useApi.ts`、`SetupPanel.tsx`、`webapp/static/*`（npm run build）
 
-| 檔案 | 改動 |
-|---|---|
-| `src/adaptlearn/gemini_client.py` | 新增 `embed_texts()`（google-genai `embed_content`，含錯誤降級） |
-| `src/adaptlearn/vector_store.py` | 可選 embedder：有金鑰自算向量傳 Chroma、繞過本地模型；collection 依 backend 命名避免維度衝突（ONNX 384 vs Gemini 768）；查詢同 embedder |
-| `src/adaptlearn/pipeline.py` | 傳 `self.gemini` 當 embedder；第三階段細分 `_stage` |
-| `webapp/frontend/src/hooks/useApi.ts` | 輪詢回拋真實 `stage` |
-| `webapp/frontend/src/components/SetupPanel.tsx` | 步驟由真實 stage 驅動 + 文案 |
-| `webapp/static/*` | `npm run build` 重建並 commit |
+### 階段三：比賽保險絲（選配）
 
-## 風險
-- 維度衝突 → collection 名稱帶 backend 自動隔離（本地舊 `data/chroma` 不受影響；Render P6 反正歸零）。
-- 金鑰缺失 → Gemini embedding 失敗要優雅回退本地模型，不可讓 ingest 崩。
-- 無 DB schema migration，不動 PostgreSQL。
+- 大檔路由：頁數超過門檻時優先走 Gemini 整份 `transcribe_pdf`，本地當 fallback（只動本地分支順序，不影響 Render 上既有 Gemini 路徑）
+- Demo 快取：檔案 hash → ingest 結果快取，現場上傳同一份檔案秒回
+
+### 風險
+
+- glm-ocr 對「我們這份」手寫教材品質未實測 → 階段一先驗再往下走
+- Ollama 版本過舊不支援新模型 → 先確認/升級
+- 無 DB schema migration，不動 PostgreSQL
+
+### 驗收標準
+
+28 頁手寫 PDF 本地 ingest 在 5 分鐘內完成、概念圖譜為真實內容（非模板）、前端進度逐頁更新。
 
 ---
 

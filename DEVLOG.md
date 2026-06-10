@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-06-10 — 手寫 OCR 升級決策：qwen2.5vl:7b → GLM-OCR 📋（規劃，未實作）
+
+- **起點（使用者回報）：** 20+ 頁手寫 PDF 本地 ingest 跑 4–5 分鐘以上仍抽不出有用資訊。
+- **診斷：** (1) Ollama 逐頁序列推論，7B 模型每頁 30–60 秒，28 頁遠超前端 12 分鐘輪詢上限；(2) qwen2.5vl:7b 是通用 VLM 非 OCR 特化，中文手寫＋數學式弱；(3) fallback 鏈全有或全無，部分成功的頁也被 ValueError 丟掉。另注意 `MAX_OCR_PAGES` 預設 12，沒調高時 20+ 頁根本沒走本地、直接掉到 Gemini（額度 20/天常已用盡 → 回空）。
+- **調研（GitHub / Ollama 官方庫）：** 2025 底起出現一批 OCR 特化小模型。**GLM-OCR**（智譜，0.9B、2.2GB）OmniDocBench v1.5 排名第一（94.62 分），官方主打手寫、雜訊掃描、中文、LaTeX 公式，速度開源最快一檔，已進 Ollama 官方庫 → 對現有 `OllamaClient` 幾乎零改動（換 `OLLAMA_OCR_MODEL` 即可）。備選：deepseek-ocr（Ollama 官方庫，3B/6.7GB，91 分）、PaddleOCR-VL（MLX 移植）、deepseek-ocr.rs（Rust + Metal）。
+  - 來源：ollama.com/library/glm-ocr、ollama.com/library/deepseek-ocr、huggingface.co/zai-org/GLM-OCR、github.com/opendatalab/OmniDocBench
+- **決策：** 三階段計畫寫入 plan.md「待辦 D」：(一) 換 glm-ocr 零碼驗證（留意 prompt 敏感與 /api/chat vs /api/generate）；(二) 部分成功保留＋逐頁真實進度；(三) 大檔 Gemini 整份路由＋demo 檔案 hash 快取（選配保險絲）。
+- **順手：** plan.md 移除已完成的「ingest 速度 + 真實進度條」段（2026-06-09 已 merge，commit 7e2806f）。
+
 ## 2026-06-09 — 朋友試用回饋 4 項改善 ✅
 
 - **起點（朋友試用回饋）：** (1) 心智圖節點黏在一起；(2) 概念清單要一直下滑、想點進去看詳解；(3) 重點只有一句話、跟測驗難度落差大、看了答不出來；(4) 想要學習內容能切中文／英文／中英（通用需求，朋友讀生物但考英文只是舉例）。

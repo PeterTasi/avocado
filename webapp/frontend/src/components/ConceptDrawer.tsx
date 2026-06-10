@@ -78,11 +78,12 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
 
   return (
     <>
-      <div className="concept-scrim" onClick={onClose} />
+      {/* 純裝飾遮罩：鍵盤關閉走 Esc（見標頭提示），點擊只是冗餘捷徑 */}
+      <div className="concept-scrim" onClick={onClose} role="presentation" aria-hidden="true" />
       <aside className="concept-drawer" aria-hidden={!concept}>
         <div className="relative border-b border-[color:var(--border)] px-4 py-4"
              style={{ background: `linear-gradient(120deg, ${statusColor}22, transparent 70%)` }}>
-          <button onClick={onClose}
+          <button type="button" onClick={onClose}
             className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md bg-[color:var(--bg-sunken)] text-[color:var(--text-secondary)]">✕</button>
           <div className="flex items-center gap-2">
             <span className="concept-drawer-avo inline-flex"><PixelAvocadoLogo size={30} /></span>
@@ -103,7 +104,7 @@ export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
             <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--medium)] px-3 py-2 text-xs text-[color:var(--medium)]"
                  style={{ background: "var(--medium-soft, #fdf3e0)" }}>
               <span>⚠ AI 生成失敗（可能 Gemini 額度用盡），暫顯示原文。</span>
-              <button onClick={retry} disabled={busy}
+              <button type="button" onClick={retry} disabled={busy}
                 className="shrink-0 rounded-md border border-[color:var(--medium)] px-2 py-0.5 font-semibold disabled:opacity-50">
                 {busy ? "重試中…" : "重試"}
               </button>

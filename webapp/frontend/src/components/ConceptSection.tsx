@@ -16,7 +16,10 @@ const STATUS_COLOR: Record<string, string> = {
   high: "var(--high)", medium: "var(--medium)", low: "var(--low)", new: "var(--text-muted)",
 };
 
-export function ConceptSection({ concepts, search, sessionUploaded, isError, masteryItems = [] }: Props) {
+// 模組層常數：default prop 用 inline [] 每次 render 都是新參考，會打穿下游 memo
+const NO_MASTERY: ConceptMastery[] = [];
+
+export function ConceptSection({ concepts, search, sessionUploaded, isError, masteryItems = NO_MASTERY }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [lang, setLang] = useState<Lang>("zh");
 
@@ -46,7 +49,7 @@ export function ConceptSection({ concepts, search, sessionUploaded, isError, mas
         </div>
         <div className="inline-flex rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-sunken)] p-0.5 text-[11px]">
           {(["zh", "en", "both"] as Lang[]).map((l) => (
-            <button key={l} onClick={() => setLang(l)}
+            <button type="button" key={l} onClick={() => setLang(l)}
               className={`rounded-md px-2.5 py-1 font-semibold transition ${lang === l ? "bg-white text-[color:var(--accent)] shadow-sm" : "text-[color:var(--text-secondary)]"}`}>
               {l === "zh" ? "中文" : l === "en" ? "EN" : "中英"}
             </button>
@@ -68,7 +71,7 @@ export function ConceptSection({ concepts, search, sessionUploaded, isError, mas
             {filtered.map((c) => {
               const status = statusByName.get(c.name.toLowerCase()) ?? "new";
               return (
-                <button key={c.id} onClick={() => setOpenId(c.id)}
+                <button type="button" key={c.id} onClick={() => setOpenId(c.id)}
                   className="card-interactive relative overflow-hidden rounded-xl p-3 text-left">
                   <span className="absolute right-3 top-3 h-2 w-2 rounded-full"
                         style={{ background: STATUS_COLOR[status] }} />

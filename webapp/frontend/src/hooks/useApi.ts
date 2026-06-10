@@ -5,7 +5,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function apiFetch(path: string, options?: RequestInit): Promise<unknown> {
-  const response = await fetch(`${API_BASE}${path}`, options);
+  const apiKey = localStorage.getItem("adaptlearn_api_key") ?? "";
+  const headers = new Headers(options?.headers);
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
     ? await response.json()

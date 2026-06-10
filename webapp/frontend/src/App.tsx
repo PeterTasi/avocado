@@ -121,8 +121,19 @@ export default function App() {
     return getViewFromPathname(window.location.pathname);
   });
   const [showLanding, setShowLanding] = useState(true);
+
+  // 從 URL ?key=xxx 注入 API key 到 localStorage（一次性，mount 時執行）
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const key = params.get("key");
+    if (key) {
+      localStorage.setItem("adaptlearn_api_key", key);
+      setApiKey(key);
+      history.replaceState({}, "", location.pathname);
+    }
+  }, []);
   const [search, setSearch] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("adaptlearn_api_key") ?? "");
   const [courseName, setCourseName] = useState("通用課程");
   const [templateMode, setTemplateMode] = useState("generic");
   const [materialFile, setMaterialFile] = useState<File | null>(null);

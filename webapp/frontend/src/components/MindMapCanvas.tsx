@@ -76,8 +76,6 @@ const SVG_W = 1000;
 const SVG_H = 700;
 const CX = SVG_W / 2;
 const CY = SVG_H / 2;
-const R_CHAPTER = 170;    // chapter node ring radius
-const R_CONCEPT  = 340;   // concept node ring radius
 const PILL_H = 30;
 const MIN_PILL_W = 100;
 const CHAR_W = 7.5;       // approximate px per character at font-size 11
@@ -90,7 +88,11 @@ function displayName(name: string): string {
   return name.length > 22 ? name.slice(0, 21) + "…" : name;
 }
 
-// ── Build radial mind-map layout ─────────────────────────────────────────────
+// ── Build radial mind-map layout（確定性扇區排版） ──────────────────────────
+// 心智圖是樹（中心→章節→概念），所以用算術直接排：每個章節分到一個角度
+// 扇區，概念沿扇區內的同心弧排列、弧長按 pill 寬度累加。這保證三件事：
+// 章節聚類 100%、零重疊（不靠碰撞分離）、每次重整結果相同（demo 安全）。
+// 之前的力導向版本會讓碰撞分離把概念推進別章的地盤、分支線橫跨整張圖。
 
 function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMastery>): Layout {
   const byChapter = new Map<string, GraphNode[]>();
@@ -100,119 +102,92 @@ function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMaste
     byChapter.get(ch)!.push(node);
   }
   const chapterNames = Array.from(byChapter.keys());
-  const N = chapterNames.length;
+  const N = Math.max(1, chapterNames.length);
 
-  // 每個節點以「矩形」表示（pill 寬扁），用碰撞分離保證不重疊。
-  type P = {
-    id: string; x: number; y: number;
-    hw: number; hh: number;          // 半寬 / 半高（含 logo/padding）
-    chapter: string; isChapter: boolean; fixed: boolean;
-  };
-  const pts: P[] = [];
+  // 畫布寬扁（1000×700）→ 放射用橢圓（x 半徑 = y 半徑 × KX）。
+  // 弧長間距一律以 y 半徑計算：橢圓上的局部弧長速度 ≥ ry（因 rx ≥ ry），
+  // 所以用 ry 算出來的角距是保守值，必不重疊。
+  const KX = 1.42;
+  const RY_FIRST = 235;    // 概念第一圈 y 半徑
+  const RING_DY = 62;      // 每往外一圈遞增
+  const RY_CHAPTER = 155;  // 章節圓點的 y 半徑
+  const ARC_GAP = 16;      // 同圈相鄰 pill 的弧長間距
+  const GUTTER = 0.1;      // 扇區之間的角度間隙（rad）
+  const SECTOR_PAD = 0.04; // 扇區內側留白（rad）
+
+  // 1) 角度扇區：寬度按各章 pill 總寬比例分配（概念多/名字長的章節分更寬）
+  const weights = chapterNames.map((ch) =>
+    byChapter.get(ch)!.reduce((acc, n) => acc + pillWidth(displayName(n.name)) + ARC_GAP, 0),
+  );
+  const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+  const usable = 2 * Math.PI - N * GUTTER;
+
+  // 2) 逐章節排概念：弧上放不下就往外一圈；單顆 pill 比扇區還寬時置中成「輻條」
+  type Placement = { node: GraphNode; chapter: string; angle: number; ring: number };
+  const placements: Placement[] = [];
+  const chapterMid = new Map<string, number>();
   const colorByChapter = new Map<string, string>();
+  let maxRing = 0;
+  let maxHw = 0;
+  let angleStart = -Math.PI / 2; // 第一個扇區從正上方開始
 
-  // 固定的中心根節點（課程圖譜）— 當作障礙物，避免被蓋住。
-  pts.push({ id: "__root__", x: CX, y: CY, hw: 38, hh: 38, chapter: "", isChapter: false, fixed: true });
-
-  // 1) 初始座標：放射狀當起點（收斂快、結果穩定、不亂飄）
   chapterNames.forEach((chapter, i) => {
-    const baseAngle = (2 * Math.PI * i) / Math.max(1, N) - Math.PI / 2;
-    const color = CHAPTER_PALETTE[i % CHAPTER_PALETTE.length];
-    colorByChapter.set(chapter, color);
-    pts.push({ id: `__ch__${chapter}`, x: CX + R_CHAPTER * Math.cos(baseAngle),
-               y: CY + R_CHAPTER * Math.sin(baseAngle), hw: 24, hh: 24,
-               chapter, isChapter: true, fixed: false });
-    const nodes = byChapter.get(chapter)!;
-    const M = nodes.length;
-    nodes.forEach((node, j) => {
-      const fanHalf = Math.min((Math.PI / 3) * (M / 4 + 0.4), Math.PI * 0.6);
-      const angle = M === 1 ? baseAngle + (j - (M - 1) / 2) * 0.5
-                            : baseAngle + fanHalf * ((j / (M - 1)) * 2 - 1);
-      const ring = R_CONCEPT + (j % 2) * 46; // 交錯兩環，分散初始重疊
-      pts.push({ id: node.id, x: CX + ring * Math.cos(angle), y: CY + ring * Math.sin(angle),
-                 hw: pillWidth(displayName(node.name)) / 2, hh: PILL_H / 2,
-                 chapter, isChapter: false, fixed: false });
-    });
+    colorByChapter.set(chapter, CHAPTER_PALETTE[i % CHAPTER_PALETTE.length]);
+    const span = usable * (weights[i] / totalWeight);
+    const a0 = angleStart + GUTTER / 2 + SECTOR_PAD;
+    const a1 = angleStart + GUTTER / 2 + span - SECTOR_PAD;
+    const mid = (a0 + a1) / 2;
+    chapterMid.set(chapter, mid);
+
+    let ring = 0;
+    let cursor = a0;
+    for (const node of byChapter.get(chapter)!) {
+      const w = pillWidth(displayName(node.name)) + ARC_GAP;
+      maxHw = Math.max(maxHw, w / 2);
+      let ry = RY_FIRST + ring * RING_DY;
+      let da = w / ry;
+      if (cursor + da > a1 && cursor > a0) {
+        ring += 1;
+        ry = RY_FIRST + ring * RING_DY;
+        da = w / ry;
+        cursor = a0;
+      }
+      const angle = da >= a1 - a0 ? mid : cursor + da / 2;
+      placements.push({ node, chapter, angle, ring });
+      cursor += da;
+      maxRing = Math.max(maxRing, ring);
+    }
+    angleStart += span + GUTTER;
   });
 
-  // edges：概念↔所屬章節 + graph.edges（prerequisite/progression）
-  const idIndex = new Map(pts.map((p, i) => [p.id, i]));
-  const links: [number, number][] = [];
-  for (const p of pts) {
-    if (!p.isChapter && !p.fixed) {
-      const ci = idIndex.get(`__ch__${p.chapter}`);
-      const pi = idIndex.get(p.id);
-      if (ci != null && pi != null) links.push([ci, pi]);
-    }
-  }
-  for (const e of graph.edges) {
-    const a = idIndex.get(e.source), b = idIndex.get(e.target);
-    if (a != null && b != null) links.push([a, b]);
-  }
+  // 3) 自動 fit：外圈超出畫布時等比例縮小所有半徑（兩軸都檢查）
+  const maxRy = RY_FIRST + maxRing * RING_DY;
+  const fitY = (CY - 24 - PILL_H / 2) / (maxRy + PILL_H / 2);
+  const fitX = (CX - 24) / (maxRy * KX + maxHw);
+  const fit = Math.min(1, fitY, fitX);
 
-  // 2) 迭代：弱彈簧（連線靠攏）+ 弱向心，再做「矩形碰撞分離」硬約束
-  const ITER = 500;
-  const SPRINGK = 0.06, REST = 36, GRAV = 0.008, GAP = 18, MAXSTEP = 40;
-  const clampStep = (v: number) => Math.max(-MAXSTEP, Math.min(MAXSTEP, v));
+  const concepts: ConceptNode[] = placements.map(({ node, chapter, angle, ring }) => {
+    const ry = (RY_FIRST + ring * RING_DY) * fit;
+    const m = masteryByName.get(node.name.toLowerCase());
+    return {
+      id: node.id, name: node.name, chapter,
+      x: CX + ry * KX * Math.cos(angle),
+      y: CY + ry * Math.sin(angle),
+      status: m?.status ?? "new", mastery: m?.mastery ?? 0,
+      chapterColor: colorByChapter.get(chapter)!,
+    };
+  });
 
-  for (let it = 0; it < ITER; it++) {
-    // 2a) 彈簧 + 向心（溫和吸引）
-    for (const [a, b] of links) {
-      const dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
-      const dist = Math.hypot(dx, dy) || 1;
-      const f = (SPRINGK * (dist - REST)) / dist;
-      const sx = clampStep(dx * f), sy = clampStep(dy * f);
-      if (!pts[a].fixed) { pts[a].x += sx; pts[a].y += sy; }
-      if (!pts[b].fixed) { pts[b].x -= sx; pts[b].y -= sy; }
-    }
-    for (const p of pts) {
-      if (p.fixed) continue;
-      p.x += (CX - p.x) * GRAV;
-      p.y += (CY - p.y) * GRAV;
-    }
-    // 2b) 矩形碰撞分離（硬約束：兩 AABB 重疊就沿最小重疊軸推開）
-    for (let i = 0; i < pts.length; i++) {
-      for (let k = i + 1; k < pts.length; k++) {
-        const A = pts[i], B = pts[k];
-        if (A.fixed && B.fixed) continue;
-        let dx = B.x - A.x, dy = B.y - A.y;
-        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) { dx = (k - i) * 0.5; dy = 0.3; }
-        const ox = A.hw + B.hw + GAP - Math.abs(dx);
-        const oy = A.hh + B.hh + GAP - Math.abs(dy);
-        if (ox <= 0 || oy <= 0) continue; // 沒重疊
-        let pushX = 0, pushY = 0;
-        if (ox < oy) pushX = (dx < 0 ? -ox : ox);
-        else pushY = (dy < 0 ? -oy : oy);
-        if (A.fixed) { B.x += pushX; B.y += pushY; }
-        else if (B.fixed) { A.x -= pushX; A.y -= pushY; }
-        else { A.x -= pushX / 2; A.y -= pushY / 2; B.x += pushX / 2; B.y += pushY / 2; }
-      }
-    }
-  }
+  const chapters: ChapterNode[] = chapterNames.map((chapter) => {
+    const mid = chapterMid.get(chapter)!;
+    return {
+      id: `__ch__${chapter}`, name: chapter,
+      x: CX + RY_CHAPTER * fit * KX * Math.cos(mid),
+      y: CY + RY_CHAPTER * fit * Math.sin(mid),
+      color: colorByChapter.get(chapter)!,
+    };
+  });
 
-  // 3) clamp 進畫布（含節點半徑，避免出界被裁切）
-  const PAD = 24;
-  for (const p of pts) {
-    if (p.fixed) continue;
-    p.x = Math.max(PAD + p.hw, Math.min(SVG_W - PAD - p.hw, p.x));
-    p.y = Math.max(PAD + p.hh, Math.min(SVG_H - PAD - p.hh, p.y));
-  }
-
-  // 4) 還原成既有 Layout 結構（略過固定根節點，渲染端自有中心節點）
-  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
-  const concepts: ConceptNode[] = [];
-  const chapters: ChapterNode[] = [];
-  for (const p of pts) {
-    if (p.fixed) continue;
-    if (p.isChapter) {
-      chapters.push({ id: p.id, name: p.chapter, x: p.x, y: p.y, color: colorByChapter.get(p.chapter)! });
-    } else {
-      const node = nodeById.get(p.id)!;
-      const m = masteryByName.get(node.name.toLowerCase());
-      concepts.push({ id: p.id, name: node.name, chapter: p.chapter, x: p.x, y: p.y,
-        status: m?.status ?? "new", mastery: m?.mastery ?? 0, chapterColor: colorByChapter.get(p.chapter)! });
-    }
-  }
   return { concepts, chapters };
 }
 
@@ -224,6 +199,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1.0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [showAllEdges, setShowAllEdges] = useState(false);
   const [pathMode, setPathMode] = useState(false);
   const [startId, setStartId] = useState<string | null>(null);
   const [endId, setEndId] = useState<string | null>(null);
@@ -423,6 +399,12 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           if (!src || !tgt) return null;
 
           const key = edge.relation.split(" ")[0].toLowerCase();
+          const isCore = key === "prerequisite" || key === "progression" || key === "next";
+          const onPathEdge = pathResult.edgeKeys.has(`${edge.source}|${edge.target}`);
+          // 預設只畫先修/進展（路徑 demo 的主角）；弱關聯（related/semantic…）
+          // 是視覺噪音大宗，由「全部關聯」開關控制。路徑上的邊永遠顯示。
+          if (!showAllEdges && !isCore && !onPathEdge) return null;
+
           const color = RELATION_COLORS[key] ?? "#a78bfa";
           const isDashed = edge.style === "dashed" || key === "related" || key === "semantic";
 
@@ -434,7 +416,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           const perpX = (-(tgt.y - src.y) / dist) * 40;
           const perpY = ((tgt.x - src.x) / dist) * 40;
 
-          const onPath = pathResult.edgeKeys.has(`${edge.source}|${edge.target}`);
+          const onPath = onPathEdge;
           const dimmed = highlightActive && !onPath;
           return (
             <path
@@ -580,6 +562,13 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
           className={pathMode ? "btn-primary px-3 py-1.5 text-xs" : "btn-secondary px-3 py-1.5 text-xs"}
         >
           {pathMode ? "路徑模式：開" : "路徑模式"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowAllEdges(v => !v)}
+          className={showAllEdges ? "btn-primary px-3 py-1.5 text-xs" : "btn-secondary px-3 py-1.5 text-xs"}
+        >
+          {showAllEdges ? "全部關聯：開" : "全部關聯"}
         </button>
         {pathMode && (startId || endId) && (
           <button type="button" onClick={clearPath} className="btn-secondary px-3 py-1.5 text-xs">

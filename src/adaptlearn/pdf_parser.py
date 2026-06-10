@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import fitz
 
@@ -30,6 +30,7 @@ def extract_material_text(
     ollama_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
+    ocr_progress: Callable[[int, int], None] | None = None,
 ) -> ExtractedMaterial:
     if len(file_bytes) > MAX_FILE_SIZE:
         raise ValueError(
@@ -45,6 +46,7 @@ def extract_material_text(
             ollama_client=ollama_client,
             ocr_context=ocr_context,
             max_ocr_pages=max_ocr_pages,
+            ocr_progress=ocr_progress,
         )
     if suffix == ".txt":
         return ExtractedMaterial(
@@ -91,6 +93,7 @@ def _extract_pdf_material(
     ollama_client: Any | None = None,
     ocr_context: str = "",
     max_ocr_pages: int = DEFAULT_MAX_OCR_PAGES,
+    ocr_progress: Callable[[int, int], None] | None = None,
 ) -> ExtractedMaterial:
     ollama_ok = _ocr_available(ollama_client)
     chandra_ok = _ocr_available(chandra_client)
@@ -125,8 +128,12 @@ def _extract_pdf_material(
 
     # 1) Ollama local vision OCR first (handwriting-aware, on-device, no API cost).
     if ollama_ok and local_images is not None:
-        text = _transcribe_images(ollama_client, local_images, ocr_context)
-        if text.strip():
+        text = str(ollama_client.transcribe_images(
+            images=local_images,
+            course_name=ocr_context,
+            on_progress=ocr_progress,
+        )).strip()
+        if text:
             return ExtractedMaterial(text=text, source_type="pdf-ollama-ocr", ocr_used=True)
 
     # 2) Chandra (vLLM/HF), when available and within the page cap.

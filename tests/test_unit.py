@@ -610,7 +610,7 @@ class TestLocalOllamaOcr:
         class _FakeOllama:
             enabled = True
 
-            def transcribe_images(self, images, course_name=""):
+            def transcribe_images(self, images, course_name="", **kwargs):
                 return "ollama transcription: inner product space"
 
         class _FakeGemini:
@@ -639,7 +639,7 @@ class TestLocalOllamaOcr:
         class _FakeEmptyOllama:
             enabled = True
 
-            def transcribe_images(self, images, course_name=""):
+            def transcribe_images(self, images, course_name="", **kwargs):
                 return ""
 
         class _FakeNativeGemini:

@@ -104,6 +104,7 @@ class AdaptLearnService:
                 ollama_client=self.ollama,
                 ocr_context=course_name,
                 max_ocr_pages=self.settings.max_ocr_pages,
+                ocr_progress=lambda i, n: _stage(f"OCR 辨識第 {i}/{n} 頁"),
             )
             # 寫快取（只在成功且有文字時）
             if extracted_material.text.strip():

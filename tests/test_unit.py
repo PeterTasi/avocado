@@ -12,6 +12,7 @@ import sys
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from db_guard import require_safe_db
 from adaptlearn.config import Settings
 from adaptlearn.database import StudyRepository
 from adaptlearn.knowledge_graph import build_knowledge_graph
@@ -41,6 +42,7 @@ def settings(temp_dir):
 
 @pytest.fixture
 def repo(settings):
+    require_safe_db()
     repo = StudyRepository(settings.database_url)
     repo.initialize()
     repo.reset_learning_state(include_attempts=True)
@@ -50,6 +52,7 @@ def repo(settings):
 
 @pytest.fixture
 def service(settings):
+    require_safe_db()
     from adaptlearn.vector_store import ConceptVectorStore
     ConceptVectorStore.reset_singleton(settings.chroma_path)
     svc = AdaptLearnService(settings=settings, api_key="")
@@ -607,7 +610,7 @@ class TestLocalOllamaOcr:
         class _FakeOllama:
             enabled = True
 
-            def transcribe_images(self, images, course_name=""):
+            def transcribe_images(self, images, course_name="", **kwargs):
                 return "ollama transcription: inner product space"
 
         class _FakeGemini:
@@ -636,7 +639,7 @@ class TestLocalOllamaOcr:
         class _FakeEmptyOllama:
             enabled = True
 
-            def transcribe_images(self, images, course_name=""):
+            def transcribe_images(self, images, course_name="", **kwargs):
                 return ""
 
         class _FakeNativeGemini:

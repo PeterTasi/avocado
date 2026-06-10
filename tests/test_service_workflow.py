@@ -11,6 +11,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from db_guard import require_safe_db
 from adaptlearn.config import Settings
 from adaptlearn.pipeline import AdaptLearnService
 
@@ -19,6 +20,7 @@ _TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn
 
 class AdaptLearnWorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
+        require_safe_db()
         self._tempdir = tempfile.TemporaryDirectory()
         root = Path(self._tempdir.name)
 

@@ -6,7 +6,7 @@ import logging
 import re
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger("adaptlearn.ollama")
 
@@ -58,7 +58,12 @@ class OllamaClient:
         # time by degrading to the next OCR provider.
         return bool(self.model)
 
-    def transcribe_images(self, images: list[dict[str, Any]], course_name: str = "") -> str:
+    def transcribe_images(
+        self,
+        images: list[dict[str, Any]],
+        course_name: str = "",
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> str:
         if not self.model or not images:
             return ""
 
@@ -67,6 +72,8 @@ class OllamaClient:
 
         transcripts: list[str] = []
         for index, image in enumerate(images, start=1):
+            if on_progress is not None:
+                on_progress(index, len(images))
             data = image.get("data")
             if not isinstance(data, (bytes, bytearray)) or not data:
                 continue

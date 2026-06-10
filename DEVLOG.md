@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-06-11 — 比賽前衝刺包 E1–E5 完成 ✅
+
+- **E1 測試 DB 隔離**（`9eb641e`）：新增 `tests/conftest.py`（最頂部覆寫 `DATABASE_URL`）、`tests/db_guard.py`（白名單邏輯：只允許 localhost/127.0.0.1/adaptlearn_test，其餘 SkipTest）、四個 DB 測試檔各加 `require_safe_db()` guard。驗收：28 個 DB 測試全 SKIP，27 pass。
+- **E2 API_ACCESS_KEY 守門**（`c20eabf`）：`useApi.ts` fetch wrapper 用 `new Headers()` 注入 `X-API-Key`（localStorage）；`App.tsx` mount 時讀 `?key=xxx` 存 localStorage 後清 URL，`apiKey` state lazy init 同步。**手動步驟（尚未做）：** 需在 Render 設 `API_ACCESS_KEY` env var 並 redeploy。
+- **E4 OCR 結果快取**（`aac9cbd`）：`pipeline.ingest_material` 在 OCR 前算 `sha256(file_bytes)`，命中 `data/ocr_cache/{hash}.json` 跳過 OCR；成功後寫入；`data/ocr_cache/` 進 `.gitignore`。
+- **E3 逐頁 OCR 進度**（`0894880`）：`OllamaClient.transcribe_images` 加 `on_progress` callback 逐頁觸發；`pdf_parser._extract_pdf_material` Ollama 路徑直接呼叫（繞過 wrapper 避免 Chandra/Gemini signature 衝突）；`pipeline.ingest_material` 傳 `lambda i, n: _stage(f"OCR 辨識第 {i}/{n} 頁")`；新增 `tests/test_ocr_progress.py` 驗證逐頁 callback。
+- **E5 首頁空狀態引導**（`40c1283`）：新增 `EmptyStateOnboarding.tsx`（三步驟：上傳→quiz→graph，PixelIcons + `.card` 設計語言）；`App.tsx` 加 `useCourses()` + `showEmptyState` 條件渲染，取代 stat cards + workflow sections。
+- **分支：** `demo/sprint-pack`，已 push。尚未 merge main → Render 尚未更新。
+- **E6 全離線 LLM fallback** 待下次實作（需半天，最大項）。
+
+---
+
 ## 2026-06-10 — 比賽前衝刺包決策（待辦 E，6 項）📋
 
 - **起點：** 使用者請 Claude 做專案健檢。健檢發現兩個真實風險：(1) `conftest.py` 只修 import path，pytest 的 DB 測試仍直連 Render 正式庫；(2) `API_ACCESS_KEY` 守門做好了但 Render 沒設，公網任何人可刪課程/換金鑰/燒額度。

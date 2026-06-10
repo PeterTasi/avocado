@@ -1,6 +1,15 @@
 import os
+import sys
 import uuid
 import pytest
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = PROJECT_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from db_guard import require_safe_db
 from adaptlearn.database import StudyRepository
 from adaptlearn.models import ConceptDetail
 
@@ -11,6 +20,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def repo():
+    require_safe_db()
     r = StudyRepository(os.environ["DATABASE_URL"])
     r.initialize()
     yield r

@@ -65,8 +65,10 @@
 
 > 六項已與使用者確認。E1/E2 是風險修補（先做）、E3/E4/E5 是 demo 體驗、E6 最大（全離線能力，留最後）。
 > **各項彼此獨立，可單獨實作、單獨 commit。** 每項做完：跑測試 + `npm run build`（有前端時）+ commit。
+>
+> **進度（2026-06-11）：E1–E5 ✅ 已完成並推送 demo/sprint-pack；E6 待實作。**
 
-### E1：測試 DB 隔離（風險修補，~30 分）
+### E1：測試 DB 隔離（✅ DONE — commit `9eb641e`）
 
 - **問題：** `pytest` 的 DB 測試直連 Render 正式庫（DEVLOG 2026-06-08 附帶發現），跑測試會污染 demo 資料。`conftest.py` 目前只處理 import path。
 - **方案：**
@@ -76,7 +78,7 @@
 - **驗收：** 本地（DATABASE_URL=render）跑 pytest → DB 測試全部 skip 且訊息清楚；其餘測試照跑。`.env.example` 補 `TEST_DATABASE_URL` 說明。
 - **風險：** config.py 在 import 時讀 env —— 覆寫必須發生在 conftest 最頂部、任何專案 import 之前。
 
-### E2：API_ACCESS_KEY 守門啟用（風險修補，~30 分）
+### E2：API_ACCESS_KEY 守門（✅ DONE — commit `c20eabf`）
 
 - **問題：** 後端守門已做好（`main.py:80`、未設 key 即全開），Render 沒設 → 任何人可 DELETE 課程、換 Gemini 金鑰、燒額度。
 - **方案（前端配合，一處改完全站生效）：**
@@ -87,7 +89,7 @@
 - **驗收：** Render 設 key 後：無 key 開站 → API 回 401、畫面顯示金鑰錯誤；帶 `?key=` 開站 → 一切正常；`/api/health` 不受影響（守門排除 health）。
 - **風險：** CORS 已允許 `X-API-Key`（main.py:69），無需動後端。key 存 localStorage 對「評審亂試」級別的威脅足夠，不防決心攻擊者（賽後 A1 再說）。
 
-### E3：逐頁 OCR 進度 + 部分成功保留（= 待辦 D 階段二，~1 小時）
+### E3：逐頁 OCR 進度（✅ DONE — commit `0894880`）
 
 - **方案：**
   1. `ollama_client.transcribe_images(images, course_name, on_progress=None)`：每頁開始辨識前呼叫 `on_progress(index, total)`；錯誤行為不變（單頁失敗回 "" 跳過 —— 頁級部分成功其實已存在，本項重點是進度可見）。
@@ -97,7 +99,7 @@
 - **驗收：** 上傳 28 頁手寫 PDF，SetupPanel 第一階段顯示「OCR 辨識第 n/28 頁」遞增；新增 unit test：fake ollama client 驗證 callback 被逐頁呼叫。
 - **風險：** `_stage` 寫入是跨執行緒讀取（threadpool → 輪詢），沿用既有機制即可（前例已驗證安全）。
 
-### E4：OCR 結果快取（demo 保險絲，~40 分）
+### E4：OCR 結果快取（✅ DONE — commit `aac9cbd`）
 
 - **方案：**
   1. `pipeline.ingest_material` 在呼叫 `extract_material_text` 前：算 `sha256(file_bytes)`，查 `data/ocr_cache/{hash}.json` —— 命中且格式合法 → 直接用快取的 `{text, source_type, ocr_used}` 跳過 OCR；未命中 → 照跑，成功後寫入快取（`json.dump`，寫失敗只 log 不中斷）。
@@ -106,7 +108,7 @@
 - **驗收：** 同一份 28 頁 PDF 上傳第二次，OCR 階段 < 1 秒跳過；`data/ocr_cache/` 進 `.gitignore`。
 - **風險：** Render 磁碟 ephemeral → 快取重啟即失效，可接受（此功能本來就為本地 demo）。不做 LRU 上限（demo 用量小），但 log 寫入的檔案大小。
 
-### E5：首頁空狀態引導（~40 分）
+### E5：首頁空狀態引導（✅ DONE — commit `40c1283`）
 
 - **方案：**
   1. 新元件 `webapp/frontend/src/components/EmptyStateOnboarding.tsx`：卡片含三步驟（① 上傳教材 → ② 做診斷測驗 → ③ 看圖譜與複習計畫），每步一個 Pixel 風 icon（沿用 `PixelIcons.tsx`）+ 按鈕導到對應 view（呼叫 App 傳入的 `onNavigate(view)`）。

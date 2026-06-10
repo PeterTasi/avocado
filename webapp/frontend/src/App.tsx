@@ -28,10 +28,12 @@ import { QuizPanel } from "./components/QuizPanel";
 import { SetupPanel } from "./components/SetupPanel";
 import { StudyPlansPanel, TonightPanel } from "./components/StudyPanels";
 import { ProgressPanel } from "./components/ProgressPanel";
+import { EmptyStateOnboarding } from "./components/EmptyStateOnboarding";
 import {
   useChapterMastery,
   useConceptMastery,
   useConcepts,
+  useCourses,
   useHealth,
   useKnowledgeGraph,
   useReviewPlan,
@@ -145,6 +147,8 @@ export default function App() {
   const [sessionUploaded, setSessionUploaded] = useState(false);
 
   const { data: healthData } = useHealth();
+  const { data: coursesData, isLoading: coursesLoading } = useCourses();
+  const showEmptyState = !coursesLoading && (coursesData?.items?.length ?? 0) === 0;
   const { data: conceptsData, isLoading: conceptsLoading, isError: conceptsError } = useConcepts();
   const { data: masteryData, isLoading: masteryLoading } = useConceptMastery();
   const { data: chapterData } = useChapterMastery();
@@ -602,6 +606,10 @@ export default function App() {
               </div>
             </section>
 
+            {showEmptyState ? (
+              <EmptyStateOnboarding onNavigate={navigateTo as (view: "setup" | "quiz" | "graph" | "review") => void} />
+            ) : (
+            <>
             {/* Stat cards */}
             <section className="grid gap-4 sm:grid-cols-3">
               {statCards.map((card, index) => {
@@ -783,6 +791,8 @@ export default function App() {
                 <InsightFeed insights={insights.slice(0, 3)} isError={tonightError} />
               </div>
             </section>
+            </>
+            )}
           </div>
         ) : (
           <div key={activeView} className="view-enter">

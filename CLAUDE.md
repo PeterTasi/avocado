@@ -265,6 +265,10 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 `top-nav`：sticky、白底半透明 + backdrop blur + 1px 下邊框。左 `PixelAvocadoLogo(size=30)` + wordmark、中 nav tabs（active 底部 2px indigo indicator）、右狀態 pill。內容容器：`max-w-[1200px] mx-auto px-6`。
 
+### Skill 輔助
+
+- Landing／行銷頁／重設計（如 `LandingScreen.tsx`、`EmptyStateOnboarding.tsx`）可用全域 skill `design-taste-frontend`（anti-slop 前端設計）。**不適用** dashboard、資料表、quiz/graph/heatmap 等資料密集 panel —— 那些仍遵循上方「明亮專業」設計語言。
+
 ---
 
 ## 待處理事項

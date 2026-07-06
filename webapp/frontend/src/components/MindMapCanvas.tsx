@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConceptMastery } from "../hooks/useApi";
-import { findLearningPath } from "../utils/graphUtils";
-import type { ParsedGraph, GraphNode, PathResult } from "../utils/graphUtils";
+import { computeDagLayers, findLearningPath, traceWeakestUpstream } from "../utils/graphUtils";
+import type { ParsedGraph, GraphNode, PathResult, TraceResult } from "../utils/graphUtils";
 
 // ── Colour palettes ──────────────────────────────────────────────────────────
 
@@ -18,6 +18,16 @@ const STATUS_LABELS: Record<string, string> = {
   needs_review: "需複習",
   new: "未測驗",
 };
+
+// 後端 _mastery_band 回傳 green/yellow/red；未作答視為「未測驗」。
+// （舊版直接拿後端字串查 STATUS_COLORS，key 對不上 → 全部 fallback 成未測驗色。）
+function normalizeStatus(m?: ConceptMastery): string {
+  if (!m || m.attempts === 0) return "new";
+  if (m.status === "green") return "mastered";
+  if (m.status === "yellow") return "learning";
+  if (m.status === "red") return "needs_review";
+  return STATUS_COLORS[m.status] ? m.status : "new";
+}
 
 // 10 distinct hues — avocado-harmonious palette
 const CHAPTER_PALETTE = [
@@ -37,7 +47,11 @@ const RELATION_COLORS: Record<string, string> = {
   next:           "#a8a090",
 };
 
+const READY_RING = "#4f46e5"; // indigo accent — 可以學了
+
 // ── Types ────────────────────────────────────────────────────────────────────
+
+type GateState = "mastered" | "ready" | "locked";
 
 interface ConceptNode {
   id: string;
@@ -45,40 +59,34 @@ interface ConceptNode {
   chapter: string;
   x: number;
   y: number;
+  w: number; // pill width（邊線起訖點要貼齊 pill 邊緣）
   status: string;
   mastery: number;
+  gate: GateState;
   chapterColor: string;
-  description?: string;
-}
-
-interface ChapterNode {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  color: string;
 }
 
 interface Layout {
   concepts: ConceptNode[];
-  chapters: ChapterNode[];
+  maxLayer: number;
 }
 
 interface Props {
   graph: ParsedGraph;
   masteryItems: ConceptMastery[];
-  courseName?: string;
+  courseName?: string; // 保留介面相容；技能樹佈局不再畫中心節點
 }
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 
 const SVG_W = 1000;
 const SVG_H = 700;
-const CX = SVG_W / 2;
 const CY = SVG_H / 2;
 const PILL_H = 30;
 const MIN_PILL_W = 100;
 const CHAR_W = 7.5;       // approximate px per character at font-size 11
+const X_PAD = 120;        // 首末欄中心到畫布邊的距離（容納半個 pill）
+const Y_PAD = 60;
 
 function pillWidth(name: string): number {
   return Math.max(MIN_PILL_W, name.length * CHAR_W + 32);
@@ -88,112 +96,79 @@ function displayName(name: string): string {
   return name.length > 22 ? name.slice(0, 21) + "…" : name;
 }
 
-// ── Build radial mind-map layout（確定性扇區排版） ──────────────────────────
-// 心智圖是樹（中心→章節→概念），所以用算術直接排：每個章節分到一個角度
-// 扇區，概念沿扇區內的同心弧排列、弧長按 pill 寬度累加。這保證三件事：
-// 章節聚類 100%、零重疊（不靠碰撞分離）、每次重整結果相同（demo 安全）。
-// 之前的力導向版本會讓碰撞分離把概念推進別章的地盤、分支線橫跨整張圖。
+// ── Build layered skill-tree layout（左→右分層 DAG）─────────────────────────
+// x = 先修深度（computeDagLayers）：越左越基礎，所有先修箭頭一律指右。
+// 章節改用顏色表達（pill 邊框），不再佔據版面位置。
 
-function buildLayout(graph: ParsedGraph, masteryByName: Map<string, ConceptMastery>): Layout {
-  const byChapter = new Map<string, GraphNode[]>();
-  for (const node of graph.nodes) {
-    const ch = node.chapter || "核心概念";
-    if (!byChapter.has(ch)) byChapter.set(ch, []);
-    byChapter.get(ch)!.push(node);
+function buildLayout(graph: ParsedGraph, masteryById: Map<string, ConceptMastery>): Layout {
+  const { layerOf, maxLayer } = computeDagLayers(graph);
+
+  const chapterColor = new Map<string, string>();
+  graph.chapters.forEach((ch, i) => chapterColor.set(ch, CHAPTER_PALETTE[i % CHAPTER_PALETTE.length]));
+  const chapterIndex = new Map<string, number>();
+  graph.chapters.forEach((ch, i) => chapterIndex.set(ch, i));
+
+  // 掌握狀態 + 先修 gate（frontier 三態）
+  const statusOf = new Map<string, string>();
+  for (const node of graph.nodes) statusOf.set(node.id, normalizeStatus(masteryById.get(node.id)));
+
+  const prereqPreds = new Map<string, string[]>();
+  for (const e of graph.edges) {
+    if (e.relation.split(" ")[0].toLowerCase() !== "prerequisite") continue;
+    if (e.source === e.target) continue;
+    if (!prereqPreds.has(e.target)) prereqPreds.set(e.target, []);
+    prereqPreds.get(e.target)!.push(e.source);
   }
-  const chapterNames = Array.from(byChapter.keys());
-  const N = Math.max(1, chapterNames.length);
+  const gateOf = (id: string): GateState => {
+    if (statusOf.get(id) === "mastered") return "mastered";
+    const preds = prereqPreds.get(id) ?? [];
+    return preds.every((p) => statusOf.get(p) === "mastered") ? "ready" : "locked";
+  };
 
-  // 畫布寬扁（1000×700）→ 放射用橢圓（x 半徑 = y 半徑 × KX）。
-  // 弧長間距一律以 y 半徑計算：橢圓上的局部弧長速度 ≥ ry（因 rx ≥ ry），
-  // 所以用 ry 算出來的角距是保守值，必不重疊。
-  const KX = 1.42;
-  const RY_FIRST = 235;    // 概念第一圈 y 半徑
-  const RING_DY = 62;      // 每往外一圈遞增
-  const RY_CHAPTER = 155;  // 章節圓點的 y 半徑
-  const ARC_GAP = 16;      // 同圈相鄰 pill 的弧長間距
-  const GUTTER = 0.1;      // 扇區之間的角度間隙（rad）
-  const SECTOR_PAD = 0.04; // 扇區內側留白（rad）
+  // 分欄：x 按層等距；欄內按章節分組排序、y 等距置中
+  const byLayer = new Map<number, GraphNode[]>();
+  for (const node of graph.nodes) {
+    const layer = layerOf.get(node.id) ?? 0;
+    if (!byLayer.has(layer)) byLayer.set(layer, []);
+    byLayer.get(layer)!.push(node);
+  }
 
-  // 1) 角度扇區：寬度按各章 pill 總寬比例分配（概念多/名字長的章節分更寬）
-  const weights = chapterNames.map((ch) =>
-    byChapter.get(ch)!.reduce((acc, n) => acc + pillWidth(displayName(n.name)) + ARC_GAP, 0),
-  );
-  const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
-  const usable = 2 * Math.PI - N * GUTTER;
+  const xStep = maxLayer > 0 ? (SVG_W - 2 * X_PAD) / maxLayer : 0;
+  const concepts: ConceptNode[] = [];
 
-  // 2) 逐章節排概念：弧上放不下就往外一圈；單顆 pill 比扇區還寬時置中成「輻條」
-  type Placement = { node: GraphNode; chapter: string; angle: number; ring: number };
-  const placements: Placement[] = [];
-  const chapterMid = new Map<string, number>();
-  const colorByChapter = new Map<string, string>();
-  let maxRing = 0;
-  let maxHw = 0;
-  let angleStart = -Math.PI / 2; // 第一個扇區從正上方開始
+  for (const [layer, nodes] of byLayer) {
+    nodes.sort((a, b) => {
+      const ci = (chapterIndex.get(a.chapter) ?? 0) - (chapterIndex.get(b.chapter) ?? 0);
+      return ci !== 0 ? ci : a.name.localeCompare(b.name, "zh-Hant");
+    });
+    const x = maxLayer > 0 ? X_PAD + layer * xStep : SVG_W / 2;
+    const n = nodes.length;
+    const yStep = n > 1 ? Math.max(PILL_H + 8, Math.min(64, (SVG_H - 2 * Y_PAD) / (n - 1))) : 0;
+    const startY = CY - ((n - 1) * yStep) / 2;
 
-  chapterNames.forEach((chapter, i) => {
-    colorByChapter.set(chapter, CHAPTER_PALETTE[i % CHAPTER_PALETTE.length]);
-    const span = usable * (weights[i] / totalWeight);
-    const a0 = angleStart + GUTTER / 2 + SECTOR_PAD;
-    const a1 = angleStart + GUTTER / 2 + span - SECTOR_PAD;
-    const mid = (a0 + a1) / 2;
-    chapterMid.set(chapter, mid);
+    nodes.forEach((node, row) => {
+      const m = masteryById.get(node.id);
+      concepts.push({
+        id: node.id,
+        name: node.name,
+        chapter: node.chapter,
+        x,
+        y: n > 1 ? startY + row * yStep : CY,
+        w: pillWidth(displayName(node.name)),
+        status: statusOf.get(node.id) ?? "new",
+        mastery: m?.mastery ?? 0,
+        gate: gateOf(node.id),
+        chapterColor: chapterColor.get(node.chapter) ?? CHAPTER_PALETTE[0],
+      });
+    });
+  }
 
-    let ring = 0;
-    let cursor = a0;
-    for (const node of byChapter.get(chapter)!) {
-      const w = pillWidth(displayName(node.name)) + ARC_GAP;
-      maxHw = Math.max(maxHw, w / 2);
-      let ry = RY_FIRST + ring * RING_DY;
-      let da = w / ry;
-      if (cursor + da > a1 && cursor > a0) {
-        ring += 1;
-        ry = RY_FIRST + ring * RING_DY;
-        da = w / ry;
-        cursor = a0;
-      }
-      const angle = da >= a1 - a0 ? mid : cursor + da / 2;
-      placements.push({ node, chapter, angle, ring });
-      cursor += da;
-      maxRing = Math.max(maxRing, ring);
-    }
-    angleStart += span + GUTTER;
-  });
-
-  // 3) 自動 fit：外圈超出畫布時等比例縮小所有半徑（兩軸都檢查）
-  const maxRy = RY_FIRST + maxRing * RING_DY;
-  const fitY = (CY - 24 - PILL_H / 2) / (maxRy + PILL_H / 2);
-  const fitX = (CX - 24) / (maxRy * KX + maxHw);
-  const fit = Math.min(1, fitY, fitX);
-
-  const concepts: ConceptNode[] = placements.map(({ node, chapter, angle, ring }) => {
-    const ry = (RY_FIRST + ring * RING_DY) * fit;
-    const m = masteryByName.get(node.name.toLowerCase());
-    return {
-      id: node.id, name: node.name, chapter,
-      x: CX + ry * KX * Math.cos(angle),
-      y: CY + ry * Math.sin(angle),
-      status: m?.status ?? "new", mastery: m?.mastery ?? 0,
-      chapterColor: colorByChapter.get(chapter)!,
-    };
-  });
-
-  const chapters: ChapterNode[] = chapterNames.map((chapter) => {
-    const mid = chapterMid.get(chapter)!;
-    return {
-      id: `__ch__${chapter}`, name: chapter,
-      x: CX + RY_CHAPTER * fit * KX * Math.cos(mid),
-      y: CY + RY_CHAPTER * fit * Math.sin(mid),
-      color: colorByChapter.get(chapter)!,
-    };
-  });
-
-  return { concepts, chapters };
+  return { concepts, maxLayer };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Props) {
+export function MindMapCanvas({ graph, masteryItems }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerW, setContainerW] = useState(700);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -203,14 +178,6 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
   const [pathMode, setPathMode] = useState(false);
   const [startId, setStartId] = useState<string | null>(null);
   const [endId, setEndId] = useState<string | null>(null);
-
-  const pathResult: PathResult = useMemo(
-    () => findLearningPath(graph, startId, endId),
-    [graph, startId, endId],
-  );
-
-  const highlightActive = pathMode && pathResult.found;
-  const pathNodeSet = useMemo(() => new Set(pathResult.nodeIds), [pathResult]);
 
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
@@ -228,20 +195,49 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
     return () => ro.disconnect();
   }, []);
 
-  const masteryByName = useMemo(() => {
+  // DOT 節點 id 就是後端 concept.id → 直接用 id 對掌握度，比名稱比對可靠
+  const masteryById = useMemo(() => {
     const m = new Map<string, ConceptMastery>();
-    for (const item of masteryItems) m.set(item.name.toLowerCase(), item);
+    for (const item of masteryItems) m.set(item.concept_id, item);
     return m;
   }, [masteryItems]);
 
-  const layout = useMemo(() => buildLayout(graph, masteryByName), [graph, masteryByName]);
+  const layout = useMemo(() => buildLayout(graph, masteryById), [graph, masteryById]);
 
-  // Position lookup for edge rendering
+  // Position + pill width lookup for edge rendering
   const posById = useMemo(() => {
-    const m = new Map<string, { x: number; y: number }>();
-    for (const n of layout.concepts) m.set(n.id, { x: n.x, y: n.y });
+    const m = new Map<string, { x: number; y: number; w: number }>();
+    for (const n of layout.concepts) m.set(n.id, { x: n.x, y: n.y, w: n.w });
     return m;
   }, [layout]);
+
+  const pathResult: PathResult = useMemo(
+    () => findLearningPath(graph, startId, endId),
+    [graph, startId, endId],
+  );
+
+  // 卡關歸因：非路徑模式下點選「學習中/需複習」節點 → 回溯最弱先修鏈
+  const traceResult: TraceResult = useMemo(() => {
+    if (pathMode || !selected) {
+      return { found: false, nodeIds: [], edgeKeys: new Set<string>(), weakestId: null };
+    }
+    const node = layout.concepts.find((c) => c.id === selected);
+    if (!node || (node.status !== "needs_review" && node.status !== "learning")) {
+      return { found: false, nodeIds: [], edgeKeys: new Set<string>(), weakestId: null };
+    }
+    return traceWeakestUpstream(graph, selected, (id) => {
+      const m = masteryById.get(id);
+      return m && m.attempts > 0 ? m.mastery : null;
+    });
+  }, [pathMode, selected, layout, graph, masteryById]);
+
+  // 統一高亮：路徑模式用 BFS 路徑，一般模式用歸因鏈
+  const highlight = pathMode
+    ? (pathResult.found ? pathResult : null)
+    : (traceResult.found ? traceResult : null);
+  const highlightActive = highlight !== null;
+  const hlNodeSet = useMemo(() => new Set(highlight?.nodeIds ?? []), [highlight]);
+  const hlEdgeKeys = highlight?.edgeKeys ?? new Set<string>();
 
   const clearPath = useCallback(() => {
     setStartId(null);
@@ -310,6 +306,16 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
     () => layout.concepts.find(n => n.id === selected),
     [layout, selected],
   );
+  const weakestConcept = useMemo(
+    () => layout.concepts.find(n => n.id === traceResult.weakestId),
+    [layout, traceResult],
+  );
+
+  const nameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of layout.concepts) m.set(n.id, n.name);
+    return m;
+  }, [layout]);
 
   if (!graph.nodes.length) {
     return (
@@ -344,11 +350,6 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         style={{ display: "block" }}
       >
         <defs>
-          {/* Center gradient — avocado flesh to deep green */}
-          <radialGradient id="mm-cg">
-            <stop offset="0%" stopColor="#7ab030" />
-            <stop offset="100%" stopColor="#2d5219" />
-          </radialGradient>
           {/* Glow filter */}
           <filter id="mm-glow" x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
@@ -366,142 +367,118 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               <path d="M0,0 L0,7 L7,3.5 z" fill={color} fillOpacity="0.75" />
             </marker>
           ))}
+          <marker id="arr-axis" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L0,8 L8,4 z" fill="#8b929c" />
+          </marker>
         </defs>
 
-        {/* ── Trunk lines: center → chapter ── */}
-        {layout.chapters.map(ch => (
-          <line
-            key={`trunk-${ch.id}`}
-            x1={CX} y1={CY} x2={ch.x} y2={ch.y}
-            stroke={ch.color} strokeWidth="3" strokeOpacity="0.35"
-            strokeLinecap="round"
-          />
-        ))}
-
-        {/* ── Branch lines: chapter → concept ── */}
-        {layout.concepts.map(node => {
-          const ch = layout.chapters.find(c => c.name === node.chapter);
-          if (!ch) return null;
-          return (
+        {/* ── 進度軸：越左越基礎 ── */}
+        {layout.maxLayer > 0 && (
+          <g>
+            <text x={X_PAD - 60} y={26} fontSize="11" fontWeight="600" fill="#8b929c">基礎</text>
             <line
-              key={`branch-${node.id}`}
-              x1={ch.x} y1={ch.y} x2={node.x} y2={node.y}
-              stroke={node.chapterColor} strokeWidth="1.5" strokeOpacity="0.25"
-              strokeLinecap="round"
+              x1={X_PAD - 24} y1={22} x2={SVG_W - X_PAD + 24} y2={22}
+              stroke="#8b929c" strokeWidth="1.2" strokeDasharray="2,4" markerEnd="url(#arr-axis)"
             />
-          );
-        })}
+            <text x={SVG_W - X_PAD + 34} y={26} fontSize="11" fontWeight="600" fill="#8b929c">進階</text>
+          </g>
+        )}
 
-        {/* ── Cross-concept edges (prerequisite / progression) ── */}
+        {/* ── Edges ── */}
         {graph.edges.map((edge, i) => {
           const src = posById.get(edge.source);
           const tgt = posById.get(edge.target);
           if (!src || !tgt) return null;
 
           const key = edge.relation.split(" ")[0].toLowerCase();
-          const isCore = key === "prerequisite" || key === "progression" || key === "next";
-          const onPathEdge = pathResult.edgeKeys.has(`${edge.source}|${edge.target}`);
-          // 預設只畫先修/進展（路徑 demo 的主角）；弱關聯（related/semantic…）
-          // 是視覺噪音大宗，由「全部關聯」開關控制。路徑上的邊永遠顯示。
+          // 「next」是後端人工章節串鏈（非語意關係）→ 歸入「全部關聯」開關
+          const isCore = key === "prerequisite" || key === "progression";
+          const onPathEdge = hlEdgeKeys.has(`${edge.source}|${edge.target}`);
           if (!showAllEdges && !isCore && !onPathEdge) return null;
 
           const color = RELATION_COLORS[key] ?? "#a78bfa";
-          const isDashed = edge.style === "dashed" || key === "related" || key === "semantic";
+          const isDashed = edge.style === "dashed" || key === "related" || key === "semantic" || key === "next";
 
-          // Quadratic bezier curved away from center
-          const mx = (src.x + tgt.x) / 2;
-          const my = (src.y + tgt.y) / 2;
-          const dist = Math.hypot(tgt.x - src.x, tgt.y - src.y) || 1;
-          // Push control point away from canvas center
-          const perpX = (-(tgt.y - src.y) / dist) * 40;
-          const perpY = ((tgt.x - src.x) / dist) * 40;
+          // 分層佈局：先修一律向右 → 水平三次貝茲（pill 右緣 → pill 左緣）
+          const sxr = src.x + src.w / 2;
+          const txl = tgt.x - tgt.w / 2;
+          let d: string;
+          if (txl - sxr > 12) {
+            const mx = (sxr + txl) / 2;
+            d = `M${sxr},${src.y} C${mx},${src.y} ${mx},${tgt.y} ${txl},${tgt.y}`;
+          } else {
+            // 同欄/回向邊（弱關聯、跨課程、被切斷的環）→ 側向弧線
+            const dist = Math.hypot(tgt.x - src.x, tgt.y - src.y) || 1;
+            const perpX = (-(tgt.y - src.y) / dist) * 40;
+            const perpY = ((tgt.x - src.x) / dist) * 40;
+            const mx = (src.x + tgt.x) / 2;
+            const my = (src.y + tgt.y) / 2;
+            d = `M${src.x},${src.y} Q${mx + perpX},${my + perpY} ${tgt.x},${tgt.y}`;
+          }
 
-          const onPath = onPathEdge;
-          const dimmed = highlightActive && !onPath;
+          const dimmed = highlightActive && !onPathEdge;
           return (
             <path
               key={`edge-${i}`}
-              d={`M${src.x},${src.y} Q${mx + perpX},${my + perpY} ${tgt.x},${tgt.y}`}
+              d={d}
               fill="none"
-              stroke={onPath ? "#4f46e5" : color}
-              strokeWidth={onPath ? 2.6 : 1.8}
-              strokeOpacity={dimmed ? 0.12 : onPath ? 0.95 : 0.6}
+              stroke={onPathEdge ? READY_RING : color}
+              strokeWidth={onPathEdge ? 2.6 : 1.8}
+              strokeOpacity={dimmed ? 0.1 : onPathEdge ? 0.95 : 0.55}
               strokeDasharray={isDashed ? "5,3" : undefined}
-              markerEnd={
-                key === "prerequisite" || key === "progression" || key === "next"
-                  ? `url(#arr-${key})`
-                  : undefined
-              }
+              markerEnd={isCore ? `url(#arr-${key})` : undefined}
             />
           );
         })}
-
-        {/* ── Center node (pixel-border square, 🎮) ── */}
-        {/* Pixel staircase border offset rects */}
-        <rect x={CX-26+2} y={CY-26}   width={52} height={52} rx="0" fill="none" stroke="#3d6b28" strokeWidth="2" strokeOpacity="0.3" />
-        <rect x={CX-26}   y={CY-26+2} width={52} height={52} rx="0" fill="none" stroke="#3d6b28" strokeWidth="2" strokeOpacity="0.3" />
-        {/* Center square body */}
-        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="#3d6b28" />
-        <rect x={CX-22} y={CY-22} width={44} height={44} rx="2" fill="url(#mm-cg)" />
-        <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="700">
-          {courseName.length > 5 ? courseName.slice(0, 5) : courseName}
-        </text>
-
-        {/* ── Chapter nodes ── */}
-        {layout.chapters.map(ch => (
-          <g key={ch.id} className="mm-node" style={{ cursor: "default" }}>
-            {/* Halo */}
-            <circle cx={ch.x} cy={ch.y} r={22} fill={`${ch.color}20`} />
-            {/* Circle */}
-            <circle
-              cx={ch.x} cy={ch.y} r={17}
-              fill={`${ch.color}bb`}
-              stroke="rgba(255,255,255,0.25)" strokeWidth="1.2"
-            />
-            {/* Label below circle */}
-            <text
-              x={ch.x}
-              y={ch.y + 25}
-              textAnchor="middle"
-              dominantBaseline="hanging"
-              fill={ch.color}
-              fontSize="10"
-              fontWeight="600"
-              style={{ maxWidth: 100 }}
-            >
-              {ch.name.length > 12 ? ch.name.slice(0, 11) + "…" : ch.name}
-            </text>
-          </g>
-        ))}
 
         {/* ── Concept nodes (pill shaped) ── */}
         {layout.concepts.map(node => {
           const color = STATUS_COLORS[node.status] ?? STATUS_COLORS.new;
           const isSelected = node.id === selected;
-          const pW = pillWidth(displayName(node.name));
+          const pW = node.w;
           const label = displayName(node.name);
           const isStart = node.id === startId;
           const isEnd = node.id === endId;
-          const onPath = pathNodeSet.has(node.id);
+          const onPath = hlNodeSet.has(node.id);
           const dimmed = highlightActive && !onPath;
-          const ringColor = isStart ? "#0ea472" : isEnd ? "#e11d48" : "#4f46e5";
+          const lockedDim = node.gate === "locked" && !onPath && !isSelected;
+          const ringColor = isStart ? "#0ea472" : isEnd ? "#e11d48" : READY_RING;
 
           return (
             <g
               key={node.id}
               className="mm-node"
-              style={{ cursor: "pointer", opacity: dimmed ? 0.2 : 1, transition: "opacity 160ms var(--ease-out)" }}
+              style={{
+                cursor: "pointer",
+                opacity: dimmed ? 0.2 : lockedDim ? 0.45 : 1,
+                transition: "opacity 160ms var(--ease-out)",
+              }}
               onClick={() => handleNodeClick(node.id)}
             >
               {/* Mastered glow */}
-              {node.status === "mastered" && (
+              {node.gate === "mastered" && (
                 <rect
                   x={node.x - pW / 2 - 4}
                   y={node.y - PILL_H / 2 - 4}
                   width={pW + 8}
                   height={PILL_H + 8}
                   rx="20"
-                  fill={`${color}18`}
+                  fill={`${STATUS_COLORS.mastered}18`}
+                  filter="url(#mm-glow)"
+                />
+              )}
+              {/* 可以學了：indigo 光環（今天該點開的節點） */}
+              {node.gate === "ready" && (
+                <rect
+                  x={node.x - pW / 2 - 4}
+                  y={node.y - PILL_H / 2 - 4}
+                  width={pW + 8}
+                  height={PILL_H + 8}
+                  rx="20"
+                  fill="none"
+                  stroke={READY_RING}
+                  strokeWidth="1.6"
+                  strokeOpacity="0.55"
                   filter="url(#mm-glow)"
                 />
               )}
@@ -535,6 +512,17 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               >
                 {label}
               </text>
+              {/* 先修未完成 → 小鎖 */}
+              {node.gate === "locked" && (
+                <text
+                  x={node.x + pW / 2 - 13}
+                  y={node.y + 0.5}
+                  dominantBaseline="middle"
+                  fontSize="10"
+                >
+                  🔒
+                </text>
+              )}
               {/* 起/終點標記 */}
               {pathMode && (isStart || isEnd) && (
                 <text
@@ -595,7 +583,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         ))}
       </div>
 
-      {/* ── 路徑模式回饋（取代詳情卡） ── */}
+      {/* ── 路徑模式回饋 ── */}
       {pathMode && (
         <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
           {!startId || !endId ? (
@@ -608,9 +596,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
                 共 {pathResult.steps} 步
               </p>
               <p className="mt-1 text-[color:var(--text-secondary)]">
-                {pathResult.nodeIds
-                  .map((id) => layout.concepts.find((c) => c.id === id)?.name ?? id)
-                  .join(" → ")}
+                {pathResult.nodeIds.map((id) => nameById.get(id) ?? id).join(" → ")}
               </p>
             </div>
           ) : (
@@ -621,7 +607,7 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
         </div>
       )}
 
-      {/* ── Selected node detail panel（僅非路徑模式） ── */}
+      {/* ── Selected node detail panel（非路徑模式；含卡關歸因） ── */}
       {!pathMode && selectedConcept && (
         <div className="absolute bottom-3 left-3 right-14 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-surface)] px-4 py-2.5 text-xs shadow-[var(--shadow-pop)]">
           <div className="flex items-start justify-between gap-2">
@@ -640,13 +626,28 @@ export function MindMapCanvas({ graph, masteryItems, courseName = "課程" }: Pr
               </span>
             </div>
           </div>
+          {traceResult.found && weakestConcept && (
+            <div className="mt-2 border-t border-[color:var(--border)] pt-2">
+              <p className="text-[color:var(--text-secondary)]">
+                最可能的根因：
+                <span className="font-semibold text-[color:var(--low)]">『{weakestConcept.name}』</span>
+                {weakestConcept.status === "new"
+                  ? "（還沒測驗過）"
+                  : `（掌握度 ${Math.round(weakestConcept.mastery * 100)}%）`}
+                ——先回去補它。
+              </p>
+              <p className="mt-1 text-[color:var(--text-muted)]">
+                {traceResult.nodeIds.map((id) => nameById.get(id) ?? id).join(" → ")}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ── Mastery legend ─────────────────────────────────────────────────────────
+// ── Legend ──────────────────────────────────────────────────────────────────
 
 export function MindMapLegend() {
   return (
@@ -658,6 +659,15 @@ export function MindMapLegend() {
           <span className="text-[color:var(--text-secondary)]">{label}</span>
         </span>
       ))}
+      <span className="border-l border-[color:var(--border)] pl-3">技能樹：</span>
+      <span className="inline-flex items-center gap-1">
+        <i className="h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: READY_RING }} />
+        <span className="text-[color:var(--text-secondary)]">可以學了</span>
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span>🔒</span>
+        <span className="text-[color:var(--text-secondary)]">先修未完成</span>
+      </span>
       <span className="border-l border-[color:var(--border)] pl-3">邊線：</span>
       {[
         { color: RELATION_COLORS.prerequisite, label: "先修" },

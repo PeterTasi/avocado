@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-07-06 — 知識圖譜技能樹（待辦 E 步驟 0–3 實作）🌳
+
+- **分支：** `ui/graph-skill-tree`。
+- **步驟 0 — 先修邊向後引用 bug**（`knowledge_graph.py`）：`_records_to_concepts` 改兩段式——先收全部合法概念名，再過濾 prerequisites，先修可以指向 LLM 輸出列表「後面」的概念了。新增 `tests/test_knowledge_graph_prereqs.py`（2 測試）。順手刪死碼 `_slugify`/`_unique_id`/`used_ids`。
+- **步驟 1 — 佈局改左→右分層 DAG**（`graphUtils.ts` 新增 `computeDagLayers` + `MindMapCanvas.tsx` 重寫 `buildLayout`）：layer = 先修最長路徑深度，環狀先修切回邊（console.warn 記數）；孤立節點跟同章節平均層。移除放射狀的中心節點/章節圓/主幹線；章節改用 pill 邊框色表達；頂部加「基礎 →→ 進階」進度軸。邊改水平貝茲（pill 右緣→左緣）；人工 `next` 章節串鏈邊從預設視圖移到「全部關聯」開關。
+- **步驟 2 — frontier 三態**：已掌握（綠光暈）/ 可以學了（indigo 光環，所有先修已綠）/ 先修未完成（灰化+🔒）。**順手修掉潛伏 bug：** 後端 mastery status 是 `green/yellow/red`，前端色表 key 是 `mastered/learning/...`，對不上 → 圖上掌握度著色其實從未生效過；加 `normalizeStatus` 對映（含 attempts=0 → 未測驗）。掌握度查表同時從「名稱比對」改成「concept_id 比對」（DOT 節點 id 即後端 concept.id，更可靠）。
+- **步驟 3 — 卡關歸因**（`graphUtils.ts` `traceWeakestUpstream`）：點「學習中/需複習」節點 → 沿 prerequisite 回溯，每步挑掌握度最低先修（未測驗視為 0），上游已掌握即停；詳情卡顯示「最可能的根因：『X』（掌握度 n%）——先回去補它」+ 鏈路。與路徑模式共用 dim/highlight。
+- **驗證：** 後端 pytest 32 passed（新增 2）+ ruff 乾淨；前端 `npm run build` 零錯誤；`computeDagLayers`/`traceWeakestUpstream` 用 esbuild 打包跑 6 案例斷言全過（鏈式分層、孤立節點、環切斷、菱形最長路徑、歸因上溯、路徑回歸）。**尚欠實機驗收**（本機連不上 Render DB）：重新 ingest 教材看邊數增加＋技能樹渲染。
+- 既有環境問題（非本次引入）：`test_unit.py::test_scanned_pdf_uses_configurable_ocr_page_limit` 直連 Render 正式 DB 且繞過 db_guard 白名單，本機 SSL 失敗。
+
+---
+
 ## 2026-07-06 — Fable 5 全 repo 審查 + 圖譜「技能樹」規劃 📋
 
 - **深度審查**（`6652ee1`）：Fable 5 退場前逐檔精讀全後端 + 前端關鍵檔，報告存 `docs/fable5-review.md`。三個高優先 bug：(1) ChromaDB 用 L2 距離但跨課程相似度按 cosine 換算（Module D 可能整個不觸發）；(2) 知識圖譜先修邊「向後引用」被 `_clean_prerequisites` 濾掉（邊系統性偏少）；(3) `review_scheduler` 拿 naive 本地時間當 UTC（台灣時區 FSRS 偏移 +8h）。另有中低優先 7 項與「審過沒問題」清單，修前先讀報告。

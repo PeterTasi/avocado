@@ -18,6 +18,7 @@ _CONCEPT_NAMESPACE = uuid.UUID("5ba4bcdd-986f-4f4b-a5d6-6d2b3e2d4a1f")
 # Load from external JSON if available, otherwise use built-in defaults.
 _CONFIG_DIR = Path(__file__).resolve().parent
 
+
 def _load_json_set(filename: str, fallback: set[str]) -> set[str]:
     path = _CONFIG_DIR / filename
     if path.exists():
@@ -29,109 +30,116 @@ def _load_json_set(filename: str, fallback: set[str]) -> set[str]:
             logger.warning("Failed to load %s, using defaults", path)
     return fallback
 
-STOPWORDS = _load_json_set("stopwords.json", {
-    "the",
-    "and",
-    "for",
-    "with",
-    "that",
-    "from",
-    "this",
-    "have",
-    "into",
-    "your",
-    "chapter",
-    "section",
-    "example",
-    "using",
-    "student",
-    "learning",
-    "course",
-    "topic",
-    "topics",
-    "core",
-    "intro",
-    "introduction",
-    "overview",
-    "solve",
-    "solves",
-    "solving",
-    "explain",
-    "explains",
-    "including",
-    "includes",
-    "using",
-    "use",
-})
 
-NOISE_TERMS = _load_json_set("noise_terms.json", {
-    "week",
-    "weeks",
-    "wk",
-    "lecture",
-    "lectures",
-    "syllabus",
-    "announcement",
-    "announcements",
-    "attendance",
-    "homework",
-    "assignment",
-    "assignments",
-    "deadline",
-    "deadlines",
-    "midterm",
-    "final",
-    "office",
-    "hour",
-    "hours",
-    "schedule",
-    "grading",
-    "quiz",
-    "quizzes",
-    "week1",
-    "week2",
-    "week3",
-    "week4",
-    "week5",
-    "week6",
-    "week7",
-    "week8",
-    "week9",
-    "week10",
-    "week11",
-    "week12",
-    "week13",
-    "week14",
-    "week15",
-    "week16",
-    "week17",
-    "week18",
-    "第1週",
-    "第2週",
-    "第3週",
-    "第4週",
-    "第5週",
-    "第6週",
-    "第7週",
-    "第8週",
-    "第9週",
-    "第10週",
-    "第11週",
-    "第12週",
-    "第13週",
-    "第14週",
-    "第15週",
-    "第16週",
-    "第17週",
-    "第18週",
-    "週次",
-    "課程介紹",
-    "公告",
-    "作業",
-    "考試",
-    "評分",
-    "進度",
-})
+STOPWORDS = _load_json_set(
+    "stopwords.json",
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "from",
+        "this",
+        "have",
+        "into",
+        "your",
+        "chapter",
+        "section",
+        "example",
+        "using",
+        "student",
+        "learning",
+        "course",
+        "topic",
+        "topics",
+        "core",
+        "intro",
+        "introduction",
+        "overview",
+        "solve",
+        "solves",
+        "solving",
+        "explain",
+        "explains",
+        "including",
+        "includes",
+        "using",
+        "use",
+    },
+)
+
+NOISE_TERMS = _load_json_set(
+    "noise_terms.json",
+    {
+        "week",
+        "weeks",
+        "wk",
+        "lecture",
+        "lectures",
+        "syllabus",
+        "announcement",
+        "announcements",
+        "attendance",
+        "homework",
+        "assignment",
+        "assignments",
+        "deadline",
+        "deadlines",
+        "midterm",
+        "final",
+        "office",
+        "hour",
+        "hours",
+        "schedule",
+        "grading",
+        "quiz",
+        "quizzes",
+        "week1",
+        "week2",
+        "week3",
+        "week4",
+        "week5",
+        "week6",
+        "week7",
+        "week8",
+        "week9",
+        "week10",
+        "week11",
+        "week12",
+        "week13",
+        "week14",
+        "week15",
+        "week16",
+        "week17",
+        "week18",
+        "第1週",
+        "第2週",
+        "第3週",
+        "第4週",
+        "第5週",
+        "第6週",
+        "第7週",
+        "第8週",
+        "第9週",
+        "第10週",
+        "第11週",
+        "第12週",
+        "第13週",
+        "第14週",
+        "第15週",
+        "第16週",
+        "第17週",
+        "第18週",
+        "週次",
+        "課程介紹",
+        "公告",
+        "作業",
+        "考試",
+        "評分",
+        "進度",
+    },
+)
 
 _WEEK_PATTERN = re.compile(r"(?i)^(?:week|wk)\s*\d+\b|第\s*\d+\s*週|\bweek\s*\d+\b")
 _LOGISTICS_HINT_PATTERN = re.compile(
@@ -139,12 +147,44 @@ _LOGISTICS_HINT_PATTERN = re.compile(
     r"|課程介紹|公告|作業|考試|評分|繳交|週次"
 )
 _CJK_PHRASE_PATTERN = re.compile(r"[\u4e00-\u9fff]{2,10}")
-_SHORT_CANONICAL_TERMS = _load_json_set("canonical_terms.json", {
-    "svd", "bfs", "dfs", "pca", "fft", "rref", "pdf", "cdf",
-    "gan", "rnn", "lstm", "cnn", "vae", "gru", "mlp", "nlp",
-    "svm", "knn", "rl", "ai", "ml", "dl", "cv", "llm", "rag",
-    "ode", "pde", "mle", "map", "em", "hmm", "gmm", "ica",
-})
+_SHORT_CANONICAL_TERMS = _load_json_set(
+    "canonical_terms.json",
+    {
+        "svd",
+        "bfs",
+        "dfs",
+        "pca",
+        "fft",
+        "rref",
+        "pdf",
+        "cdf",
+        "gan",
+        "rnn",
+        "lstm",
+        "cnn",
+        "vae",
+        "gru",
+        "mlp",
+        "nlp",
+        "svm",
+        "knn",
+        "rl",
+        "ai",
+        "ml",
+        "dl",
+        "cv",
+        "llm",
+        "rag",
+        "ode",
+        "pde",
+        "mle",
+        "map",
+        "em",
+        "hmm",
+        "gmm",
+        "ica",
+    },
+)
 
 
 def build_knowledge_graph(
@@ -160,21 +200,29 @@ def build_knowledge_graph(
         course_name=course_name,
         max_concepts=max_concepts,
     )
-    concepts = _records_to_concepts(records, max_concepts=max_concepts, course_id=course_id)
+    concepts = _records_to_concepts(
+        records, max_concepts=max_concepts, course_id=course_id
+    )
     if not concepts:
-        concepts = _heuristic_extract_concepts(text=cleaned_text, max_concepts=max_concepts, course_id=course_id)
+        concepts = _heuristic_extract_concepts(
+            text=cleaned_text, max_concepts=max_concepts, course_id=course_id
+        )
 
     edges = _build_edges(concepts)
     return concepts, edges
 
 
-def _records_to_concepts(records: list[dict], max_concepts: int, course_id: str = "") -> list[Concept]:
-    concepts: list[Concept] = []
-    used_ids: set[str] = set()
+def _records_to_concepts(
+    records: list[dict], max_concepts: int, course_id: str = ""
+) -> list[Concept]:
+    # Pass 1: select records (validity, dedupe, cap) and collect the FULL kept-name
+    # set first, so a prerequisite may reference a concept that appears later in
+    # the LLM output (single-pass filtering silently dropped those edges).
+    selected: list[tuple[str, str, str, object]] = []
     used_names: set[str] = set()
 
-    for index, record in enumerate(records):
-        if len(concepts) >= max_concepts:
+    for record in records:
+        if len(selected) >= max_concepts:
             break
 
         raw_name = str(record.get("name", "")).strip()
@@ -189,25 +237,25 @@ def _records_to_concepts(records: list[dict], max_concepts: int, course_id: str 
         used_names.add(normalized_name)
 
         chapter = _normalize_chapter(str(record.get("chapter", "General")).strip())
-        description = str(record.get("description", "")).strip() or f"Core idea in {chapter}."
+        description = (
+            str(record.get("description", "")).strip() or f"Core idea in {chapter}."
+        )
         if _looks_like_logistics(description):
             description = f"Core idea in {chapter}."
 
-        raw_prereq = record.get("prerequisites", [])
+        selected.append((name, chapter, description, record.get("prerequisites", [])))
+
+    # Pass 2: build concepts; prerequisite filtering now sees every kept name.
+    concepts: list[Concept] = []
+    for name, chapter, description, raw_prereq in selected:
         prerequisites = _clean_prerequisites(
             raw_prereq=raw_prereq,
             concept_name=name,
             used_names=used_names,
         )
-
-        base_id = _slugify(name)
-        if not base_id:
-            base_id = f"concept-{len(concepts) + 1}"
-
-        concept_id = _concept_id(name, chapter, course_id)
         concepts.append(
             Concept(
-                id=concept_id,
+                id=_concept_id(name, chapter, course_id),
                 name=name,
                 chapter=chapter,
                 description=description,
@@ -218,7 +266,9 @@ def _records_to_concepts(records: list[dict], max_concepts: int, course_id: str 
     return concepts
 
 
-def _heuristic_extract_concepts(text: str, max_concepts: int, course_id: str = "") -> list[Concept]:
+def _heuristic_extract_concepts(
+    text: str, max_concepts: int, course_id: str = ""
+) -> list[Concept]:
     phrases = _extract_phrase_candidates(text)
     counts = Counter(phrases)
 
@@ -234,7 +284,6 @@ def _heuristic_extract_concepts(text: str, max_concepts: int, course_id: str = "
         top_terms = [f"Concept {i + 1}" for i in range(min(max_concepts, 8))]
 
     concepts: list[Concept] = []
-    used_ids: set[str] = set()
 
     for index, term in enumerate(top_terms):
         display_term = _format_concept_name(term)
@@ -264,7 +313,13 @@ def _build_edges(concepts: list[Concept]) -> list[ConceptEdge]:
         for prereq in concept.prerequisites:
             source_id = name_to_id.get(_normalize_name(prereq))
             if source_id and source_id != concept.id:
-                edges.append(ConceptEdge(source_id=source_id, target_id=concept.id, relation="prerequisite"))
+                edges.append(
+                    ConceptEdge(
+                        source_id=source_id,
+                        target_id=concept.id,
+                        relation="prerequisite",
+                    )
+                )
 
     # If prerequisites are missing, infer only a small set of conservative progression links.
     if not edges:
@@ -287,7 +342,9 @@ def _infer_progression_edges(concepts: list[Concept]) -> list[ConceptEdge]:
         source = chapter_first[chapter_order[index]]
         target = chapter_first[chapter_order[index + 1]]
         if source != target:
-            edges.append(ConceptEdge(source_id=source, target_id=target, relation="progression"))
+            edges.append(
+                ConceptEdge(source_id=source, target_id=target, relation="progression")
+            )
 
     return edges
 
@@ -304,7 +361,9 @@ def _dedupe_edges(edges: list[ConceptEdge]) -> list[ConceptEdge]:
     return deduped
 
 
-def _clean_prerequisites(raw_prereq: object, concept_name: str, used_names: set[str]) -> list[str]:
+def _clean_prerequisites(
+    raw_prereq: object, concept_name: str, used_names: set[str]
+) -> list[str]:
     if not isinstance(raw_prereq, list):
         return []
 
@@ -337,7 +396,9 @@ def _extract_phrase_candidates(text: str) -> list[str]:
 
     for sentence in re.split(r"[\n\.!?;:]+", text):
         english_tokens = re.findall(r"[A-Za-z][A-Za-z0-9+_-]{1,}", sentence.lower())
-        filtered_tokens = [token for token in english_tokens if _is_candidate_token(token)]
+        filtered_tokens = [
+            token for token in english_tokens if _is_candidate_token(token)
+        ]
 
         for token in filtered_tokens:
             candidates.append(token)
@@ -468,6 +529,7 @@ def _normalize_name(value: str) -> str:
     cjk_tokens = re.findall(r"[\u4e00-\u9fff]+", value)
     return "".join(cjk_tokens)
 
+
 def _concept_id(name: str, chapter: str, course_id: str = "") -> str:
     """Deterministic, collision-free concept ID scoped to course + chapter + name.
 
@@ -476,24 +538,3 @@ def _concept_id(name: str, chapter: str, course_id: str = "") -> str:
     """
     raw = f"{course_id}:{chapter.strip().lower()}:{name.strip().lower()}"
     return "c-" + uuid.uuid5(_CONCEPT_NAMESPACE, raw).hex[:16]
-
-
-def _slugify(value: str) -> str:
-    value = value.lower().strip()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    value = value.strip("-")
-    return value
-
-
-def _unique_id(base: str, used_ids: set[str]) -> str:
-    if base not in used_ids:
-        used_ids.add(base)
-        return base
-
-    index = 2
-    while True:
-        candidate = f"{base}-{index}"
-        if candidate not in used_ids:
-            used_ids.add(candidate)
-            return candidate
-        index += 1

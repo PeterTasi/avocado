@@ -5,7 +5,12 @@
 
 ---
 
-## 2026-06-11 — 比賽前衝刺包 E1–E5 完成 ✅
+## 2026-07-06 — Fable 5 全 repo 審查 + 圖譜「技能樹」規劃 📋
+
+- **深度審查**（`6652ee1`）：Fable 5 退場前逐檔精讀全後端 + 前端關鍵檔，報告存 `docs/fable5-review.md`。三個高優先 bug：(1) ChromaDB 用 L2 距離但跨課程相似度按 cosine 換算（Module D 可能整個不觸發）；(2) 知識圖譜先修邊「向後引用」被 `_clean_prerequisites` 濾掉（邊系統性偏少）；(3) `review_scheduler` 拿 naive 本地時間當 UTC（台灣時區 FSRS 偏移 +8h）。另有中低優先 7 項與「審過沒問題」清單，修前先讀報告。
+- **比賽簡報包**（同 commit）：`docs/demo-pack.md` —— 5 分鐘講稿（含備援劇本）、評審 Q&A 8 題、海報文案、demo 前檢查清單。
+- **決策：圖譜從心智圖轉向技能樹**（plan.md 待辦 E）。診斷：放射狀佈局編碼「隸屬關係」（XMind 主場），獨有資料（先修方向/掌握度）被畫成橫跨曲線雜訊。方案：左→右分層 DAG 佈局 + frontier 三態（已掌握/可以學了/還鎖著）+ 卡關歸因回溯，前置修 bug (2)。不動後端 API、不加套件。
+- **待辦：** push 被拒（前一 commit `935026f` 動過 workflow 檔，OAuth 缺 `workflow` scope）→ 需 `gh auth refresh -s workflow` 後 `git push origin main`。
 
 - **E1 測試 DB 隔離**（`9eb641e`）：新增 `tests/conftest.py`（最頂部覆寫 `DATABASE_URL`）、`tests/db_guard.py`（白名單邏輯：只允許 localhost/127.0.0.1/adaptlearn_test，其餘 SkipTest）、四個 DB 測試檔各加 `require_safe_db()` guard。驗收：28 個 DB 測試全 SKIP，27 pass。
 - **E2 API_ACCESS_KEY 守門**（`c20eabf`）：`useApi.ts` fetch wrapper 用 `new Headers()` 注入 `X-API-Key`（localStorage）；`App.tsx` mount 時讀 `?key=xxx` 存 localStorage 後清 URL，`apiKey` state lazy init 同步。**手動步驟（尚未做）：** 需在 Render 設 `API_ACCESS_KEY` env var 並 redeploy。

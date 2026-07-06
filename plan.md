@@ -2,7 +2,56 @@
 
 > **這份文件只保留尚未完成的事項。**
 > 完成的功能記錄在 `DEVLOG.md`，從這裡刪除。
-> 更新於 2026-06-10。
+> 更新於 2026-07-06。
+
+---
+
+## 待辦 E：知識圖譜升級——心智圖 → 技能樹（2026-07-06 Fable 5 規劃）
+
+> **問題診斷：** 現行放射狀佈局（中心→章節→概念扇區）編碼的是「隸屬關係」，那是 XMind 的主場；我們獨有的資料（先修方向、掌握度、遺忘風險）只能用橫跨畫面的曲線疊加，必然呈現麵條狀。**佈局編碼了無聊的維度，把值錢的維度畫成雜訊。**
+> **定位轉向：** 心智圖回答「有什麼」；技能樹回答「接下來該學什麼、為什麼卡住」——後者 ThetaWave 之流做不到，因為它們沒有作答資料。遊戲技能樹隱喻也與像素酪梨視覺語言契合。
+> **審查佐證：** `docs/fable5-review.md`。
+
+### 步驟 0（前置）：修先修邊「向後引用」bug —— `docs/fable5-review.md` #2
+
+- `knowledge_graph.py` `_records_to_concepts`：`used_names` 邊迴圈邊累積 → prereq 指向列表後面的概念會被 `_clean_prerequisites` 濾掉，圖譜邊系統性偏少。
+- **修法：** 兩段式——第一遍收集全部合法概念名進 `used_names`，第二遍再逐概念呼叫 `_clean_prerequisites`。約 10 行。
+- **驗證：** 重新 ingest 同一份教材（OCR 快取不影響建圖，不用清），肉眼比對邊數增加。
+- 順手：`_slugify`+`base_id`（算了沒用）、`_unique_id`、兩處 `used_ids` 為死碼，可刪。
+
+### 步驟 1：佈局換「左→右分層 DAG」（影響最大，約半天）
+
+- **演算法：** 對 prerequisite 邊做 longest-path 拓撲分層（無先修 = 第 0 層；每往右一層 = 需先會左邊）。環偵測：遇環時斷開回邊（記 log），不無限迴圈。層內按章節分組排序（章節改用顏色表達，不再用位置）。約 40 行純函式，不加套件。
+- **改動點：** 只換 `MindMapCanvas.tsx` 的 `buildLayout` 座標計算；pill 渲染、pan/zoom、路徑模式、mastery 著色全部照舊。
+- **降噪：** `isCore` 目前含 `"next"`（`MindMapCanvas.tsx:402`）——`next` 是 `_build_edges_from_concepts` 的人工章節串鏈，是麵條主因之一，預設改為隱藏（歸入「全部關聯」開關）。
+- **Demo 話術：** 「越左邊越基礎——紅色堆在左邊代表根基有洞，難怪右邊全卡住。」
+
+### 步驟 2：學習前線（frontier）三態（約 2 小時）
+
+- 純前端從 mastery + 邊推導：**已掌握**（≥0.75，實心綠）／**可以學了**（未掌握但所有先修已綠 → 發光邊框，今天該點的節點）／**還鎖著**（有先修未過 → 灰化＋小鎖）。
+- 與複習頁形成雙引擎：FSRS 管記憶、圖譜管進度。
+
+### 步驟 3：卡關歸因（約 2 小時）
+
+- 點「需複習」節點 → 沿先修邊回溯，highlight 掌握度最低的上游鏈，底部提示卡：「特徵值卡住，可能因為『行列式』只有 40%——先回去補它。」
+- 復用路徑模式現成的 dim/highlight 基礎設施，只換遍歷起點。
+
+### 影響範圍
+
+- `src/adaptlearn/knowledge_graph.py`（步驟 0）
+- `webapp/frontend/src/components/MindMapCanvas.tsx`（步驟 1–3 主戰場）
+- `webapp/frontend/src/utils/graphUtils.ts`（分層/回溯函式放這裡）
+- `webapp/static/*`（每步驟完成後 `npm run build`）
+- **不動**後端 API、不動 DB schema、不加 npm 套件
+
+### 風險
+
+- 分層佈局遇到 LLM 抽出的環狀先修 → 斷回邊策略要有最小測試（graphUtils 對應的 `test_*.py` 或 assert 自檢）
+- 步驟 0 改了建圖行為 → 動手前先跑 `python -m pytest tests/` 建基準線
+
+### 驗收標準
+
+同一份教材 ingest 後：(1) 邊數多於修復前；(2) 所有先修箭頭指向同一方向、無橫跨大曲線；(3) 至少一個節點呈「可以學了」發光態；(4) 點紅節點能看到歸因鏈與提示文案。
 
 ---
 
@@ -117,24 +166,47 @@
 - **驗收：** 清空課程後首頁顯示引導卡、按鈕能跳轉；上傳課程後恢復原 dashboard；`npm run build` 零錯誤。
 - **風險：** 無。純前端、條件渲染。
 
-### E6：全離線 LLM fallback（最大項，海報級賣點，~半天）
+### E6（決策已變更 2026-06-30）：離線 LLM ❌ → 預烤 Demo 資料保險絲 ✅
 
-- **目標：** 場地斷網/Gemini 全掛時，整條流程（OCR→建圖譜→出題→批改）在 M4 Air 上完全離線可跑。OCR 已離線（glm-ocr），缺的是文字 LLM。
-- **方案：**
-  1. `ollama_client.py` 新增 `generate_text(prompt: str) -> str`：打同一個 `/api/generate`（無 images），model 用新 env `OLLAMA_LLM_MODEL`（如 `llama3.1:latest`，機器已 pull）；`temperature 0`；錯誤回 ""（與 OCR 同模式）。Opt-in：未設 env 即停用，Render 零回歸。`config.py` + `.env.example` 補欄位。
-  2. 抽 JSON 解析共用：`gemini_client._parse_json_payload` 移到新 `src/adaptlearn/llm_json.py`（或由 ollama 端 import gemini_client 的私有函式 —— 選前者，避免反向耦合），兩邊共用。
-  3. fallback 接點（pattern 統一：Gemini 失敗/回空 → Ollama 文字模型同 prompt 重試一次 → 再失敗走既有錯誤路徑）：
-     - 建圖譜：`knowledge_graph.py` 的 LLM 呼叫處
-     - 出題：`gemini_client.generate_questions` 的呼叫端（`pipeline.generate_diagnostics`）
-     - 批改：grade 流程的呼叫端
-     - 概念詳解**不做**（lazy + 已有 degraded UI，離線時顯示降級提示即可）
-  4. 回應加旗標（如 `llm_backend: "ollama"`）讓前端可顯示「離線模式」pill（選配，時間不夠可跳過 UI）。
-- **驗收：** 拔網路（或清掉 GEMINI_API_KEY）後：上傳 txt 教材 → 建圖譜成功（概念非模板）→ 出題成功 → 批改成功。新增 unit tests：fake ollama text client 驗證 fallback 順序（仿既有 fake gemini 測試）。
-- **風險：** llama3.1 的 JSON 輸出穩定性不如 Gemini → prompt 要加強硬 JSON 指令、共用 robust parser、失敗重試 1 次；品質較低是預期內（demo 講「降級仍可用」的故事）。記憶體：glm-ocr 2.2GB + llama3.1 4.9GB 同時駐留，16GB 可承受。
+> **為何改（第一性原理 + YAGNI）：** E6 真正要解的功能是「**斷網/Gemini 掛掉時 Demo 不爆**」，不是「整條 AI pipeline 離線跑」。原方案為一個罕見邊角案例，在 16GB 機器同時駐留 glm-ocr 2.2GB + llama3.1 4.9GB、建三套平行 fallback、且自承 JSON 不穩——成本/風險過高。改用「**預先烤好 demo 資料，斷網即切換重播**」，約 1 小時、可靠得多。
+> 原「離線 LLM」方案封存：賽後若真有「全離線」需求再議（`generate_text` + ollama 文字模型 fallback 那套）。
 
-### 建議執行順序
+**目標：** Demo 現場斷網或 Gemini 全掛時，核心動線（上傳手寫 → 知識圖譜 → 弱點 → FSRS 複習表）仍能完整走完。
 
-E1 → E2 → E4 → E3 → E5 → E6（前五項都是小時級，E6 留完整的半天）。
+**方案（由簡到繁，建議方案 1）：**
+1. **預烤課程 seed（最簡、最穩）：** demo 用的教材先在有網時 ingest 一次，把結果（課程＋概念＋邊＋題目）匯出成 seed（SQL dump 或 JSON）。現場若線上 ingest 失敗，載入 seed 課程繼續 demo。
+2. **快取延伸（接 E4）：** 把現有「檔案 hash → OCR 快取」往上延伸到「建好的知識圖譜＋已生成題目」JSON。同一份 demo 檔第二次（或離線）ingest 直接重播全部結果，不打任何 API。
+
+**影響範圍：**
+- `pipeline.py`：ingest 末段把 graph/questions 結果寫入快取；起頭命中即跳過 LLM（沿用 E4 `data/ocr_cache` 模式，新增 `data/demo_cache/{hash}.json`）。【方案 2】
+- `scripts/`：新增匯出／載入 seed 課程的小腳本。【方案 1】
+- `.gitignore`：快取目錄。
+- **不動** DB schema、**不動** Render 既有 Gemini 路徑。
+
+**實作步驟：**
+1. 先選方案 1 或 2（方案 1 更省更穩；方案 2 較「自動」）。
+2. 有網時跑一次完整 ingest 產生 seed／快取。
+3. 加「命中即重播」判斷 + log（符合 no silent caps）。
+4. 拔網彩排：確認整條動線零 API 也能跑完。
+
+**風險：** 低。純加法、opt-in、不影響線上正式路徑。唯一注意：快取／seed 要與當前 DB schema 對得上。
+
+**驗收：** 拔網路（或清 GEMINI_API_KEY）後，載入／重播 demo 課程 → 圖譜、題目、複習表皆正常顯示。
+
+---
+
+## 決策凍結清單（2026-06-30，競賽收斂）
+
+> 第一性原理：這是**競賽 Demo**，核心亮點（P1–P4）已全完成。剩餘時間最高槓桿是「**讓一個故事可靠 + 彩排**」，不是加功能。本次決策：
+
+- **凍結 scope：** 待辦 C（雙語概念卡）、待辦 D（GLM-OCR 換模型）一律延後，除非彩排時當場壞掉才動。
+- **不再投資 P6（ChromaDB 持久化）與 Chandra OCR：** 兩者在真實 demo 路徑幾乎不執行（Chroma 在 Render redeploy 歸零、Chandra 需 GPU）。競賽期間**不拆**（風險>收益，比照 A4），但停止投入。賽後再用第一性原理檢討是否該存在（跨課程相似度可改 PG／in-process 餘弦相似度；Chandra 可刪）。
+- **流程儀式放寬：** 「改任何一行 code（含純 CSS）都要先報計畫」放寬為「**架構級**變更才強制先報計畫」，保留原意、去掉對單人衝刺的摩擦。（此項需另外改 `CLAUDE.md` 的「⚠️ 更改程式碼前必須先說計畫」段落才生效。）
+- **保留不動：** FSRS-5、知識圖譜路徑尋找（真差異化、demo 主菜）；A4 god object 賽期勿動。
+
+### 原 E1–E5
+
+E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決策如上。
 
 ---
 

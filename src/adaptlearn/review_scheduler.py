@@ -13,13 +13,14 @@ _SCHEDULER = Scheduler()
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+
 def build_review_plan(
     concepts: list[Concept],
     attempts: list[Attempt],
     now: datetime | None = None,
 ) -> list[ReviewItem]:
     if now is None:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
     now_utc = _to_utc(now)
 
     attempts_by_concept: dict[str, list[Attempt]] = defaultdict(list)
@@ -58,6 +59,7 @@ def build_review_plan(
 
 # ── FSRS core ─────────────────────────────────────────────────────────────────
 
+
 def _build_fsrs_card(
     history: list[Attempt],
     now_utc: datetime,
@@ -95,6 +97,7 @@ def _build_fsrs_card(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _score_to_rating(score: float, is_correct: bool) -> Rating:
     """Map a 0–1 score to an FSRS Rating (Again / Hard / Good / Easy)."""

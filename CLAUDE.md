@@ -21,7 +21,7 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 | UI components | Lucide icons, Recharts |
 | LLM | Google Gemini API (`gemini-flash-latest` default) |
 | Database | PostgreSQL via psycopg2 (connection pool, 10 conns) |
-| Vector store | ChromaDB (concept semantic search) |
+| Vector store | ChromaDB (cosine space) + Gemini `gemini-embedding-001` 嵌入（3072 維，獨立配額） |
 | PDF/image parsing | PyMuPDF (fitz) + Chandra OCR (`chandra-ocr`) |
 | Local handwriting OCR | Ollama vision model (e.g. `qwen2.5vl:7b`), opt-in via `OLLAMA_OCR_MODEL` |
 | Spaced repetition | FSRS-5 (`fsrs` library) |
@@ -61,8 +61,8 @@ AdaptLearn is an AI-powered adaptive learning platform for students. Students up
 │   ├── pipeline.py              # AdaptLearnService — orchestrates all modules
 │   ├── quiz_engine.py           # Adaptive question generation targeting weak concepts
 │   ├── review_scheduler.py      # FSRS-5 spaced repetition scheduler
-│   ├── vector_store.py          # ChromaDB wrapper for concept similarity
-│   ├── cross_course_linker.py   # Semantic cross-course concept linking
+│   ├── vector_store.py          # ChromaDB wrapper (cosine)；門檻校準表寫在檔頭註解
+│   ├── cross_course_linker.py   # Semantic cross-course concept linking（後端可用，尚無前端）
 │   ├── class_heatmap.py         # Error-rate heatmap per concept/course
 │   └── domain_templates.py      # Seed concept templates (e.g. linear algebra)
 ├── tests/                       # Regression tests
@@ -167,6 +167,17 @@ Flow:
 - **Wiring:** `pipeline.AdaptLearnService.__init__` builds `self.gemini/chandra/ollama`; `ingest_material` calls `extract_material_text` then `build_knowledge_graph`
 - **Render reality:** no GPU / no Ollama → Gemini is the only working OCR. Local demo → set `OLLAMA_OCR_MODEL=qwen2.5vl:7b`
 - **ingest is async-safe:** runs sync work via `run_in_threadpool` (event loop stays free for health checks)
+
+### 跨課程語義橋 internals (quick map — 2026-08-15 修好，先讀這裡再開檔案)
+
+- **鏈路：** `pipeline.ingest_material` → `cross_course_linker.find_cross_course_links` → `vector_store.query_cross_course` → `query_related`（ChromaDB ANN）→ `repo.save_cross_course_edges`
+- **嵌入：** `gemini_client._EMBED_MODEL = "gemini-embedding-001"`（3072 維）。**走獨立配額**，generateContent 日配額用盡時嵌入仍可用
+- **距離空間：** collection 必須用 cosine（`_COLLECTION_METADATA`）。`query_cross_course` 用 `1 - distance` 換算，只對 cosine 成立
+- **門檻：** `_CROSS_COURSE_THRESHOLD = 0.68`，分級 0.84/0.76/0.71。**校準表（標註樣本實測值）寫在 `vector_store.py` 檔頭註解**——換嵌入模型必須重新校準
+- **排除來源課程：** `where={"course_id": {"$ne": ...}}` 下推到 ANN 查詢，不可改回事後過濾（同課程鄰居會把跨課程結果擠光）
+- **改距離空間或嵌入模型時：** 先停後端 → `rm -rf data/chroma` → 再啟動。後端開著刪會報 `attempt to write a readonly database`
+- **前端：** 尚無元件消費 `/api/cross-course-edges`（待辦 F）
+- **離線測試：** `tests/test_cross_course_links.py`（fake embedder，不需 API）
 
 ---
 
@@ -273,17 +284,30 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 ## 待處理事項
 
-> 競賽核心 Demo 亮點（知識圖譜路徑尋找、遺忘曲線、掌握度趨勢、手寫 OCR）皆已完成。
-> 剩餘項目全為賽後 / 選配，詳見 `plan.md`。
+> 核心 Demo 亮點（技能樹＋卡關歸因、遺忘曲線、掌握度趨勢、手寫 OCR、跨課程語義橋）後端皆已完成並驗收。
+> 完整說明見 `plan.md`；已完成項目的除錯歷程見 `DEVLOG.md`。
 
-### 未完成（賽後 / 選配）
+### 目前狀態（2026-08-15）
+
+- **分支 `ui/graph-skill-tree` 領先 main 四個 commit，尚未 merge。** 技能樹已實機驗收通過（分層 DAG／frontier 三態／卡關歸因四項標準全過），可以合併。
+- **Render 免費資源全掛**（PostgreSQL 與 web service 皆停用）。目前只有本機能跑，`.env` 的 `DATABASE_URL` 已指向 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`，使用者為 macOS 帳號、無密碼）。原 Render 字串在 `.env` 註解保留。
+- **跨課程語義橋後端已修好可用**（8/15 修掉三個疊在一起的 bug），實測線代↔機器學習自動產出 9 條連結——**但前端沒有任何元件消費它，畫面上看不到**（待辦 F）。
+
+### 未完成
 
 | # | 狀態 | 說明 |
 |---|------|------|
-| Bug 5 B | 選配 | 後端 `session_id` scope（需 DB schema migration）。方案 A（前端 modal）+ 方案 C（清除課程資料 DELETE endpoint）皆已完成，競賽夠用 |
+| F | **優先** | 跨課程語義橋的前端。後端與 API 都好了，缺一張列出連結的卡片（約 60–80 行）。目前最大缺口 |
+| G | **會實際發生** | `review_plan` 表是全域的（審查 #4）：重算複習計畫會刪掉其他課程的計畫。本機已有兩門課，不再是「多課程才爆」 |
+| H | 待決策 | Claude API 當第一層、Gemini 當第二層。兩個硬限制：Anthropic 沒有 embedding API、沒有免費額度。動工前先切 Opus 更新 plan.md |
+| I | 小 | 跑 `pytest` 會把測試課程灌進本機 demo 資料庫，每次 demo 前要手動清 |
+| 測試 | 已知 | 71 條測試 66 通過；5 條失敗是 ingest 改非同步（回 202）後舊整合測試沒更新，非產品缺陷 |
+| Bug 5 B | 選配 | 後端 `session_id` scope（需 DB schema migration）。方案 A（前端 modal）+ 方案 C（清除課程資料 DELETE endpoint）皆已完成，夠用 |
 | P6 | 賽後 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零 |
 | A1 | 賽後 | 全域單例 → 完整多租戶（短期解已決策不做） |
-| A4 | 賽後 | 拆 God object（`database.py` 806 行 / `pipeline.py` 628 行 / `App.tsx` 803 行 / `SetupPanel.tsx` 388 行 — react-doctor 標記 too-large，2026-06-08 加課程清單後增大）— 競賽期間勿動，純可維護性問題、不影響功能 |
+| A4 | 賽後 | 拆 God object（`database.py` / `pipeline.py` / `App.tsx` / `SetupPanel.tsx` — react-doctor 標記 too-large）— 純可維護性問題、不影響功能 |
+
+> `docs/fable5-review.md`（2026-07-06 全 repo 審查）的第 1、2、3 項已修，其餘（#4=待辦 G、#5 PDF OCR 記憶體、#6 熱力圖 `avg_attempts` 是假數字別引用、#7 模板題永遠英文、#8 `llm_degraded` 漏報、#9 API key 全域競態）仍未修。**修之前先讀那份報告，別重審。**
 
 ---
 

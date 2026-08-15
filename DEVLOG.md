@@ -5,6 +5,54 @@
 
 ---
 
+## 2026-08-15 — 待辦 E 實機驗收通過 + 修三個環境／整合 bug 🩹
+
+### 待辦 E（技能樹）實機驗收 ✅ — 可 merge main
+
+7/06 程式完成後一直卡在「本機連不上 Render DB」無法驗收。本日改用本機 PostgreSQL 重跑，四項驗收標準全過：
+
+1. **邊數多於修復前** — 同一份線代教材，修復前 3 邊 → 修復後 25–30 邊。
+2. **先修箭頭同向、無橫跨曲線** — 分層 DAG 佈局正常，頂部「基礎 →→ 進階」軸線正確。
+3. **「可以學了」發光態** — frontier 三態渲染正確（綠實心／indigo 光環／灰化 🔒）。
+4. **卡關歸因** — 點「正交投影」(學習中 67%) → 藍色鏈路回溯至「正交性」(0%)，詳情卡顯示「最可能的根因：『正交性』（掌握度 0%）——先回去補它」。
+
+### Bug — FSRS 排程用 naive 本地時間冒充 UTC（`docs/fable5-review.md` #3）✅
+
+- **症狀：** 本機 demo 時 next_review_at 顯示偏移、priority 全體虛高。
+- **根因：** `review_scheduler.build_review_plan` 預設 `now=datetime.now()`（naive），`_to_utc` 一律當成 UTC。UTC+8 下「現在」被推後 8 小時 → retrievability 被低估。
+- **修法：** 一行，`datetime.now(timezone.utc)`。commit `1263693`。
+- **驗證：** 重算後複習頁顯示 75.0% → 98.0%，時間戳正常。
+
+### Bug — 跨課程語義橋長期是空的（三個 bug 疊在一起）✅
+
+審查報告只涵蓋第一個，實際挖出三個：
+
+1. **距離空間錯誤**（審查 #1）：ChromaDB collection 沒指定距離空間，預設平方 L2，但 `query_cross_course` 用 `1 - distance` 換算相似度——只對 cosine 成立，結果幾乎全被 clamp 成 0。
+2. **embedding 模型已下架**（新發現）：`text-embedding-004` 被 Google 移除，呼叫回 404，**向量根本沒寫進去**。改用 `gemini-embedding-001`（3072 維，走獨立配額，不受 generateContent 日配額影響）。
+3. **排除來源課程的時機錯誤**（新發現）：先取 top-N 再事後過濾，同課程鄰居永遠最近、會把跨課程結果整批擠掉。改成把 `where={"course_id": {"$ne": ...}}` 下推到 ANN 查詢。
+
+- **門檻校準：** 用標註樣本實測 `gemini-embedding-001` 的分佈——同義（不同措辭）0.896、同義（跨語言）0.846、真跨課程對應 0.689/0.728、弱相關 0.666、不相關 0.594、完全不相關 0.528。舊門檻 0.82 等於只認同義詞，故改為 **0.68**；`_infer_link_type` 分級同步從 0.95/0.90/0.85 降為 0.84/0.76/0.71。校準表寫進 `vector_store.py` 註解。
+- **端到端驗證：** 上傳線性代數＋機器學習兩份教材，系統自動產出 9 條連結。品質佳：正規方程↔正規方程 0.881 (equivalent)、**奇異值分解↔矩陣對角化 0.812 (generalization)**、主成分分析↔矩陣對角化 0.743 (analogy)、主成分分析↔特徵向量 0.688。決策樹等雜訊正確被排除。
+- **新增測試：** `tests/test_cross_course_links.py`（5 條，fake embedder 離線跑，不需 API）。
+- commit `9ddffc4`。**注意：改距離空間必須刪 `data/chroma/` 重建，且要先停掉後端**——後端開著時刪會讓 ChromaDB 抓著已刪除的 SQLite handle，寫入報 `attempt to write a readonly database`。
+
+### Bug — Gemini 模型備援鏈整條失效 ✅
+
+- **症狀：** ingest 出現「主成分分析是最常用的」「做法是對資料的共變異」這種切字元的假概念（heuristic 降級產物），但主模型明明可用。
+- **根因：** `_build_model_candidates` 的四個備援模型（`gemini-2.5-flash`、`2.5-flash-lite`、`2.0-flash`、`2.0-flash-lite`）**全部被 Google 下架、回 404**。主模型偶發一次 504 逾時，整條鏈就崩到 heuristic。
+- **修法：** 用 `client.models.list()` 對過現況，改為實際可呼叫的 flash 系列。註解記下這是會隨下架而腐化的清單。commit `c1bf499`。
+
+### 環境 — Render 免費資源全掛，改用本機 PostgreSQL
+
+- Render 免費 PostgreSQL 與 web service 皆已停用（`SSL connection has been closed unexpectedly` / `x-render-routing: no-server`）。
+- 改用 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`），`.env` 的 `DATABASE_URL` 已切換，原 Render 字串註解保留。
+
+### 新發現的缺口 — 跨課程語義橋沒有前端
+
+後端算出連結、`/api/cross-course-edges` 正常回傳，但 `webapp/frontend/src/utils/graphUtils.ts` 只有一行 `// cross-course bridges` 註解，**沒有任何元件消費該 API**。功能通了但畫面上完全看不到。已記入 `plan.md`。
+
+---
+
 ## 2026-07-06 — 知識圖譜技能樹（待辦 E 步驟 0–3 實作）🌳
 
 - **分支：** `ui/graph-skill-tree`。

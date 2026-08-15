@@ -2,60 +2,70 @@
 
 > **這份文件只保留尚未完成的事項。**
 > 完成的功能記錄在 `DEVLOG.md`，從這裡刪除。
-> 更新於 2026-07-06。
+> 更新於 2026-08-15。
+
+> **待辦 E（技能樹）已於 2026-08-15 實機驗收通過並從本檔移除**，分支 `ui/graph-skill-tree` 可 merge main。同日修好時區、跨課程語義橋、Gemini 模型備援鏈三個 bug（詳見 DEVLOG）。
 
 ---
 
-## 待辦 E：知識圖譜升級——心智圖 → 技能樹（2026-07-06 Fable 5 規劃）
+## 待辦 F：跨課程語義橋的前端（2026-08-15 新增，目前最大缺口）
 
-> **狀態（2026-07-06）：步驟 0–3 程式完成**（分支 `ui/graph-skill-tree`，見 DEVLOG）。**只欠實機驗收**：本機連不上 Render DB，需重新 ingest 一份教材，跑下方驗收標準 (1)–(4)，通過即可 merge main + 從本檔移除本節。
+> **狀態：** 後端已完全可用——8/15 修好三個 bug 後，上傳線代＋機器學習兩份教材會自動產出 9 條連結，`/api/cross-course-edges` 正常回傳。**但前端沒有任何元件消費它**：`webapp/frontend/src/utils/graphUtils.ts` 只有一行 `// cross-course bridges` 註解。功能是通的，畫面上看不到。
+> **為什麼值得做：** 這是單文件工具（NotebookLM、一般 AI 筆記工具）結構上做不到的事——需要跨課程的概念向量與掌握度狀態。實測品質夠好可以直接 demo：「奇異值分解 ↔ 矩陣對角化」被標成 generalization (0.812)，是系統自己找出來的真實數學關係。
 
-> **問題診斷：** 現行放射狀佈局（中心→章節→概念扇區）編碼的是「隸屬關係」，那是 XMind 的主場；我們獨有的資料（先修方向、掌握度、遺忘風險）只能用橫跨畫面的曲線疊加，必然呈現麵條狀。**佈局編碼了無聊的維度，把值錢的維度畫成雜訊。**
-> **定位轉向：** 心智圖回答「有什麼」；技能樹回答「接下來該學什麼、為什麼卡住」——後者 ThetaWave 之流做不到，因為它們沒有作答資料。遊戲技能樹隱喻也與像素酪梨視覺語言契合。
-> **審查佐證：** `docs/fable5-review.md`。
-
-### 步驟 0（前置）：修先修邊「向後引用」bug —— `docs/fable5-review.md` #2
-
-- `knowledge_graph.py` `_records_to_concepts`：`used_names` 邊迴圈邊累積 → prereq 指向列表後面的概念會被 `_clean_prerequisites` 濾掉，圖譜邊系統性偏少。
-- **修法：** 兩段式——第一遍收集全部合法概念名進 `used_names`，第二遍再逐概念呼叫 `_clean_prerequisites`。約 10 行。
-- **驗證：** 重新 ingest 同一份教材（OCR 快取不影響建圖，不用清），肉眼比對邊數增加。
-- 順手：`_slugify`+`base_id`（算了沒用）、`_unique_id`、兩處 `used_ids` 為死碼，可刪。
-
-### 步驟 1：佈局換「左→右分層 DAG」（影響最大，約半天）
-
-- **演算法：** 對 prerequisite 邊做 longest-path 拓撲分層（無先修 = 第 0 層；每往右一層 = 需先會左邊）。環偵測：遇環時斷開回邊（記 log），不無限迴圈。層內按章節分組排序（章節改用顏色表達，不再用位置）。約 40 行純函式，不加套件。
-- **改動點：** 只換 `MindMapCanvas.tsx` 的 `buildLayout` 座標計算；pill 渲染、pan/zoom、路徑模式、mastery 著色全部照舊。
-- **降噪：** `isCore` 目前含 `"next"`（`MindMapCanvas.tsx:402`）——`next` 是 `_build_edges_from_concepts` 的人工章節串鏈，是麵條主因之一，預設改為隱藏（歸入「全部關聯」開關）。
-- **Demo 話術：** 「越左邊越基礎——紅色堆在左邊代表根基有洞，難怪右邊全卡住。」
-
-### 步驟 2：學習前線（frontier）三態（約 2 小時）
-
-- 純前端從 mastery + 邊推導：**已掌握**（≥0.75，實心綠）／**可以學了**（未掌握但所有先修已綠 → 發光邊框，今天該點的節點）／**還鎖著**（有先修未過 → 灰化＋小鎖）。
-- 與複習頁形成雙引擎：FSRS 管記憶、圖譜管進度。
-
-### 步驟 3：卡關歸因（約 2 小時）
-
-- 點「需複習」節點 → 沿先修邊回溯，highlight 掌握度最低的上游鏈，底部提示卡：「特徵值卡住，可能因為『行列式』只有 40%——先回去補它。」
-- 復用路徑模式現成的 dim/highlight 基礎設施，只換遍歷起點。
-
-### 影響範圍
-
-- `src/adaptlearn/knowledge_graph.py`（步驟 0）
-- `webapp/frontend/src/components/MindMapCanvas.tsx`（步驟 1–3 主戰場）
-- `webapp/frontend/src/utils/graphUtils.ts`（分層/回溯函式放這裡）
-- `webapp/static/*`（每步驟完成後 `npm run build`）
-- **不動**後端 API、不動 DB schema、不加 npm 套件
-
-### 風險
-
-- 分層佈局遇到 LLM 抽出的環狀先修 → 斷回邊策略要有最小測試（graphUtils 對應的 `test_*.py` 或 assert 自檢）
-- 步驟 0 改了建圖行為 → 動手前先跑 `python -m pytest tests/` 建基準線
-
-### 驗收標準
-
-同一份教材 ingest 後：(1) 邊數多於修復前；(2) 所有先修箭頭指向同一方向、無橫跨大曲線；(3) 至少一個節點呈「可以學了」發光態；(4) 點紅節點能看到歸因鏈與提示文案。
+- **最小可用版本：** 在 `KnowledgeGraphPanel` 下方加一張卡片，列出當前課程的跨課程連結（來源概念 ←→ 目標概念 ＋ 相似度 ＋ link_type），資料走現成的 `/api/cross-course-edges`。約 60–80 行，不動後端。
+- **進階版（選配）：** 在技能樹畫布上用虛線把跨課程概念接起來。要處理的是兩門課的節點不在同一張圖上——可能需要「並排兩棵技能樹」的佈局，工作量大得多。**先做最小版本。**
+- **前置：** `/api/concepts` 只回傳當前課程的概念，所以前端拿到的 `to_concept_id` 解不出名字。要嘛後端在 `/api/cross-course-edges` 回傳時就把兩端的 `name` / `subject` join 好（推薦，改一支 SQL），要嘛前端多打一支 API。
+- **驗收：** 上傳兩門有重疊概念的課程，卡片上看得到至少 3 條連結，且概念名稱與課程名稱都正確顯示。
 
 ---
+
+## 待辦 G：`review_plan` 表是全域的（審查 #4，已從「多課程才爆」變成會實際發生）
+
+> **狀態升級原因：** 原本判定「Demo 只用一門課就完全無感、賽前不用修」。8/15 起本機已同時存在線代與機器學習兩門課，這個 bug 會真的觸發。
+
+- **位置：** `database.py` `save_review_plan` 開頭 `DELETE FROM review_plan` 全刪；`pipeline.py:293-300`。
+- **症狀：** 重算複習計畫時只用「當前課程」的概念建計畫，卻把**所有課程**的舊計畫刪光 → 切換課程後上一門的複習計畫消失；`get_tonight_study_dashboard` 讀到殘留他課 item 時 chapter 顯示 "Unknown"。
+- **修法：** `save_review_plan` 加 `course_id` 參數，`DELETE` 只刪該課程的列（`review_plan` 需加 `course_id` 欄位 → 需要一次 migration）。
+- **驗收：** 兩門課各自重算後，切回第一門仍看得到自己的複習計畫。
+
+---
+
+## 待辦 H：Claude API 當第一層、Gemini 當第二層（2026-08-15 討論，**尚未決策**）
+
+> **動機：** 8/02 與 8/15 兩次都因 Gemini 免費額度（20 次/日）中斷 demo；且概念抽取／批改是判斷密集的活，模型品質差異直接反映在產品上（LLM 掛掉時 heuristic 會切出「主成分分析是最常用的」這種假概念）。
+
+**兩個硬限制（決策前必須知道）：**
+
+1. **Anthropic 沒有 embedding API。** `vector_store.py` 的跨課程語義橋只能繼續用 `gemini-embedding-001` 或改本地模型——這一層 Claude 取代不了。
+2. **Anthropic 沒有免費額度。** 好處是不會被日配額砍斷，壞處是每次呼叫都計費（以目前用量約幾分錢／次 ingest）。
+
+**建議分層：**
+
+| 工作 | 第一層 | 第二層 |
+|---|---|---|
+| 概念抽取＋先修關係 | Claude | Gemini |
+| 出題 | Claude | Gemini |
+| 批改＋回饋 | Claude | Gemini |
+| 手寫 OCR | GLM-OCR（本地） | Gemini vision → Claude vision |
+| 向量嵌入 | **只能 Gemini** | — |
+
+- **順帶可以拿到的好處：** Claude 的 structured outputs（`output_config.format` + json_schema）能保證回傳合法 JSON，`gemini_client.py` 裡那堆硬撈 JSON 的 regex 可以整段刪掉；prompt caching 可讓固定的抽取 system prompt 只付約 1/10 輸入成本。
+- **模型：** 預設 `claude-opus-5`（$5/$25 每百萬 token）。`claude-sonnet-5` 較便宜（$3/$15）但屬成本取捨，由使用者決定。
+- **移植陷阱：** Opus 5 的 thinking **預設開啟**，且 `max_tokens` 同時涵蓋 thinking 與回答——照搬 Gemini 的 `max_tokens` 可能在思考階段就用光導致截斷。
+- **工程量：** 約 150–250 行。一支 `claude_client.py` 對齊 `gemini_client.py` 介面，加雙金鑰設定與降級邏輯。codebase 已有 `vector_store.py` 的 `Embedder` Protocol 慣例可循，`pipeline.py` 不需知道背後是誰。
+- **待決策：** 要不要做／用哪個模型／是否同時保留 Gemini 為第二層。**動工前需先切 Opus 更新本檔。**
+
+---
+
+## 待辦 I：本機測試會污染 demo 資料庫（2026-08-15 新增，小但煩）
+
+- **症狀：** `tests/` 直連 `.env` 的本機 PostgreSQL，跑一次 `pytest` 就灌進一批測試課程（Algorithms/notes.txt、Linear Algebra/handwritten.png…）。8/15 當日庫裡累積 11 個課程、81 個概念，多數是測試垃圾，每次 demo 前要手動清。
+- **修法選項：** (a) `tests/conftest.py` 改用獨立測試資料庫（`adaptlearn_test`）；(b) 測試結束自動清理自己建的課程。(a) 較乾淨。
+- **註：** `tests/db_guard.py` 已有白名單機制，但目前允許本機 DB。
+
+---
+
 
 ## 待辦 C：概念卡名稱／章節跟著語言切換（需 Gemini 額度才驗得了）
 

@@ -50,8 +50,8 @@ _CONCEPT_MAX_CHUNKS = 6
 # Embedding model for the vector store. Using the Gemini embedding API offloads vector
 # computation to Google, so the host (e.g. Render free tier) doesn't have to download
 # and run ChromaDB's default local ONNX model (~80 MB) — the bottleneck that made big
-# ingests stall for minutes. 768-dim output.
-_EMBED_MODEL = "text-embedding-004"
+# ingests stall for minutes. 3072-dim output.
+_EMBED_MODEL = "gemini-embedding-001"
 
 # Specific exceptions we expect from the Gemini API. Anything listed here is caught in
 # _generate_content and turned into graceful degradation (last_error set, "" returned)
@@ -84,7 +84,9 @@ class GeminiClient:
             # fast and degrades gracefully instead of hanging until the proxy 502s.
             client_kwargs: dict[str, Any] = {"api_key": self.api_key}
             if genai_types is not None:
-                client_kwargs["http_options"] = genai_types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS)
+                client_kwargs["http_options"] = genai_types.HttpOptions(
+                    timeout=_GEMINI_TIMEOUT_MS
+                )
             self._client = genai.Client(**client_kwargs)
 
     def set_api_key(self, api_key: str) -> None:
@@ -94,7 +96,9 @@ class GeminiClient:
         if self.enabled:
             client_kwargs: dict[str, Any] = {"api_key": self.api_key}
             if genai_types is not None:
-                client_kwargs["http_options"] = genai_types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS)
+                client_kwargs["http_options"] = genai_types.HttpOptions(
+                    timeout=_GEMINI_TIMEOUT_MS
+                )
             self._client = genai.Client(**client_kwargs)
 
     def _generate_content(self, contents: Any) -> str:
@@ -114,15 +118,25 @@ class GeminiClient:
                 continue
             except Exception as exc:
                 # Unexpected error — log and re-raise so bugs aren't silently swallowed
-                logger.error("Unexpected error calling Gemini (model=%s): %s", candidate_model, exc)
+                logger.error(
+                    "Unexpected error calling Gemini (model=%s): %s",
+                    candidate_model,
+                    exc,
+                )
                 raise
 
             self.model_name = candidate_model
             self.last_error = ""
-            logger.debug("Gemini response OK (model=%s, len=%d)", candidate_model, len(_safe_text(response)))
+            logger.debug(
+                "Gemini response OK (model=%s, len=%d)",
+                candidate_model,
+                len(_safe_text(response)),
+            )
             return _safe_text(response)
 
-        self.last_error = str(last_error) if last_error else "Gemini returned no response."
+        self.last_error = (
+            str(last_error) if last_error else "Gemini returned no response."
+        )
         logger.warning("All Gemini model candidates failed: %s", self.last_error)
         return ""
 
@@ -155,14 +169,17 @@ class GeminiClient:
         for item in embeddings:
             values = getattr(item, "values", None)
             if values is None:
-                logger.warning("Gemini embedding response missing values; falling back.")
+                logger.warning(
+                    "Gemini embedding response missing values; falling back."
+                )
                 return None
             vectors.append([float(v) for v in values])
 
         if len(vectors) != len(texts):
             logger.warning(
                 "Gemini embedding count mismatch (got %d, want %d); falling back.",
-                len(vectors), len(texts),
+                len(vectors),
+                len(texts),
             )
             return None
         return vectors
@@ -248,7 +265,9 @@ class GeminiClient:
             raw_text = self._generate_content(contents)
         except (UnicodeEncodeError, UnicodeDecodeError) as exc:
             self.last_error = f"transcribe_pdf encoding error: {exc}"
-            logger.warning("transcribe_pdf failed with encoding error, falling back: %s", exc)
+            logger.warning(
+                "transcribe_pdf failed with encoding error, falling back: %s", exc
+            )
             return ""
         return _clean_transcription_text(raw_text)
 
@@ -264,7 +283,9 @@ class GeminiClient:
         # A single 18k-char excerpt only covers the first ~6 pages of a lecture deck,
         # so long materials lost most of their content. Now that ingest runs as a
         # background job (no proxy timeout), we chunk the whole document and merge.
-        chunks = _chunk_text(text, chunk_size=_CONCEPT_CHUNK_CHARS, max_chunks=_CONCEPT_MAX_CHUNKS)
+        chunks = _chunk_text(
+            text, chunk_size=_CONCEPT_CHUNK_CHARS, max_chunks=_CONCEPT_MAX_CHUNKS
+        )
         if not chunks:
             return []
         # Spread the concept budget across chunks, with headroom for cross-chunk dupes.
@@ -277,7 +298,9 @@ class GeminiClient:
         if len(chunks) > 1:
             logger.info(
                 "extract_concepts: %d chars -> %d chunks, %d raw records (merged round-robin)",
-                len(text), len(chunks), sum(len(r) for r in chunk_records),
+                len(text),
+                len(chunks),
+                sum(len(r) for r in chunk_records),
             )
         return _round_robin_dedupe(chunk_records)
 
@@ -329,9 +352,15 @@ Material:
             if not name:
                 continue
             chapter = str(item.get("chapter", "General")).strip() or "General"
-            description = str(item.get("description", "")).strip() or f"Core idea of {name}."
+            description = (
+                str(item.get("description", "")).strip() or f"Core idea of {name}."
+            )
             raw_prereq = item.get("prerequisites", [])
-            prerequisites = [str(x).strip() for x in raw_prereq if str(x).strip()] if isinstance(raw_prereq, list) else []
+            prerequisites = (
+                [str(x).strip() for x in raw_prereq if str(x).strip()]
+                if isinstance(raw_prereq, list)
+                else []
+            )
 
             cleaned.append(
                 {
@@ -396,7 +425,10 @@ Concepts:
             difficulty = str(item.get("difficulty", "basic")).strip().lower() or "basic"
             question = str(item.get("question", "")).strip()
             answer = str(item.get("answer", "")).strip()
-            rationale = str(item.get("rationale", "")).strip() or "Use core definition and assumptions step by step."
+            rationale = (
+                str(item.get("rationale", "")).strip()
+                or "Use core definition and assumptions step by step."
+            )
 
             if concept and question and answer:
                 cleaned.append(
@@ -461,7 +493,8 @@ Return ONLY valid JSON with schema:
         if not isinstance(key_points, list):
             key_points = []
         return {
-            "definition": str(payload.get("definition", "")).strip() or fallback["definition"],
+            "definition": str(payload.get("definition", "")).strip()
+            or fallback["definition"],
             "key_points": [str(p).strip() for p in key_points if str(p).strip()],
             "example": str(payload.get("example", "")).strip(),
             "common_mistakes": str(payload.get("common_mistakes", "")).strip(),
@@ -516,7 +549,10 @@ Return ONLY valid JSON object:
         score = min(max(score, 0.0), 1.0)
 
         is_correct = bool(payload.get("is_correct", score >= 0.6))
-        feedback = str(payload.get("feedback", "請複習關鍵定義後再試一次。")).strip() or "請複習關鍵定義後再試一次。"
+        feedback = (
+            str(payload.get("feedback", "請複習關鍵定義後再試一次。")).strip()
+            or "請複習關鍵定義後再試一次。"
+        )
         return {"score": score, "is_correct": is_correct, "feedback": feedback}
 
 
@@ -660,12 +696,16 @@ def _chunk_text(text: str, chunk_size: int, max_chunks: int) -> list[str]:
         logger.warning(
             "extract_concepts: dropped %d/%d chars (max_chunks=%d reached); "
             "raise _CONCEPT_MAX_CHUNKS to analyze the full document.",
-            n - start, n, max_chunks,
+            n - start,
+            n,
+            max_chunks,
         )
     return chunks
 
 
-def _round_robin_dedupe(chunk_records: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def _round_robin_dedupe(
+    chunk_records: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
     """Interleave concept records across chunks (round-robin) so the final list spans the
     whole document rather than front-loading early chunks; dedupe by normalized name."""
     merged: list[dict[str, Any]] = []

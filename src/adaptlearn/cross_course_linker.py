@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from .models import Concept, CrossCourseEdge
+from .vector_store import _CROSS_COURSE_THRESHOLD
 
 if TYPE_CHECKING:
     from .database import StudyRepository
@@ -23,7 +24,7 @@ def find_cross_course_links(
     course_id: str,
     vector_store: ConceptVectorStore,
     repo: StudyRepository,
-    similarity_threshold: float = 0.82,
+    similarity_threshold: float = _CROSS_COURSE_THRESHOLD,
     max_links_per_concept: int = 3,
 ) -> list[CrossCourseEdge]:
     """Discover semantic bridges between *new_concepts* and existing courses.
@@ -77,11 +78,16 @@ def find_cross_course_links(
 
 
 def _infer_link_type(similarity: float) -> str:
-    """Classify bridge type based on similarity score."""
-    if similarity >= 0.95:
+    """Classify bridge type based on similarity score.
+
+    Tier boundaries follow the same gemini-embedding-001 calibration as
+    _CROSS_COURSE_THRESHOLD: cross-domain pairs top out around 0.73, so the
+    old 0.95/0.90/0.85 tiers labelled everything "semantic".
+    """
+    if similarity >= 0.84:
         return "equivalent"
-    if similarity >= 0.90:
+    if similarity >= 0.76:
         return "generalization"
-    if similarity >= 0.85:
+    if similarity >= 0.71:
         return "analogy"
     return "semantic"

@@ -16,9 +16,25 @@ logger = logging.getLogger("adaptlearn.vector_store")
 
 # Collection names are scoped by embedding backend so vectors of different
 # dimensionality never share a collection (ChromaDB default ONNX = 384 dims,
-# Gemini text-embedding-004 = 768). Mixing dims in one collection errors.
+# Gemini gemini-embedding-001 = 3072). Mixing dims in one collection errors.
 _COLLECTION_LOCAL = "adaptlearn_concepts"
 _COLLECTION_GEMINI = "adaptlearn_concepts_gemini"
+
+# query_cross_course converts ChromaDB distance to similarity with `1 - distance`,
+# which only holds for cosine distance. ChromaDB defaults to squared L2, where that
+# formula clamps almost everything to 0 and no cross-course link ever clears the
+# threshold. The space is fixed when the collection is created — changing this
+# constant requires deleting data/chroma/ so the collection is rebuilt.
+_COLLECTION_METADATA = {"hnsw:space": "cosine"}
+
+# Cosine-similarity threshold for calling two concepts a cross-course match.
+# Calibrated against gemini-embedding-001 on labelled pairs (2026-08-15):
+#     同義（不同措辭） 0.896 · 同義（跨語言） 0.846
+#     真跨課程對應     0.689 / 0.728
+#     弱相關           0.666 · 不相關 0.594 · 完全不相關 0.528
+# The old 0.82 only admitted near-synonyms, so genuine cross-domain pairs
+# (特徵值 ↔ PCA) never cleared it. Re-calibrate if the embedding model changes.
+_CROSS_COURSE_THRESHOLD = 0.68
 
 
 class Embedder(Protocol):
@@ -58,7 +74,9 @@ class ConceptVectorStore:
         self.storage_path.mkdir(parents=True, exist_ok=True)
         key = str(self.storage_path.resolve())
         if key not in ConceptVectorStore._clients:
-            ConceptVectorStore._clients[key] = chromadb.PersistentClient(path=str(self.storage_path))
+            ConceptVectorStore._clients[key] = chromadb.PersistentClient(
+                path=str(self.storage_path)
+            )
         self._initialized = True
 
     def set_embedder(self, embedder: Embedder | None) -> None:
@@ -83,14 +101,19 @@ class ConceptVectorStore:
         if client is None:
             return None
         name = _COLLECTION_GEMINI if self._backend_active() else _COLLECTION_LOCAL
-        return client.get_or_create_collection(name)
+        return client.get_or_create_collection(name, metadata=_COLLECTION_METADATA)
 
     def _embed(self, texts: list[str]) -> list[list[float]] | None:
         if not self._backend_active() or not self._embedder:
             return None
         return self._embedder.embed_texts(texts)
 
-    def upsert_concepts(self, concepts: list[Concept], replace_existing: bool = False, course_id: str = "") -> None:
+    def upsert_concepts(
+        self,
+        concepts: list[Concept],
+        replace_existing: bool = False,
+        course_id: str = "",
+    ) -> None:
         if not self.enabled or not concepts:
             return
         collection = self._get_collection()
@@ -106,13 +129,17 @@ class ConceptVectorStore:
         ids = [concept.id for concept in concepts]
         docs = [f"{concept.name}. {concept.description}" for concept in concepts]
         metadatas = [
-            {"chapter": concept.chapter, "name": concept.name, "course_id": course_id or "default"}
+            {
+                "chapter": concept.chapter,
+                "name": concept.name,
+                "course_id": course_id or "default",
+            }
             for concept in concepts
         ]
 
         embeddings = self._embed(docs)
         if self._backend_active() and embeddings is None:
-            # The Gemini collection stores 768-dim vectors and must be queried/written
+            # The Gemini collection stores 3072-dim vectors and must be queried/written
             # with explicit embeddings. If embedding failed, writing text would let
             # ChromaDB fall back to its 384-dim local model → dimension clash. Skip the
             # vector upsert this round (best-effort; cross-course links degrade, ingest
@@ -124,24 +151,37 @@ class ConceptVectorStore:
             return
 
         if embeddings is not None:
-            collection.upsert(ids=ids, documents=docs, metadatas=metadatas, embeddings=embeddings)
+            collection.upsert(
+                ids=ids, documents=docs, metadatas=metadatas, embeddings=embeddings
+            )
         else:
             collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
 
-    def query_related(self, query: str, n_results: int = 5, exclude_course_id: str = "") -> list[dict]:
+    def query_related(
+        self, query: str, n_results: int = 5, exclude_course_id: str = ""
+    ) -> list[dict]:
         if not self.enabled or not query.strip():
             return []
         collection = self._get_collection()
         if collection is None:
             return []
 
+        # Push the course exclusion into the ANN search itself. Filtering after the
+        # fact would let same-course neighbours (always the nearest ones) fill the
+        # top-N and squeeze every cross-course hit out of the result set.
+        where = {"course_id": {"$ne": exclude_course_id}} if exclude_course_id else None
+
         if self._backend_active():
             vectors = self._embed([query])
             if not vectors:
                 return []
-            raw = collection.query(query_embeddings=vectors, n_results=n_results)
+            raw = collection.query(
+                query_embeddings=vectors, n_results=n_results, where=where
+            )
         else:
-            raw = collection.query(query_texts=[query], n_results=n_results)
+            raw = collection.query(
+                query_texts=[query], n_results=n_results, where=where
+            )
         raw_ids = raw.get("ids") or []
         raw_metadatas = raw.get("metadatas") or []
         raw_distances = raw.get("distances") or []
@@ -167,9 +207,14 @@ class ConceptVectorStore:
             )
         return output
 
-    def query_cross_course(self, concept_name: str, concept_description: str,
-                           source_course_id: str, n_results: int = 5,
-                           similarity_threshold: float = 0.82) -> list[dict]:
+    def query_cross_course(
+        self,
+        concept_name: str,
+        concept_description: str,
+        source_course_id: str,
+        n_results: int = 5,
+        similarity_threshold: float = _CROSS_COURSE_THRESHOLD,
+    ) -> list[dict]:
         """Find concepts from other courses that are semantically similar."""
         if not self.enabled:
             return []

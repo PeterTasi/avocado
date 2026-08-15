@@ -647,15 +647,17 @@ def _candidate_json_strings(raw: str) -> list[str]:
 
 
 def _build_model_candidates(primary_model: str) -> list[str]:
-    # 最新優先，額度用盡(429)/暫時不可用(503)時依序往下換。
-    # 後面幾個是較舊但免費額度較高的 flash 模型，當墊底備援。
+    # 最新優先，額度用盡(429)/暫時不可用(503)/逾時(504)時依序往下換。
+    # 只列「呼叫得到」的模型：Google 會下架舊版，被下架的模型回 404，整條備援鏈
+    # 會一起失效而外表看起來像「LLM 降級」。2026-08-15 實測 gemini-2.0-* 與
+    # gemini-2.5-* 皆已回 404，故移除。換模型前先用 client.models.list() 對一次。
     candidates = [
         primary_model.strip(),
         "gemini-flash-latest",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash-lite",
     ]
 
     deduped: list[str] = []

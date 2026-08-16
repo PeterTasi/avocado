@@ -20,6 +20,11 @@ class ExtractedMaterial:
     text: str
     source_type: str
     ocr_used: bool = False
+    # Per-page OCR accounting, set only by page-by-page paths (Ollama/Chandra).
+    # None means "not applicable" — Gemini's native-PDF path transcribes the whole
+    # document in one call and has no per-page notion of success.
+    pages_total: int | None = None
+    pages_ok: int | None = None
 
 
 def extract_material_text(
@@ -98,23 +103,31 @@ def _extract_pdf_material(
     ollama_ok = _ocr_available(ollama_client)
     chandra_ok = _ocr_available(chandra_client)
     gemini_ok = _ocr_available(gemini_client)
-    gemini_pdf_ok = gemini_ok and callable(getattr(gemini_client, "transcribe_pdf", None))
+    gemini_pdf_ok = gemini_ok and callable(
+        getattr(gemini_client, "transcribe_pdf", None)
+    )
     resolved_max_ocr_pages = max(1, int(max_ocr_pages))
 
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         page_text = [page.get_text("text") for page in doc]
-        extracted_text = "\n".join(text.strip() for text in page_text if text and text.strip())
+        extracted_text = "\n".join(
+            text.strip() for text in page_text if text and text.strip()
+        )
         if len(extracted_text.strip()) >= OCR_FALLBACK_CHAR_THRESHOLD or not (
             ollama_ok or chandra_ok or gemini_ok
         ):
-            return ExtractedMaterial(text=extracted_text, source_type="pdf-text", ocr_used=False)
+            return ExtractedMaterial(
+                text=extracted_text, source_type="pdf-text", ocr_used=False
+            )
 
         page_count = len(doc)
         # Local OCR (Ollama / Chandra) renders + infers each page on-device, so
         # MAX_OCR_PAGES caps it. Gemini is pure API calls — no local cost, no cap.
         within_local_cap = page_count <= resolved_max_ocr_pages
         local_images = (
-            _pdf_pages_to_images(doc) if (ollama_ok or chandra_ok) and within_local_cap else None
+            _pdf_pages_to_images(doc)
+            if (ollama_ok or chandra_ok) and within_local_cap
+            else None
         )
         gemini_vision_images = _pdf_pages_to_images(doc) if gemini_ok else None
 
@@ -128,23 +141,36 @@ def _extract_pdf_material(
 
     # 1) Ollama local vision OCR first (handwriting-aware, on-device, no API cost).
     if ollama_ok and local_images is not None:
-        text = str(ollama_client.transcribe_images(
-            images=local_images,
-            course_name=ocr_context,
-            on_progress=ocr_progress,
-        )).strip()
+        text = str(
+            ollama_client.transcribe_images(
+                images=local_images,
+                course_name=ocr_context,
+                on_progress=ocr_progress,
+            )
+        ).strip()
         if text:
-            return ExtractedMaterial(text=text, source_type="pdf-ollama-ocr", ocr_used=True)
+            return ExtractedMaterial(
+                text=text,
+                source_type="pdf-ollama-ocr",
+                ocr_used=True,
+                pages_total=getattr(ollama_client, "pages_total", None)
+                or len(local_images),
+                pages_ok=getattr(ollama_client, "pages_ok", None),
+            )
 
     # 2) Chandra (vLLM/HF), when available and within the page cap.
     if chandra_ok and local_images is not None:
         text = _transcribe_images(chandra_client, local_images, ocr_context)
         if text.strip():
-            return ExtractedMaterial(text=text, source_type="pdf-chandra-ocr", ocr_used=True)
+            return ExtractedMaterial(
+                text=text, source_type="pdf-chandra-ocr", ocr_used=True
+            )
 
     # 3) Gemini native PDF — whole document in one call, no page cap.
     if gemini_pdf_ok:
-        text = str(gemini_client.transcribe_pdf(pdf_bytes=file_bytes, course_name=ocr_context)).strip()
+        text = str(
+            gemini_client.transcribe_pdf(pdf_bytes=file_bytes, course_name=ocr_context)
+        ).strip()
         if text:
             return ExtractedMaterial(text=text, source_type="pdf-ocr", ocr_used=True)
 

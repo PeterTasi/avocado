@@ -51,6 +51,11 @@ class OllamaClient:
         self.model = model.strip()
         self.base_url = base_url.strip().rstrip("/") or "http://localhost:11434"
         self.last_error = ""
+        # Set by transcribe_images so callers can tell a full transcription from a
+        # mostly-failed one (see the silent-failure note there).
+        self.pages_total = 0
+        self.pages_ok = 0
+        self.failed_pages: list[int] = []
 
     @property
     def enabled(self) -> bool:
@@ -70,21 +75,50 @@ class OllamaClient:
         context = course_name.strip() or "General study notes"
         is_specialized = any(m in self.model.lower() for m in _OCR_SPECIALIZED_MODELS)
 
+        # Per-page accounting. A page that transcribes to nothing used to be skipped in
+        # silence, so a 14-page document that yielded one page still reported success.
+        # Callers read these to decide whether the transcription is trustworthy.
+        self.pages_total = len(images)
+        self.pages_ok = 0
+        self.failed_pages = []
+
         transcripts: list[str] = []
         for index, image in enumerate(images, start=1):
             if on_progress is not None:
                 on_progress(index, len(images))
             data = image.get("data")
             if not isinstance(data, (bytes, bytearray)) or not data:
+                self.failed_pages.append(index)
+                logger.warning("Ollama OCR: page %d has no image data, skipped", index)
                 continue
             label = str(image.get("label", f"page {index}")).strip() or f"page {index}"
             if is_specialized:
                 prompt = "Text Recognition:"
             else:
-                prompt = f"{_OCR_PROMPT}\nCourse context: {context}.\nPage label: {label}."
+                prompt = (
+                    f"{_OCR_PROMPT}\nCourse context: {context}.\nPage label: {label}."
+                )
             page_text = self._transcribe_one(bytes(data), prompt)
             if page_text:
                 transcripts.append(page_text)
+                self.pages_ok += 1
+            else:
+                self.failed_pages.append(index)
+                logger.warning(
+                    "Ollama OCR: page %d/%d produced no text (model=%s): %s",
+                    index,
+                    len(images),
+                    self.model,
+                    self.last_error or "empty response",
+                )
+
+        if self.failed_pages:
+            logger.warning(
+                "Ollama OCR transcribed %d/%d pages; pages with no text: %s",
+                self.pages_ok,
+                self.pages_total,
+                self.failed_pages,
+            )
 
         return "\n\n".join(transcripts).strip()
 
@@ -109,7 +143,12 @@ class OllamaClient:
                 body = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             self.last_error = f"Ollama request failed: {exc}"
-            logger.warning("Ollama OCR failed (model=%s, url=%s): %s", self.model, self.base_url, exc)
+            logger.warning(
+                "Ollama OCR failed (model=%s, url=%s): %s",
+                self.model,
+                self.base_url,
+                exc,
+            )
             return ""
         except (ValueError, json.JSONDecodeError) as exc:
             self.last_error = f"Ollama returned invalid JSON: {exc}"

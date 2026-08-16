@@ -135,7 +135,14 @@ export function SetupPanel({
   const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
   const ingestData = activeIngest.data as
-    | { llm_degraded?: boolean; ocr_failed?: boolean; ocr_message?: string; llm_last_error?: string }
+    | {
+        llm_degraded?: boolean;
+        ocr_failed?: boolean;
+        ocr_message?: string;
+        llm_last_error?: string;
+        ocr_pages_total?: number | null;
+        ocr_pages_ok?: number | null;
+      }
     | undefined;
   const llmDegraded = activeIngest.isSuccess && ingestData?.llm_degraded === true;
   // 主題模式沒有 OCR，後端永遠回 false，所以這個警告只會出現在上傳路徑。
@@ -419,6 +426,19 @@ export function SetupPanel({
             <span className="mt-1 block text-xs opacity-75">原因：{ingestData.llm_last_error}</span>
           )}
         </div>
+      )}
+
+      {/* 逐頁 OCR 的辨識頁數。成功時也要顯示——使用者有權知道有幾頁沒讀到，
+          即使比例高到不觸發警告 */}
+      {!ocrFailed && activeIngest.isSuccess && !!ingestData?.ocr_pages_total && (
+        <p className="mt-3 text-xs text-[color:var(--text-muted)]">
+          已辨識 {ingestData.ocr_pages_ok ?? 0}／{ingestData.ocr_pages_total} 頁
+          {(ingestData.ocr_pages_ok ?? 0) < ingestData.ocr_pages_total && (
+            <span className="text-[color:var(--medium)]">
+              　（有 {ingestData.ocr_pages_total - (ingestData.ocr_pages_ok ?? 0)} 頁未能辨識，概念可能不完整）
+            </span>
+          )}
+        </p>
       )}
 
       {/* LLM degraded warning */}

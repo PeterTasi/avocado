@@ -35,6 +35,11 @@ from .vector_store import ConceptVectorStore
 
 logger = logging.getLogger("adaptlearn.pipeline")
 
+# Below this share of successfully transcribed pages, a page-by-page OCR result is
+# treated as failed rather than partial: a concept graph built from a third of a
+# document looks complete but silently misrepresents the material.
+_OCR_MIN_PAGE_RATIO = 0.6
+
 
 class AdaptLearnService:
     def __init__(self, settings: Settings, api_key: str | None = None) -> None:
@@ -86,7 +91,11 @@ class AdaptLearnService:
                 progress(label)
 
         _ocr_cache_dir = Path("data/ocr_cache")
-        _file_hash = hashlib.sha256(file_bytes).hexdigest()
+        # The OCR model is part of the key: keying on file bytes alone meant switching
+        # OLLAMA_OCR_MODEL silently reused the old model's transcript, so a model fix
+        # never reached documents that had already been (badly) transcribed.
+        _cache_seed = file_bytes + f"|{self.settings.ollama_ocr_model}".encode()
+        _file_hash = hashlib.sha256(_cache_seed).hexdigest()
         _cache_file = _ocr_cache_dir / f"{_file_hash}.json"
 
         extracted_material = None
@@ -98,6 +107,8 @@ class AdaptLearnService:
                         text=cached["text"],
                         source_type=cached.get("source_type", "cache"),
                         ocr_used=bool(cached.get("ocr_used", False)),
+                        pages_total=cached.get("pages_total"),
+                        pages_ok=cached.get("pages_ok"),
                     )
                     logger.info("OCR cache hit: %s", _file_hash[:12])
             except Exception as e:
@@ -125,6 +136,8 @@ class AdaptLearnService:
                                 "text": extracted_material.text,
                                 "source_type": extracted_material.source_type,
                                 "ocr_used": extracted_material.ocr_used,
+                                "pages_total": extracted_material.pages_total,
+                                "pages_ok": extracted_material.pages_ok,
                             },
                             ensure_ascii=False,
                         ),
@@ -150,6 +163,32 @@ class AdaptLearnService:
 
         ocr_failed = False
         ocr_message = ""
+
+        # Partial-OCR guard. Page-by-page OCR skips pages that transcribe to nothing,
+        # so a document can clear the 40-char low_text_mode bar on one good page while
+        # the other thirteen are missing — and report success. Below _OCR_MIN_PAGE_RATIO
+        # the transcript is too incomplete to build an honest concept graph from, so say
+        # so loudly; the concepts that were extracted are still kept.
+        pages_total = extracted_material.pages_total
+        pages_ok = extracted_material.pages_ok
+        page_ratio: float | None = None
+        if pages_total and pages_ok is not None:
+            page_ratio = pages_ok / pages_total
+            if page_ratio < _OCR_MIN_PAGE_RATIO:
+                ocr_failed = True
+                ocr_message = (
+                    f"這份檔案共 {pages_total} 頁，但只成功辨識出 {pages_ok} 頁"
+                    f"（{page_ratio:.0%}）。以下概念僅來自那 {pages_ok} 頁，並不代表整份教材。"
+                    "請改用更清晰的掃描、或換一個 OCR 模型後重試。"
+                )
+                logger.warning(
+                    "Partial OCR: %d/%d pages transcribed (%.0f%%) for %s",
+                    pages_ok,
+                    pages_total,
+                    page_ratio * 100,
+                    file_name,
+                )
+
         if low_text_mode:
             if used_seed_template:
                 concepts = list(seed_concepts)
@@ -260,6 +299,8 @@ class AdaptLearnService:
             "low_text_mode": low_text_mode,
             "ocr_used": extracted_material.ocr_used,
             "source_type": extracted_material.source_type,
+            "ocr_pages_total": pages_total,
+            "ocr_pages_ok": pages_ok,
             "used_seed_template": used_seed_template,
             "template_mode": template_mode,
             "ingest_mode": ingest_mode,

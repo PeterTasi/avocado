@@ -306,6 +306,57 @@ E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決�
 
 ---
 
+## 待辦 L：三個已診斷未修的問題（2026-08-17 發現，用真實手寫講義驗證時挖出）
+
+> 這三個都**已經定位到根因、有證據**，只是還沒動手。動工前先讀這段，別重新診斷。
+
+### L1（優先）：ChromaDB 與 PostgreSQL 不同步 → 跨課程連結全是幽靈
+
+**證據（2026-08-17 實測）：**
+
+| | 數量 |
+|---|---|
+| PostgreSQL 概念 | 107 |
+| Chroma 向量（`adaptlearn_concepts_gemini`） | 104 |
+| **Chroma 有、PG 沒有（幽靈）** | **80** |
+| PG 有、Chroma 沒有 | 83 |
+
+重疊只有 24 筆（剛 ingest 的手寫課程）。
+
+**根因：** `reset_learning_state()`（`database.py`，測試用的全域清除）刪 Postgres 概念，
+但碰不到 vector store，所以 Chroma 留下 80 筆幽靈向量。8/16 修 `cross_course_edges`
+漏掉的時候沒看到向量庫是同一個問題的另一半。
+
+**後果：** ingest 手寫講義時建立了 65 條跨課程連結，**全部指向已不存在的概念**
+（`from_exists=1, to_exists=0`）。前端卡片顯示「沒有關聯」是正確的——INNER JOIN 擋下了
+壞資料，錯的是資料本身。
+
+**修法（兩層都要）：**
+1. **根因**：在 `pipeline.AdaptLearnService` 開一個全域重設方法，同時清 Postgres 與
+   ChromaDB；測試改呼叫它，不要直接呼叫 repo 的 `reset_learning_state()`。
+2. **防線**：`cross_course_linker.find_cross_course_links` 存邊之前，先確認對方概念
+   存在於 Postgres（一次 `WHERE id = ANY(...)`）。向量庫是索引，Postgres 才是真相來源；
+   索引過期不該污染真相。這層更重要——不管未來什麼原因造成不同步都擋得住。
+
+### L2：空白頁被算成 OCR 成功
+
+第 14 頁是空白頁，但模型輸出了 `線性代數 8-1~8-3（手寫）\nPDF page 14`——把 prompt 裡的
+課程名與頁標當成內容吐回來，於是計為成功，`pages_ok` 報 14 而非 13。
+
+**修法：** `_clean_transcription_text` 或 `transcribe_images` 把「只包含課程名／頁標」
+的回應視為空白。門檻要小心，別誤殺真的只有一行標題的頁。
+
+### L3：前端輪詢 12 分鐘上限，手寫大檔必定逾時
+
+`useApi.ts` 的 `MAX_WAIT_MS = 12 * 60 * 1000`。14 頁手寫 PDF 用 qwen2.5vl 約需 12 分鐘、
+qwen3-vl 需 35 分鐘——**使用者會看到「教材處理逾時」，但後端其實還在跑而且會成功**。
+
+**修法（建議）：** 不要單純調大上限（真的卡死的 job 會空轉更久）。改成
+**「卡住才算逾時」**：後端每頁都回報 `OCR 辨識第 N/M 頁`，只要 stage 字串有變化就重設
+計時器，連續 N 分鐘沒進展才判逾時。約 3 行。
+
+---
+
 # 🟡 選配待辦（競賽後可做）
 
 ## 失敗測試：OCR 頁數上限訊息對不上（pre-existing，141a6bd 後壞）

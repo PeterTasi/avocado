@@ -17,7 +17,16 @@ from .database import StudyRepository
 from .domain_templates import get_seed_concepts
 from .gemini_client import GeminiClient
 from .knowledge_graph import build_knowledge_graph
-from .models import Attempt, Concept, ConceptDetail, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
+from .models import (
+    Attempt,
+    Concept,
+    ConceptDetail,
+    ConceptEdge,
+    Course,
+    CrossCourseEdge,
+    Question,
+    ReviewItem,
+)
 from .ollama_client import OllamaClient
 from .pdf_parser import ExtractedMaterial, extract_material_text
 from .quiz_engine import build_questions_for_concepts
@@ -111,11 +120,14 @@ class AdaptLearnService:
                 try:
                     _ocr_cache_dir.mkdir(parents=True, exist_ok=True)
                     _cache_file.write_text(
-                        json.dumps({
-                            "text": extracted_material.text,
-                            "source_type": extracted_material.source_type,
-                            "ocr_used": extracted_material.ocr_used,
-                        }, ensure_ascii=False),
+                        json.dumps(
+                            {
+                                "text": extracted_material.text,
+                                "source_type": extracted_material.source_type,
+                                "ocr_used": extracted_material.ocr_used,
+                            },
+                            ensure_ascii=False,
+                        ),
                         encoding="utf-8",
                     )
                 except Exception as e:
@@ -123,14 +135,18 @@ class AdaptLearnService:
         material_text = extracted_material.text
         text_chars = len(material_text.strip())
         low_text_mode = text_chars < 40
-        seed_concepts = get_seed_concepts(course_name=course_name, template_mode=template_mode)
+        seed_concepts = get_seed_concepts(
+            course_name=course_name, template_mode=template_mode
+        )
         used_seed_template = bool(seed_concepts)
 
         # Reset LLM error state so we can detect failures during this ingest.
         self.gemini.last_error = ""
 
         # P1: compute course_id BEFORE build_knowledge_graph so it can be passed in.
-        course_id = hashlib.sha256(f"{course_name}:{file_name}".encode()).hexdigest()[:12]
+        course_id = hashlib.sha256(f"{course_name}:{file_name}".encode()).hexdigest()[
+            :12
+        ]
 
         ocr_failed = False
         ocr_message = ""
@@ -152,7 +168,9 @@ class AdaptLearnService:
                 )
                 logger.warning(
                     "OCR yielded <%d chars; falling back to seed template (course=%s, source=%s)",
-                    40, course_name, extracted_material.source_type,
+                    40,
+                    course_name,
+                    extracted_material.source_type,
                 )
             else:
                 raise ValueError(
@@ -171,12 +189,18 @@ class AdaptLearnService:
             if used_seed_template:
                 concepts = _merge_concept_sets(concepts, seed_concepts)
                 edges = _build_edges_from_concepts(concepts)
-            ingest_mode = "ocr-transcription" if extracted_material.ocr_used else "text-extraction"
+            ingest_mode = (
+                "ocr-transcription"
+                if extracted_material.ocr_used
+                else "text-extraction"
+            )
 
         # Capture whether Gemini encountered errors during this ingest.
         llm_degraded = self.gemini.enabled and bool(self.gemini.last_error)
         if llm_degraded:
-            logger.warning("LLM degraded during ingest (last_error=%s)", self.gemini.last_error)
+            logger.warning(
+                "LLM degraded during ingest (last_error=%s)", self.gemini.last_error
+            )
 
         if not concepts:
             raise ValueError(
@@ -207,7 +231,9 @@ class AdaptLearnService:
         self.repo.replace_edges(edges)
 
         _stage("建立向量索引")
-        self.vector_store.upsert_concepts(concepts, replace_existing=False, course_id=course_id)
+        self.vector_store.upsert_concepts(
+            concepts, replace_existing=False, course_id=course_id
+        )
 
         # Module D: discover cross-course links
         _stage("尋找跨課程關聯")
@@ -217,8 +243,13 @@ class AdaptLearnService:
             vector_store=self.vector_store,
             repo=self.repo,
         )
-        logger.info("Ingested course=%s concepts=%d edges=%d cross=%d",
-                     course_id, len(concepts), len(edges), len(cross_edges))
+        logger.info(
+            "Ingested course=%s concepts=%d edges=%d cross=%d",
+            course_id,
+            len(concepts),
+            len(edges),
+            len(cross_edges),
+        )
 
         return {
             "course_id": course_id,
@@ -238,7 +269,50 @@ class AdaptLearnService:
             "llm_last_error": self.gemini.last_error,
         }
 
-    def generate_diagnostics(self, question_count: int = 9, language: str = "zh") -> list[Question]:
+    def ingest_topic(
+        self,
+        topic: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, object]:
+        """Build a course from a topic name alone, for students with no material to upload.
+
+        The LLM writes a handout, which is then fed through ingest_material as a .txt —
+        so concept extraction, storage, vectors, and cross-course links are the exact
+        same code path as an upload.
+        """
+        topic = topic.strip()
+        if not topic:
+            raise ValueError("請輸入想學的主題。")
+
+        if progress is not None:
+            progress("生成主題講義")
+        self.gemini.last_error = ""
+        material_text = self.gemini.generate_topic_material(topic)
+
+        if len(material_text) < 200:
+            if not self.gemini.enabled:
+                raise ValueError(
+                    "主題模式需要 Gemini API 金鑰才能生成教材內容，請先設定金鑰或改用上傳教材。"
+                )
+            detail = self.gemini.last_error or "回傳內容過短"
+            raise ValueError(
+                f"無法為「{topic}」生成教材內容（{detail}）。"
+                "若是 API 每日配額用盡，請稍後再試或改用上傳教材。"
+            )
+
+        result = self.ingest_material(
+            file_name=f"{topic}.txt",
+            file_bytes=material_text.encode("utf-8"),
+            course_name=topic,
+            progress=progress,
+        )
+        result["ingest_mode"] = "topic-generated"
+        result["topic"] = topic
+        return result
+
+    def generate_diagnostics(
+        self, question_count: int = 9, language: str = "zh"
+    ) -> list[Question]:
         # P1: scope to active course
         active_course_id = self.repo.get_active_course_id()
         concepts = self.repo.list_concepts(course_id=active_course_id)
@@ -260,7 +334,9 @@ class AdaptLearnService:
         self.repo.save_questions(questions)
         return questions
 
-    def grade_question(self, question_id: str, user_answer: str) -> dict[str, str | bool | float]:
+    def grade_question(
+        self, question_id: str, user_answer: str
+    ) -> dict[str, str | bool | float]:
         question = self.repo.get_question(question_id)
         if not question:
             raise ValueError("Question not found. Generate a new diagnostic set.")
@@ -387,7 +463,11 @@ class AdaptLearnService:
         has_data = bool(attempts)
 
         pass_before = _estimate_pass_probability(attempts) if has_data else 0.0
-        uplift = min(0.3, sum(float(d["estimated_gain"]) for d in focus_items)) if has_data else 0.0  # type: ignore[misc, arg-type]
+        uplift = (
+            min(0.3, sum(float(d["estimated_gain"]) for d in focus_items))
+            if has_data
+            else 0.0
+        )  # type: ignore[misc, arg-type]
         pass_after = _clamp(pass_before + uplift, 0.0, 0.98) if has_data else 0.0
 
         chapters: list[str] = []
@@ -421,7 +501,7 @@ class AdaptLearnService:
         edges = self.repo.list_edges(course_id=active_course_id)
         cross_edges = self.repo.list_cross_course_edges()
         if not concepts:
-            return "digraph ConceptGraph { empty [label=\"No concepts yet\"]; }"
+            return 'digraph ConceptGraph { empty [label="No concepts yet"]; }'
 
         lines = ["digraph ConceptGraph {", "rankdir=LR;"]
         for concept in concepts:
@@ -430,7 +510,9 @@ class AdaptLearnService:
 
         for edge in edges[:400]:
             relation = _escape_label(edge.relation)
-            lines.append(f'"{edge.source_id}" -> "{edge.target_id}" [label="{relation}"];')
+            lines.append(
+                f'"{edge.source_id}" -> "{edge.target_id}" [label="{relation}"];'
+            )
 
         # Cross-course edges rendered as dashed lines
         for ce in cross_edges[:100]:
@@ -453,7 +535,9 @@ class AdaptLearnService:
                 "concept_name": concept_map.get(s.concept_id, s.concept_id),
                 "error_rate": s.error_rate,
                 "sample_count": s.sample_count,
-                "status": "red" if s.error_rate >= 0.6 else ("yellow" if s.error_rate >= 0.3 else "green"),
+                "status": "red"
+                if s.error_rate >= 0.6
+                else ("yellow" if s.error_rate >= 0.3 else "green"),
             }
             for s in stats
         ]
@@ -510,7 +594,9 @@ class AdaptLearnService:
             else:
                 mid = len(daily) // 2
                 first_half_avg = sum(d["avg_score"] for d in daily[:mid]) / mid
-                second_half_avg = sum(d["avg_score"] for d in daily[mid:]) / (len(daily) - mid)
+                second_half_avg = sum(d["avg_score"] for d in daily[mid:]) / (
+                    len(daily) - mid
+                )
                 diff = second_half_avg - first_half_avg
                 if diff > 0.05:
                     trend = "improving"
@@ -519,12 +605,16 @@ class AdaptLearnService:
                 else:
                     trend = "plateaued"
 
-            result.append({
-                "concept_id": item["concept_id"],
-                "concept_name": name_map.get(item["concept_id"], item["concept_id"]),
-                "daily": daily,
-                "trend": trend,
-            })
+            result.append(
+                {
+                    "concept_id": item["concept_id"],
+                    "concept_name": name_map.get(
+                        item["concept_id"], item["concept_id"]
+                    ),
+                    "daily": daily,
+                    "trend": trend,
+                }
+            )
 
         return result
 
@@ -602,10 +692,14 @@ def _normalize_name(value: str) -> str:
     return "".join(re.findall(r"[一-鿿]+", value))
 
 
-def _merge_concept_sets(extracted: list[Concept], seeded: list[Concept]) -> list[Concept]:
+def _merge_concept_sets(
+    extracted: list[Concept], seeded: list[Concept]
+) -> list[Concept]:
     merged = list(extracted)
     used_ids = {concept.id for concept in merged}
-    index_by_name = {_normalize_name(concept.name): idx for idx, concept in enumerate(merged)}
+    index_by_name = {
+        _normalize_name(concept.name): idx for idx, concept in enumerate(merged)
+    }
 
     for seed in seeded:
         normalized = _normalize_name(seed.name)
@@ -630,7 +724,8 @@ def _merge_concept_sets(extracted: list[Concept], seeded: list[Concept]) -> list
         merged_prereq = sorted(set(existing.prerequisites + seed.prerequisites))
         merged_chapter = (
             seed.chapter
-            if existing.chapter.lower() in {"general", "chapter 1", "chapter 2", "chapter 3"}
+            if existing.chapter.lower()
+            in {"general", "chapter 1", "chapter 2", "chapter 3"}
             else existing.chapter
         )
         merged_description = (
@@ -714,7 +809,9 @@ def _estimate_pass_probability(attempts: list[Attempt]) -> float:
     accuracy = sum(1.0 for item in attempts if item.is_correct) / len(attempts)
     experience_bonus = min(len(attempts) / 30.0, 1.0)
 
-    probability = 0.32 + (0.46 * avg_score) + (0.16 * accuracy) + (0.06 * experience_bonus)
+    probability = (
+        0.32 + (0.46 * avg_score) + (0.16 * accuracy) + (0.06 * experience_bonus)
+    )
     return _clamp(probability, 0.25, 0.95)
 
 

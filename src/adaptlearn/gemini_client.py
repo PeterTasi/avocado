@@ -271,6 +271,35 @@ class GeminiClient:
             return ""
         return _clean_transcription_text(raw_text)
 
+    def generate_topic_material(self, topic: str) -> str:
+        """Write a lecture outline for `topic` so topic-only study reuses the upload path.
+
+        The output is plain prose fed straight into build_knowledge_graph, exactly as if
+        the student had uploaded a handout. Returns "" when the LLM is unavailable or
+        errors (last_error is set by _generate_content).
+        """
+        if not self.enabled or not self._client:
+            return ""
+
+        prompt = f"""
+You are an expert lecturer writing a study handout.
+Write a structured outline for the topic below, 800-1500 Chinese characters.
+
+Rules:
+- Write in Traditional Chinese (繁體中文). Keep technical terms in English only when
+  there is no standard Chinese translation.
+- Cover, as prose sections with headings: 定義與直覺、核心概念（逐項展開）、
+  先備知識、關鍵公式或性質、常見誤區。
+- Name each sub-concept explicitly and explain it in a sentence or two — the concept
+  names are what downstream extraction depends on.
+- Order the core concepts from prerequisite to advanced.
+- Output plain text only. No JSON, no code fences, no meta commentary.
+
+Topic: {topic}
+""".strip()
+
+        return self._generate_content(prompt).strip()
+
     def extract_concepts(
         self,
         text: str,

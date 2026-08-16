@@ -272,6 +272,34 @@ export function useIngestMaterial(onStage?: (stage: string) => void) {
   });
 }
 
+// Topic-only study: no file, just a subject. Shares the ingest job/polling machinery
+// because the backend runs it through the same pipeline.
+export function useIngestTopic(onStage?: (stage: string) => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ topic, apiKey }: { topic: string; apiKey?: string }) => {
+      onStage?.("排隊中");
+      const start = (await apiFetch("/api/material/topic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, api_key: apiKey || null }),
+      })) as { job_id?: string };
+      if (!start.job_id) return start;
+      return pollIngestStatus(start.job_id, onStage);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+      queryClient.invalidateQueries({ queryKey: ["concepts"] });
+      queryClient.invalidateQueries({ queryKey: ["mastery"] });
+      queryClient.invalidateQueries({ queryKey: ["tonight"] });
+      queryClient.invalidateQueries({ queryKey: ["graph"] });
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["review-plan"] });
+    },
+  });
+}
+
 export function useGenerateDiagnostics() {
   const queryClient = useQueryClient();
   

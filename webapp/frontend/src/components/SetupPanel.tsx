@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
-import { useCourses, useConceptMastery, useDeleteCourse, useIngestMaterial, useSaveApiKey } from "../hooks/useApi";
+import { useCourses, useConceptMastery, useDeleteCourse, useIngestMaterial, useIngestTopic, useSaveApiKey } from "../hooks/useApi";
 import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
@@ -69,6 +69,13 @@ export function SetupPanel({
   const saveApiKey = useSaveApiKey();
   const [stage, setStage] = useState("");
   const ingestMaterial = useIngestMaterial(setStage);
+  // 主題模式：沒有教材也能學。後端會先生成講義再走同一條 ingest 管線。
+  const [sourceMode, setSourceMode] = useState<"upload" | "topic">("upload");
+  const [topic, setTopic] = useState("");
+  const ingestTopic = useIngestTopic(setStage);
+  const isTopicMode = sourceMode === "topic";
+  // 兩種來源共用同一組進度／狀態 UI，只是驅動它的 mutation 不同。
+  const activeIngest = isTopicMode ? ingestTopic : ingestMaterial;
   const { data: coursesData } = useCourses();
   const conceptMastery = useConceptMastery();
   const deleteCourse = useDeleteCourse();
@@ -85,10 +92,10 @@ export function SetupPanel({
   }, [courseToDelete, deleteCourse]);
 
   useEffect(() => {
-    if (!ingestMaterial.isPending) { setElapsedSec(0); return; }
+    if (!activeIngest.isPending) { setElapsedSec(0); return; }
     const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
     return () => clearInterval(id);
-  }, [ingestMaterial.isPending]);
+  }, [activeIngest.isPending]);
 
   const handleSaveApiKey = useCallback(async () => {
     await saveApiKey.mutateAsync(apiKey.trim());
@@ -107,6 +114,12 @@ export function SetupPanel({
     onIngested();
   }, [materialFile, courseName, templateMode, apiKey, ingestMaterial, onIngested]);
 
+  const handleIngestTopic = useCallback(async () => {
+    if (!topic.trim()) return;
+    await ingestTopic.mutateAsync({ topic: topic.trim(), apiKey: apiKey.trim() });
+    onIngested();
+  }, [topic, apiKey, ingestTopic, onIngested]);
+
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -121,25 +134,30 @@ export function SetupPanel({
 
   const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
-  const ingestData = ingestMaterial.data as
+  const ingestData = activeIngest.data as
     | { llm_degraded?: boolean; ocr_failed?: boolean; ocr_message?: string; llm_last_error?: string }
     | undefined;
-  const llmDegraded = ingestMaterial.isSuccess && ingestData?.llm_degraded === true;
-  const ocrFailed = ingestMaterial.isSuccess && ingestData?.ocr_failed === true;
+  const llmDegraded = activeIngest.isSuccess && ingestData?.llm_degraded === true;
+  // 主題模式沒有 OCR，後端永遠回 false，所以這個警告只會出現在上傳路徑。
+  const ocrFailed = activeIngest.isSuccess && ingestData?.ocr_failed === true;
 
-  const status = ingestMaterial.isPending
-    ? "正在解析教材並建立知識圖譜..."
+  const status = activeIngest.isPending
+    ? isTopicMode
+      ? "正在生成主題教材並建立知識圖譜..."
+      : "正在解析教材並建立知識圖譜..."
     : ocrFailed
     ? "已建立，但未能轉寫你的教材內容（見下方警告）。"
-    : ingestMaterial.isSuccess
+    : activeIngest.isSuccess
     ? "建立完成。"
-    : ingestMaterial.error instanceof Error
-    ? ingestMaterial.error.message
+    : activeIngest.error instanceof Error
+    ? activeIngest.error.message
     : "";
 
   // Drive the progress steps from the real backend stage (falls back to a coarse
   // time-based guess only before the first stage is reported, e.g. a sync server).
-  const stageIndex = STAGE_ORDER.indexOf(stage);
+  // Topic mode's first stage has its own label but occupies the same slot as parsing,
+  // so the shared progress steps keep working without reindexing STAGE_ORDER.
+  const stageIndex = STAGE_ORDER.indexOf(stage === "生成主題講義" ? "解析教材內容" : stage);
   const effectiveIndex = stageIndex >= 0 ? stageIndex : elapsedSec > 15 ? 2 : elapsedSec > 5 ? 1 : 0;
   const step1Done = effectiveIndex >= 2;
   const step2Active = effectiveIndex === 2;
@@ -207,9 +225,55 @@ export function SetupPanel({
         </div>
       </div>
 
-      {/* Upload zone */}
+      {/* Source tabs: upload a handout, or start from a topic name alone */}
+      <div className="mt-6 flex gap-1 rounded-xl bg-[color:var(--bg-sunken)] p-1">
+        {([
+          { key: "upload", label: "上傳教材" },
+          { key: "topic", label: "直接輸入主題" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setSourceMode(tab.key)}
+            disabled={activeIngest.isPending}
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${
+              sourceMode === tab.key
+                ? "bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] shadow-sm"
+                : "text-[color:var(--text-secondary)]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {isTopicMode ? (
+        /* Topic zone — no file needed; the LLM writes the handout first */
+        <div className="mt-4 card-subtle px-6 py-8">
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium text-[color:var(--text-secondary)]">想學什麼主題？</span>
+            <input
+              type="text"
+              className="input w-full"
+              value={topic}
+              maxLength={100}
+              placeholder="例如：線性代數的正交性"
+              onChange={(e) => setTopic(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleIngestTopic(); }}
+              disabled={activeIngest.isPending}
+            />
+          </label>
+          <p className="mt-3 text-xs leading-5 text-[color:var(--text-muted)]">
+            系統會先為這個主題生成一份講義大綱，再建立概念圖、技能樹與練習題——
+            和上傳教材走完全相同的流程。主題名稱會成為課程名稱。
+          </p>
+          <p className="mt-2 text-xs text-[color:var(--text-muted)]">
+            需要 Gemini API 金鑰（生成教材內容用）。重複輸入相同主題會覆寫該課程的既有資料。
+          </p>
+        </div>
+      ) : (
       <div
-        className={`upload-zone mt-6 flex cursor-pointer flex-col items-center justify-center px-6 py-10 text-center${isDragging ? " drag-over" : ""}`}
+        className={`upload-zone mt-4 flex cursor-pointer flex-col items-center justify-center px-6 py-10 text-center${isDragging ? " drag-over" : ""}`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -254,9 +318,11 @@ export function SetupPanel({
           className="sr-only"
         />
       </div>
+      )}
 
-      {/* Config fields */}
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+      {/* Config fields — 主題模式的課程名稱就是主題本身，模板也不適用 */}
+      <div className={`mt-5 grid grid-cols-1 gap-4 ${isTopicMode ? "" : "md:grid-cols-3"}`}>
+        {!isTopicMode && (
         <label className="space-y-1.5 text-sm">
           <span className="font-medium text-[color:var(--text-secondary)]">課程名稱</span>
           <input
@@ -266,7 +332,9 @@ export function SetupPanel({
             className="input h-10 w-full px-3 text-sm"
           />
         </label>
+        )}
 
+        {!isTopicMode && (
         <label className="space-y-1.5 text-sm">
           <span className="font-medium text-[color:var(--text-secondary)]">課程模板</span>
           <select
@@ -279,6 +347,7 @@ export function SetupPanel({
             <option value="auto">自動偵測模板</option>
           </select>
         </label>
+        )}
 
         <label className="space-y-1.5 text-sm">
           <span className="font-medium text-[color:var(--text-secondary)]">Gemini API 金鑰（選填）</span>
@@ -296,12 +365,12 @@ export function SetupPanel({
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={handleIngest}
-          disabled={ingestMaterial.isPending || !materialFile}
+          onClick={isTopicMode ? handleIngestTopic : handleIngest}
+          disabled={activeIngest.isPending || (isTopicMode ? !topic.trim() : !materialFile)}
           className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50"
         >
-          {ingestMaterial.isPending && <Loader2 size={14} className="animate-spin" />}
-          {ingestMaterial.isPending ? "建立中..." : "建立知識圖譜"}
+          {activeIngest.isPending && <Loader2 size={14} className="animate-spin" />}
+          {activeIngest.isPending ? "建立中..." : isTopicMode ? "生成技能樹" : "建立知識圖譜"}
         </button>
         <button
           type="button"
@@ -312,18 +381,18 @@ export function SetupPanel({
           {saveApiKey.isPending ? "儲存中..." : "儲存金鑰"}
         </button>
         {status && (
-          <span className={`text-xs ${ocrFailed || ingestMaterial.error ? "text-[color:var(--low)]" : "text-[color:var(--text-muted)]"}`}>
+          <span className={`text-xs ${ocrFailed || activeIngest.error ? "text-[color:var(--low)]" : "text-[color:var(--text-muted)]"}`}>
             {status}
           </span>
         )}
       </div>
 
       {/* Ingesting progress steps */}
-      {ingestMaterial.isPending && (
+      {activeIngest.isPending && (
         <div className="mt-4 card-subtle flex flex-col gap-2.5 px-4 py-3">
           <div className={`progress-step ${step1Done ? "done" : "active"}`}>
             <span className="progress-step-dot" />
-            解析文件與頁面
+            {isTopicMode ? "生成主題講義" : "解析文件與頁面"}
             {step1Done && <span className="ml-auto text-[10px] text-[color:var(--high)]">✓</span>}
           </div>
           <div className={`progress-step ${step2Done ? "done" : step2Active ? "active" : ""}`}>

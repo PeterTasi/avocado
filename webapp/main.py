@@ -60,7 +60,9 @@ app = FastAPI(title="AdaptLearn Web API", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # CORS — allow GitHub Pages (and dev server) to call the API.
-_cors_origins = [o.strip() for o in (_settings.allowed_origins or "").split(",") if o.strip()]
+_cors_origins = [
+    o.strip() for o in (_settings.allowed_origins or "").split(",") if o.strip()
+]
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -91,6 +93,7 @@ async def _auth_middleware(request: Request, call_next):
             )
     return await call_next(request)
 
+
 _cache: TTLCache[str, Any] = TTLCache(maxsize=128, ttl=30)
 _cache_large: TTLCache[str, Any] = TTLCache(maxsize=32, ttl=60)
 
@@ -113,13 +116,16 @@ def cached(cache: TTLCache[str, Any] = None):
             result = func(*args, **kwargs)
             c[key] = result
             return result
+
         return wrapper  # type: ignore
+
     return decorator
 
 
 def invalidate_cache(*patterns: str) -> None:
     keys_to_delete = [
-        k for k in list(_cache.keys()) + list(_cache_large.keys())
+        k
+        for k in list(_cache.keys()) + list(_cache_large.keys())
         if any(p in k for p in patterns)
     ]
     for k in keys_to_delete:
@@ -158,7 +164,8 @@ def _prune_jobs() -> None:
     now = time.time()
     with _ingest_jobs_lock:
         stale = [
-            k for k, v in _ingest_jobs.items()
+            k
+            for k, v in _ingest_jobs.items()
             if v.get("status") in ("done", "error")
             and now - v.get("updated_at", now) > _INGEST_JOB_TTL
         ]
@@ -190,6 +197,22 @@ def _run_ingest_job(
     except Exception as exc:  # noqa: BLE001 — surface any failure to the poller
         logger.exception("ingest job %s failed", job_id)
         _set_job(job_id, status="error", error=f"教材處理失敗：{exc}")
+
+
+def _run_topic_job(job_id: str, service: AdaptLearnService, topic: str) -> None:
+    try:
+        _set_job(job_id, status="processing", stage="生成主題講義")
+        result = service.ingest_topic(
+            topic=topic,
+            progress=lambda stage: _set_job(job_id, stage=stage),
+        )
+        invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review")
+        _set_job(job_id, status="done", stage="完成", result=result)
+    except ValueError as exc:
+        _set_job(job_id, status="error", error=str(exc))
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the poller
+        logger.exception("topic job %s failed", job_id)
+        _set_job(job_id, status="error", error=f"主題處理失敗：{exc}")
 
 
 class ApiKeyRequest(BaseModel):
@@ -258,7 +281,9 @@ def health() -> dict[str, Any]:
 @limiter.limit("20/minute")
 def configure_api_key(request: Request, payload: ApiKeyRequest) -> dict[str, Any]:
     service = _get_service(payload.api_key)
-    invalidate_cache("health", "concept", "mastery", "tonight", "graph", "review", "questions")
+    invalidate_cache(
+        "health", "concept", "mastery", "tonight", "graph", "review", "questions"
+    )
     return {"llm_enabled": service.llm_enabled}
 
 
@@ -305,7 +330,38 @@ async def ingest_material(
         ),
         daemon=True,
     ).start()
-    return JSONResponse(status_code=202, content={"job_id": job_id, "status": "processing"})
+    return JSONResponse(
+        status_code=202, content={"job_id": job_id, "status": "processing"}
+    )
+
+
+class TopicRequest(BaseModel):
+    topic: str = ""
+    api_key: str | None = None
+
+
+@app.post("/api/material/topic")
+@limiter.limit("5/minute")
+def ingest_topic(request: Request, payload: TopicRequest) -> dict[str, Any]:
+    topic = payload.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="請輸入想學的主題。")
+    if len(topic) > 100:
+        raise HTTPException(status_code=400, detail="主題太長了，請縮短到 100 字以內。")
+
+    service = _get_service(api_key_override=payload.api_key)
+
+    # Same background-job shape as file ingest: generation plus graph building runs for
+    # minutes, so return a job_id and let the client poll the shared status endpoint.
+    _prune_jobs()
+    job_id = uuid.uuid4().hex
+    _set_job(job_id, status="processing", stage="排隊中", filename=topic)
+    threading.Thread(
+        target=_run_topic_job, args=(job_id, service, topic), daemon=True
+    ).start()
+    return JSONResponse(
+        status_code=202, content={"job_id": job_id, "status": "processing"}
+    )
 
 
 @app.get("/api/material/ingest/status/{job_id}")
@@ -351,7 +407,9 @@ def get_concept_detail(
 ) -> dict[str, Any]:
     language = lang if lang in ("zh", "en") else "zh"
     try:
-        detail = _get_service().get_or_generate_concept_detail(concept_id, language, force=force)
+        detail = _get_service().get_or_generate_concept_detail(
+            concept_id, language, force=force
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
@@ -404,13 +462,17 @@ def list_questions(limit: int = 100) -> dict[str, Any]:
 
 @app.post("/api/questions/{question_id}/grade")
 @limiter.limit("30/minute")
-def grade_question(request: Request, question_id: str, payload: GradeRequest) -> dict[str, Any]:
+def grade_question(
+    request: Request, question_id: str, payload: GradeRequest
+) -> dict[str, Any]:
     answer = payload.answer.strip()
     if not answer:
         raise HTTPException(status_code=400, detail="作答內容不可空白。")
 
     try:
-        result = _get_service().grade_question(question_id=question_id, user_answer=answer)
+        result = _get_service().grade_question(
+            question_id=question_id, user_answer=answer
+        )
         invalidate_cache("mastery", "tonight", "health", "review")
         return result
     except ValueError as exc:
@@ -441,6 +503,7 @@ def tonight_dashboard(top_n: int = 5) -> dict[str, Any]:
 
 # ── New endpoints: courses, cross-course, heatmap ──────────────────
 
+
 @app.get("/api/courses")
 @cached(_cache)
 def list_courses() -> dict[str, Any]:
@@ -466,7 +529,16 @@ def delete_course(request: Request, course_id: str) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review", "questions", "course")
+    invalidate_cache(
+        "concept",
+        "mastery",
+        "tonight",
+        "graph",
+        "health",
+        "review",
+        "questions",
+        "course",
+    )
     return {"ok": True, "deleted": True, "course_id": course_id}
 
 

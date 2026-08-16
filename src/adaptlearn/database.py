@@ -5,13 +5,23 @@ import logging
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Any, Iterator
 
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
-from .models import Attempt, ClassNodeStats, Concept, ConceptDetail, ConceptEdge, Course, CrossCourseEdge, Question, ReviewItem
+from .models import (
+    Attempt,
+    ClassNodeStats,
+    Concept,
+    ConceptDetail,
+    ConceptEdge,
+    Course,
+    CrossCourseEdge,
+    Question,
+    ReviewItem,
+)
 
 logger = logging.getLogger("adaptlearn.db")
 
@@ -20,7 +30,9 @@ class StudyRepository:
     def __init__(self, database_url: str) -> None:
         self._url = database_url
         self._pool: psycopg2.pool.ThreadedConnectionPool = (
-            psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=database_url)
+            psycopg2.pool.ThreadedConnectionPool(
+                minconn=1, maxconn=10, dsn=database_url
+            )
         )
         # In-memory cache so get_active_course_id() immediately reflects ingest within the same process.
         self._active_course_id: str | None = None
@@ -131,29 +143,51 @@ class StudyRepository:
                     PRIMARY KEY (course_id, concept_id)
                 )
             """)
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_attempts_concept_id ON attempts(concept_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_attempts_created_at ON attempts(created_at)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_questions_concept_id ON questions(concept_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_concept_edges_source ON concept_edges(source_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_concept_edges_target ON concept_edges(target_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_cross_course_from ON cross_course_edges(from_concept_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_cross_course_to ON cross_course_edges(to_concept_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attempts_concept_id ON attempts(concept_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attempts_created_at ON attempts(created_at)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_concept_id ON questions(concept_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_concept_edges_source ON concept_edges(source_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_concept_edges_target ON concept_edges(target_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cross_course_from ON cross_course_edges(from_concept_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cross_course_to ON cross_course_edges(to_concept_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id)"
+            )
             # Legacy migration: add course_id column if missing on existing databases
             cur.execute("""
                 SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'concepts' AND column_name = 'course_id'
             """)
             if not cur.fetchone():
-                cur.execute("ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)")
+                cur.execute(
+                    "ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)"
+                )
             # Migration: add retention/stability to review_plan if missing
             cur.execute("""
                 SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'review_plan' AND column_name = 'retention'
             """)
             if not cur.fetchone():
-                cur.execute("ALTER TABLE review_plan ADD COLUMN retention REAL NOT NULL DEFAULT 0.0")
-                cur.execute("ALTER TABLE review_plan ADD COLUMN stability REAL NOT NULL DEFAULT 0.0")
+                cur.execute(
+                    "ALTER TABLE review_plan ADD COLUMN retention REAL NOT NULL DEFAULT 0.0"
+                )
+                cur.execute(
+                    "ALTER TABLE review_plan ADD COLUMN stability REAL NOT NULL DEFAULT 0.0"
+                )
 
         # P5: run versioned migrations after base schema is ready
         self._run_migrations()
@@ -180,7 +214,9 @@ class StudyRepository:
                 logger.info("Applying DB migration %d", version)
                 fn()
                 with self._connect() as cur:
-                    cur.execute("INSERT INTO schema_version (version) VALUES (%s)", (version,))
+                    cur.execute(
+                        "INSERT INTO schema_version (version) VALUES (%s)", (version,)
+                    )
                 logger.info("DB migration %d applied successfully", version)
 
     def _migration_001_add_timestamptz(self) -> None:
@@ -194,10 +230,13 @@ class StudyRepository:
         ]
         with self._connect() as cur:
             for table, col in columns:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT data_type FROM information_schema.columns
                     WHERE table_name = %s AND column_name = %s
-                """, (table, col))
+                """,
+                    (table, col),
+                )
                 row = cur.fetchone()
                 if row and row["data_type"] != "timestamp with time zone":
                     cur.execute(f"""
@@ -230,28 +269,45 @@ class StudyRepository:
         """Delete all concept-derived data and attempts for a single course."""
         with self._connect() as cur:
             # Delete attempts first (they reference concept IDs)
-            cur.execute("""
+            cur.execute(
+                """
                 DELETE FROM attempts
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """, (course_id,))
-            cur.execute("""
+            """,
+                (course_id,),
+            )
+            cur.execute(
+                """
                 DELETE FROM cross_course_edges
                 WHERE from_concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
                    OR to_concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """, (course_id, course_id))
-            cur.execute("DELETE FROM class_node_stats WHERE course_id = %s", (course_id,))
-            cur.execute("""
+            """,
+                (course_id, course_id),
+            )
+            cur.execute(
+                "DELETE FROM class_node_stats WHERE course_id = %s", (course_id,)
+            )
+            cur.execute(
+                """
                 DELETE FROM concept_edges
                 WHERE source_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """, (course_id,))
-            cur.execute("""
+            """,
+                (course_id,),
+            )
+            cur.execute(
+                """
                 DELETE FROM questions
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """, (course_id,))
-            cur.execute("""
+            """,
+                (course_id,),
+            )
+            cur.execute(
+                """
                 DELETE FROM review_plan
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """, (course_id,))
+            """,
+                (course_id,),
+            )
             cur.execute("DELETE FROM concepts WHERE course_id = %s", (course_id,))
 
     def delete_course(self, course_id: str) -> None:
@@ -287,6 +343,11 @@ class StudyRepository:
         """Legacy global wipe — kept for tests; prefer reset_course_state for normal use."""
         with self._connect() as cur:
             cur.execute("DELETE FROM concept_edges")
+            # Must go with concepts: cross_course_edges holds concept IDs with no FK,
+            # so skipping it leaves rows pointing at deleted concepts. reset_course_state
+            # already clears them per-course; this global path used to miss them, which
+            # is how the local DB accumulated 63 unresolvable edges.
+            cur.execute("DELETE FROM cross_course_edges")
             cur.execute("DELETE FROM concepts")
             cur.execute("DELETE FROM questions")
             cur.execute("DELETE FROM review_plan")
@@ -359,7 +420,9 @@ class StudyRepository:
             )
         return concepts
 
-    def get_concept_detail(self, concept_id: str, language: str) -> ConceptDetail | None:
+    def get_concept_detail(
+        self, concept_id: str, language: str
+    ) -> ConceptDetail | None:
         with self._connect() as cur:
             cur.execute(
                 """
@@ -377,7 +440,9 @@ class StudyRepository:
             concept_id=row["concept_id"],
             language=row["language"],
             definition=row["definition"],
-            key_points=json.loads(row["key_points_json"]) if row["key_points_json"] else [],
+            key_points=json.loads(row["key_points_json"])
+            if row["key_points_json"]
+            else [],
             example=row["example"],
             common_mistakes=row["common_mistakes"],
             has_formula=bool(row["has_formula"]),
@@ -452,7 +517,14 @@ class StudyRepository:
                     """
                 )
             rows = cur.fetchall()
-        return [ConceptEdge(source_id=row["source_id"], target_id=row["target_id"], relation=row["relation"]) for row in rows]
+        return [
+            ConceptEdge(
+                source_id=row["source_id"],
+                target_id=row["target_id"],
+                relation=row["relation"],
+            )
+            for row in rows
+        ]
 
     def save_questions(self, questions: list[Question]) -> None:
         if not questions:
@@ -609,7 +681,10 @@ class StudyRepository:
                 )
             rows = cur.fetchall()
         return {
-            row["concept_id"]: {"avg_score": float(row["avg_score"]), "count": int(row["cnt"])}
+            row["concept_id"]: {
+                "avg_score": float(row["avg_score"]),
+                "count": int(row["cnt"]),
+            }
             for row in rows
         }
 
@@ -673,25 +748,34 @@ class StudyRepository:
     def get_metrics(self, course_id: str | None = None) -> dict[str, float]:
         with self._connect() as cur:
             if course_id:
-                cur.execute("SELECT COUNT(*) AS cnt FROM concepts WHERE course_id = %s", (course_id,))
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM concepts WHERE course_id = %s",
+                    (course_id,),
+                )
             else:
                 cur.execute("SELECT COUNT(*) AS cnt FROM concepts")
             concept_count = cur.fetchone()["cnt"]
 
             if course_id:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT COUNT(*) AS cnt FROM attempts
                     WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-                """, (course_id,))
+                """,
+                    (course_id,),
+                )
             else:
                 cur.execute("SELECT COUNT(*) AS cnt FROM attempts")
             attempt_count = cur.fetchone()["cnt"]
 
             if course_id:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT AVG(score) AS avg_score FROM attempts
                     WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-                """, (course_id,))
+                """,
+                    (course_id,),
+                )
             else:
                 cur.execute("SELECT AVG(score) AS avg_score FROM attempts")
             avg_score = cur.fetchone()["avg_score"]
@@ -716,7 +800,13 @@ class StudyRepository:
                     filename = EXCLUDED.filename,
                     uploaded_at = EXCLUDED.uploaded_at
                 """,
-                (course.id, course.user_id, course.subject, course.filename, course.uploaded_at),
+                (
+                    course.id,
+                    course.user_id,
+                    course.subject,
+                    course.filename,
+                    course.uploaded_at,
+                ),
             )
 
     def list_courses(self, user_id: str = "default") -> list[Course]:
@@ -768,7 +858,10 @@ class StudyRepository:
                     similarity = EXCLUDED.similarity,
                     link_type = EXCLUDED.link_type
                 """,
-                [(e.from_concept_id, e.to_concept_id, e.similarity, e.link_type) for e in edges],
+                [
+                    (e.from_concept_id, e.to_concept_id, e.similarity, e.link_type)
+                    for e in edges
+                ],
             )
 
     def list_cross_course_edges(self) -> list[CrossCourseEdge]:
@@ -784,6 +877,57 @@ class StudyRepository:
                 similarity=float(row["similarity"]),
                 link_type=row["link_type"],
             )
+            for row in rows
+        ]
+
+    def list_cross_course_edges_detailed(
+        self, course_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Cross-course edges joined to concept and course names, for display.
+
+        `list_cross_course_edges` returns bare concept IDs, which is all the ingest
+        pipeline needs — but a UI cannot resolve them: /api/concepts is scoped to the
+        active course, so the *other* course's concept name is unreachable. This joins
+        both ends up front instead.
+
+        Passing `course_id` keeps only edges with at least one end in that course.
+        Rows whose concepts were deleted are dropped by the inner joins.
+        """
+        sql = """
+            SELECT e.from_concept_id, e.to_concept_id, e.similarity, e.link_type,
+                   cf.name AS from_concept_name, ct.name AS to_concept_name,
+                   cf.course_id AS from_course_id, ct.course_id AS to_course_id,
+                   COALESCE(of.subject, '') AS from_course_name,
+                   COALESCE(ot.subject, '') AS to_course_name
+            FROM cross_course_edges e
+            JOIN concepts cf ON cf.id = e.from_concept_id
+            JOIN concepts ct ON ct.id = e.to_concept_id
+            LEFT JOIN courses of ON of.id = cf.course_id
+            LEFT JOIN courses ot ON ot.id = ct.course_id
+        """
+        params: tuple[Any, ...] = ()
+        if course_id:
+            sql += " WHERE cf.course_id = %s OR ct.course_id = %s"
+            params = (course_id, course_id)
+        sql += " ORDER BY e.similarity DESC"
+
+        with self._connect() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+        return [
+            {
+                "from_concept_id": row["from_concept_id"],
+                "to_concept_id": row["to_concept_id"],
+                "from_concept_name": row["from_concept_name"],
+                "to_concept_name": row["to_concept_name"],
+                "from_course_id": row["from_course_id"] or "",
+                "to_course_id": row["to_course_id"] or "",
+                "from_course_name": row["from_course_name"],
+                "to_course_name": row["to_course_name"],
+                "similarity": float(row["similarity"]),
+                "link_type": row["link_type"],
+            }
             for row in rows
         ]
 
@@ -838,8 +982,15 @@ class StudyRepository:
                         updated_at = EXCLUDED.updated_at
                     """,
                     [
-                        (s.course_id, s.concept_id, s.error_rate, s.avg_attempts,
-                         s.stuck_count, s.sample_count, s.updated_at)
+                        (
+                            s.course_id,
+                            s.concept_id,
+                            s.error_rate,
+                            s.avg_attempts,
+                            s.stuck_count,
+                            s.sample_count,
+                            s.updated_at,
+                        )
                         for s in stats
                     ],
                 )
@@ -895,14 +1046,19 @@ class StudyRepository:
         by_concept: dict[str, list[dict]] = defaultdict(list)
         for row in rows:
             day_val = row["day"]
-            day_str = day_val.isoformat()[:10] if hasattr(day_val, "isoformat") else str(day_val)[:10]
-            by_concept[row["concept_id"]].append({
-                "day": day_str,
-                "avg_score": round(float(row["avg_score"]), 3),
-                "n": int(row["n"]),
-            })
+            day_str = (
+                day_val.isoformat()[:10]
+                if hasattr(day_val, "isoformat")
+                else str(day_val)[:10]
+            )
+            by_concept[row["concept_id"]].append(
+                {
+                    "day": day_str,
+                    "avg_score": round(float(row["avg_score"]), 3),
+                    "n": int(row["n"]),
+                }
+            )
 
         return [
-            {"concept_id": cid, "daily": daily}
-            for cid, daily in by_concept.items()
+            {"concept_id": cid, "daily": daily} for cid, daily in by_concept.items()
         ]

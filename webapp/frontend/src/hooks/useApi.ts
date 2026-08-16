@@ -392,6 +392,30 @@ export function useCourses() {
   });
 }
 
+export interface CrossCourseLink {
+  from_concept_id: string;
+  to_concept_id: string;
+  from_concept_name: string;
+  to_concept_name: string;
+  from_course_id: string;
+  to_course_id: string;
+  from_course_name: string;
+  to_course_name: string;
+  similarity: number;
+  link_type: string;
+}
+
+// detailed=true is required: without it the API returns bare concept IDs, and the
+// far end of a bridge belongs to another course, so /api/concepts can't resolve it.
+export function useCrossCourseLinks() {
+  return useQuery({
+    queryKey: ["cross-course-links"],
+    queryFn: () =>
+      apiFetch("/api/cross-course-edges?detailed=true") as Promise<{ items: CrossCourseLink[] }>,
+    staleTime: 60000,
+  });
+}
+
 export function useDeleteCourse() {
   const queryClient = useQueryClient();
 

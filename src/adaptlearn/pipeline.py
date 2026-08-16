@@ -566,6 +566,13 @@ class AdaptLearnService:
     def list_cross_course_edges(self) -> list[CrossCourseEdge]:
         return self.repo.list_cross_course_edges()
 
+    def list_cross_course_edges_detailed(
+        self, scope_active: bool = True
+    ) -> list[dict[str, object]]:
+        """Display-ready cross-course edges, scoped to the active course by default."""
+        course_id = self.repo.get_active_course_id() if scope_active else None
+        return self.repo.list_cross_course_edges_detailed(course_id=course_id)
+
     def get_metrics(self) -> dict[str, float]:
         active_course_id = self.repo.get_active_course_id()
         metrics = self.repo.get_metrics(course_id=active_course_id)

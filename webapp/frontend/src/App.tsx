@@ -22,6 +22,7 @@ import { InsightFeed } from "./components/InsightFeed";
 import type { Insight } from "./components/InsightFeed";
 import { KnowledgeGraphPanel } from "./components/KnowledgeGraphPanel";
 import { ClassHeatmapPanel } from "./components/ClassHeatmapPanel";
+import { CrossCourseBridgePanel } from "./components/CrossCourseBridgePanel";
 import { ListItemSkeleton, Skeleton } from "./components/LoadingSkeleton";
 import { MasteryTable } from "./components/MasteryTable";
 import { QuizPanel } from "./components/QuizPanel";
@@ -443,6 +444,9 @@ export default function App() {
       <div className="space-y-6">
         <ErrorBoundary>
           <KnowledgeGraphPanel dotSource={knowledgeGraphDot} isLoading={graphLoading} masteryItems={conceptMastery} courseName={activeCourseName} />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <CrossCourseBridgePanel />
         </ErrorBoundary>
         <ErrorBoundary>
           <ClassHeatmapPanel />

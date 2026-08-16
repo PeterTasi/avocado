@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-08-16 — 主題生成技能樹（待辦 J）+ OCR 換 qwen3-vl + 待辦 F 規劃 🌱
+
+### 待辦 J：沒有教材也能學 ✅ — commit `c3ae924`
+
+**動機：** 整理講稿時發現，網站在「學生手上沒有教材」時完全無法運作。
+
+**做法（刻意取巧）：** 讀 `ingest_material` 後發現 `extract_material_text` 對 `.txt` 是直接 decode、不碰 OCR。
+所以主題模式不需要新管線——LLM 先生成 800–1500 字講義大綱，再以 `f"{topic}.txt"` 餵給既有的
+`ingest_material`。概念抽取、course_id、DB、ChromaDB、跨課程橋、回傳格式全部沿用，**`ingest_material` 一行未動**。
+
+**實機驗收：**
+- 線性代數的正交性 → 1774 字、19 概念、24 邊、53 條跨課程連結。
+  技能樹：`向量空間 → 子空間/內積 → 範數/線性獨立/點積 → 正交投影/正交集合 → 規範正交基底 → 正交矩陣`
+- 機率的貝氏定理 → 11 概念。
+  `條件機率/事前機率 → 乘法法則/概似度 → 全機率公式 → 邊際機率 → 貝氏定理 → 基本比率謬誤/檢察官謬誤`
+
+**已知限制：** 主題模式完全依賴 Gemini generateContent 配額（沒教材就只能靠 LLM 生），錯誤訊息會明講是配額問題。
+
+### Bug — glm-ocr 陷入重複迴圈，把教材文字灌成三倍 🩹
+
+**症狀：** `.env` 原設 `OLLAMA_OCR_MODEL=glm-ocr`。同一張測試頁比較兩個模型：
+
+| 模型 | 耗時 | 結果 |
+|---|---|---|
+| qwen3-vl:8b | 37.6s | 乾淨、一次、正確 |
+| glm-ocr | 52.7s | **同一段輸出重複 3 次以上**，各自包在 ` ```markdown ` 圍欄裡 |
+
+**根因：** OCR 專用小模型的 looping hallucination（DeepSeek-OCR 同類問題已見於公開實測）。
+`_clean_transcription_text` 只剝頭尾圍欄，中間的留著，於是每頁文字被灌成三倍餵進 `extract_concepts`，
+扭曲概念權重也白燒 token。
+
+**修法：** `.env` 改 `qwen3-vl:8b`（6.1 GB，M4 16GB 可跑），原因寫進註解避免被改回去。
+**未做：** 沒有替 `_clean_transcription_text` 加去重——那是為已淘汰的模型寫防護（YAGNI）。
+
+**未驗證：** 上述比較是打字測試頁，不是手寫。glm-ocr 有一個真的較好處：輸出正規 LaTeX
+（`$\delta_{i,j}$`），qwen3-vl 會把 `<u, v>` 的逗號吃掉。真正的手寫比較待用實際講義驗。
+
+### 待辦 F 規劃 — 發現 CLAUDE.md 的前提是錯的
+
+CLAUDE.md 原寫「後端與 API 都好了，缺一張卡片（約 60–80 行）」。實查：
+`/api/cross-course-edges` 只回 `concept_id`，沒有概念名稱與課程名稱；而 `/api/concepts` 只回
+**active course** 的概念，所以前端無法自行補齊連結另一端那門課的名稱。
+F 實際上是「後端 enrich endpoint + 前端卡片」。規劃見 `plan.md`。
+
+---
+
 ## 2026-08-15 — 待辦 E 實機驗收通過 + 修三個環境／整合 bug 🩹
 
 ### 待辦 E（技能樹）實機驗收 ✅ — 可 merge main

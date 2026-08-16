@@ -287,19 +287,20 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 > 核心 Demo 亮點（技能樹＋卡關歸因、遺忘曲線、掌握度趨勢、手寫 OCR、跨課程語義橋）後端皆已完成並驗收。
 > 完整說明見 `plan.md`；已完成項目的除錯歷程見 `DEVLOG.md`。
 
-### 目前狀態（2026-08-15）
+### 目前狀態（2026-08-16）
 
-- **分支 `ui/graph-skill-tree` 領先 main 四個 commit，尚未 merge。** 技能樹已實機驗收通過（分層 DAG／frontier 三態／卡關歸因四項標準全過），可以合併。
+- **git push 被 GitHub 擋住（尚未解決）。** gh token 只有 `gist, read:org, repo`，缺 `workflow`；而 6/15 的 commit `935026f` 帶了 `.github/workflows/react-doctor.yml`，導致整批推送被拒。**`ui/graph-skill-tree` 那四個 commit 其實也從沒推上去過。** 解法：`gh auth refresh -s workflow`（需使用者本人授權）。
+- **分支 `feat/topic-skill-tree`**（自 `ui/graph-skill-tree` 分出）含主題生成技能樹（待辦 J ✅ commit `c3ae924`，已實機驗收）。技能樹本身也已驗收通過，可以合併。
+- **本機 demo 資料庫現有四門課**：線性代數的正交性、機率的貝氏定理（皆為主題生成）、Algorithms、Linear Algebra（8/15 測試殘留，待辦 I）。跨課程連結 63 條。
 - **Render 免費資源全掛**（PostgreSQL 與 web service 皆停用）。目前只有本機能跑，`.env` 的 `DATABASE_URL` 已指向 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`，使用者為 macOS 帳號、無密碼）。原 Render 字串在 `.env` 註解保留。
-- **跨課程語義橋後端已修好可用**（8/15 修掉三個疊在一起的 bug），實測線代↔機器學習自動產出 9 條連結——**但前端沒有任何元件消費它，畫面上看不到**（待辦 F）。
+- **跨課程語義橋後端已修好可用**（8/15 修掉三個疊在一起的 bug），目前實測 63 條連結——**但前端沒有任何元件消費它，畫面上看不到**（待辦 F，已規劃）。
 
 ### 未完成
 
 | # | 狀態 | 說明 |
 |---|------|------|
-| F | **優先** | 跨課程語義橋的前端。後端與 API 都好了，缺一張列出連結的卡片（約 60–80 行）。目前最大缺口 |
+| F | **優先・已規劃** | 跨課程語義橋的前端。**舊描述「後端與 API 都好了」是錯的**——`/api/cross-course-edges` 只回 concept_id，沒有概念名／課程名，前端也無法自行補（`/api/concepts` 只回 active course 的概念）。所以 F = 後端 enrich endpoint + 前端卡片。決策：放圖譜頁技能樹下方、只顯示與目前課程相關的連結。完整步驟見 `plan.md` |
 | G | **會實際發生** | `review_plan` 表是全域的（審查 #4）：重算複習計畫會刪掉其他課程的計畫。本機已有兩門課，不再是「多課程才爆」 |
-| J | **進行中** | 主題生成技能樹：沒有教材時，只給主題（例「線性代數的正交性」）也能生出概念圖＋技能樹。做法 A——Gemini 先依主題生一份講義大綱文字，再丟進現有 `build_knowledge_graph`，下游完全沿用 |
 | H | 已決策（部分） | **OCR 定案走 Ollama 本機**（`OLLAMA_OCR_MODEL=qwen3-vl:8b`，6.1 GB，M4 16GB 可跑）——手寫講義不再吃 Gemini vision 配額。**Embedding 永遠留在 Gemini**（`gemini-embedding-001`，Anthropic 沒有 embedding API，且它走獨立配額）。**尚未決策**：文字層（概念抽取／出題／批改）要不要換 Claude API——技術上可行且便宜（Sonnet 5 約 NT$5–8／份講義），但 Claude Pro 訂閱不含 API 額度，要另外儲值。動工前先切 Opus 更新 plan.md |
 | I | 小 | 跑 `pytest` 會把測試課程灌進本機 demo 資料庫，每次 demo 前要手動清 |
 | 測試 | 已知 | 71 條測試 66 通過；5 條失敗是 ingest 改非同步（回 202）後舊整合測試沒更新，非產品缺陷 |

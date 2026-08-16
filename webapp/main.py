@@ -190,7 +190,9 @@ def _run_ingest_job(
             template_mode=template_mode,
             progress=lambda stage: _set_job(job_id, stage=stage),
         )
-        invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review")
+        invalidate_cache(
+            "concept", "mastery", "tonight", "graph", "health", "review", "cross"
+        )
         _set_job(job_id, status="done", stage="完成", result=result)
     except ValueError as exc:
         _set_job(job_id, status="error", error=str(exc))
@@ -206,7 +208,9 @@ def _run_topic_job(job_id: str, service: AdaptLearnService, topic: str) -> None:
             topic=topic,
             progress=lambda stage: _set_job(job_id, stage=stage),
         )
-        invalidate_cache("concept", "mastery", "tonight", "graph", "health", "review")
+        invalidate_cache(
+            "concept", "mastery", "tonight", "graph", "health", "review", "cross"
+        )
         _set_job(job_id, status="done", stage="完成", result=result)
     except ValueError as exc:
         _set_job(job_id, status="error", error=str(exc))
@@ -544,7 +548,17 @@ def delete_course(request: Request, course_id: str) -> dict[str, Any]:
 
 @app.get("/api/cross-course-edges")
 @cached(_cache)
-def cross_course_edges() -> dict[str, Any]:
+def cross_course_edges(detailed: bool = False, scope: str = "active") -> dict[str, Any]:
+    # detailed=true adds concept and course names so the UI can render the link; the
+    # default (bare IDs) is kept byte-identical for existing consumers.
+    if detailed:
+        service = _get_service()
+        return {
+            "items": service.list_cross_course_edges_detailed(
+                scope_active=scope == "active"
+            )
+        }
+
     edges = _get_service().list_cross_course_edges()
     return {
         "items": [

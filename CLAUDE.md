@@ -315,7 +315,7 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 |---|------|------|
 | F | **優先・已規劃** | 跨課程語義橋的前端。**舊描述「後端與 API 都好了」是錯的**——`/api/cross-course-edges` 只回 concept_id，沒有概念名／課程名，前端也無法自行補（`/api/concepts` 只回 active course 的概念）。所以 F = 後端 enrich endpoint + 前端卡片。決策：放圖譜頁技能樹下方、只顯示與目前課程相關的連結。完整步驟見 `plan.md` |
 | G | **會實際發生** | `review_plan` 表是全域的（審查 #4）：重算複習計畫會刪掉其他課程的計畫。本機已有兩門課，不再是「多課程才爆」 |
-| H | 已決策（部分） | **OCR 定案走 Ollama 本機**（`OLLAMA_OCR_MODEL=qwen3-vl:8b`，6.1 GB，M4 16GB 可跑）——手寫講義不再吃 Gemini vision 配額。**Embedding 永遠留在 Gemini**（`gemini-embedding-001`，Anthropic 沒有 embedding API，且它走獨立配額）。**尚未決策**：文字層（概念抽取／出題／批改）要不要換 Claude API——技術上可行且便宜（Sonnet 5 約 NT$5–8／份講義），但 Claude Pro 訂閱不含 API 額度，要另外儲值。動工前先切 Opus 更新 plan.md |
+| H | 已決策（部分） | **OCR 定案走 Ollama 本機**（`OLLAMA_OCR_MODEL=qwen2.5vl:7b`——**不要用 qwen3-vl:8b，它是思考型模型，密集手寫頁會靜默回空**；歷程見 `.env` 註解）——手寫講義不再吃 Gemini vision 配額。**Embedding 永遠留在 Gemini**（`gemini-embedding-001`，Anthropic 沒有 embedding API，且它走獨立配額）。**尚未決策**：文字層（概念抽取／出題／批改）要不要換 Claude API——技術上可行且便宜（Sonnet 5 約 NT$5–8／份講義），但 Claude Pro 訂閱不含 API 額度，要另外儲值。動工前先切 Opus 更新 plan.md |
 | I | 小 | 跑 `pytest` 會把測試課程灌進本機 demo 資料庫，每次 demo 前要手動清 |
 | 測試 | 已知 | 71 條測試 66 通過；5 條失敗是 ingest 改非同步（回 202）後舊整合測試沒更新，非產品缺陷 |
 | Bug 5 B | 選配 | 後端 `session_id` scope（需 DB schema migration）。方案 A（前端 modal）+ 方案 C（清除課程資料 DELETE endpoint）皆已完成，夠用 |

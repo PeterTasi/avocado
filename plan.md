@@ -331,12 +331,39 @@ E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決�
 （`from_exists=1, to_exists=0`）。前端卡片顯示「沒有關聯」是正確的——INNER JOIN 擋下了
 壞資料，錯的是資料本身。
 
-**修法（兩層都要）：**
-1. **根因**：在 `pipeline.AdaptLearnService` 開一個全域重設方法，同時清 Postgres 與
-   ChromaDB；測試改呼叫它，不要直接呼叫 repo 的 `reset_learning_state()`。
-2. **防線**：`cross_course_linker.find_cross_course_links` 存邊之前，先確認對方概念
-   存在於 Postgres（一次 `WHERE id = ANY(...)`）。向量庫是索引，Postgres 才是真相來源；
-   索引過期不該污染真相。這層更重要——不管未來什麼原因造成不同步都擋得住。
+**洩漏途徑有兩條（2026-08-17 追查）：**
+
+| | 途徑 | 影響範圍 |
+|---|---|---|
+| (a) | `reset_learning_state()` 刪 PG 概念，碰不到 vector store | 測試（但會污染本機 demo 庫） |
+| (b) | `ingest_material` 用 `upsert_concepts(replace_existing=False)`，**沒有先刪該課程舊向量**——而 PG 側的 `reset_course_state(course_id)` 有刪 | **正式流程**：重新 ingest 同一門課，概念變了 ID 也變，舊向量永久殘留 |
+
+(b) 是先前漏看的。手寫講義 ingest 兩次（4 概念 → 24 概念），第一次的向量至今還在。
+
+**修法（三層，由重要到次要）：**
+
+1. **防線——連結器不得產生指向不存在概念的邊。**
+   `cross_course_linker.find_cross_course_links` 已經收到 `repo`，在 `save_cross_course_edges`
+   之前先過濾：新增 `repo.filter_existing_concept_ids(ids) -> set[str]`
+   （一次 `SELECT id FROM concepts WHERE id = ANY(%s)`），丟掉對方不存在的比對結果，
+   並 log 丟掉幾筆。**向量庫是索引，Postgres 是真相來源**——索引過期不該污染真相。
+   這層最重要：不管未來哪條途徑造成不同步都擋得住。
+
+2. **根因 (b)——ingest 時對稱清理。**
+   `ingest_material` 在 `upsert_concepts` 前呼叫 `self.vector_store.delete_course(course_id)`，
+   與 PG 側的 `reset_course_state(course_id)` 對稱。`delete_course` 已存在且實作正確
+   （`collection.delete(where={"course_id": course_id})`），是一行的事。
+
+3. **根因 (a)——全域重設要兩邊一起清。**
+   `vector_store` 目前只有 per-course 的 `delete_course`，需要新增 `reset_all()`。
+   然後在 `AdaptLearnService` 開一個同時清 PG 與向量庫的方法，測試改呼叫它。
+
+**既有髒資料的清理：** 向量庫可從 Postgres 重建，所以修好後最乾淨的做法是
+**清空 Chroma 再重新 ingest demo 課程**（`gemini-embedding-001` 走獨立配額，成本可忽略）。
+不要寫「逐筆比對刪除」的修補腳本——那是為一次性問題寫長期程式碼。
+
+**驗收標準：** 修完後 ingest 一門課，`Chroma 的 id 集合 ⊆ Postgres 的 id 集合`；
+跨課程卡片在有兩門以上相關課程時顯示得出連結（目前顯示 0 條）。
 
 ### L2：空白頁被算成 OCR 成功
 
@@ -351,9 +378,31 @@ E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決�
 `useApi.ts` 的 `MAX_WAIT_MS = 12 * 60 * 1000`。14 頁手寫 PDF 用 qwen2.5vl 約需 12 分鐘、
 qwen3-vl 需 35 分鐘——**使用者會看到「教材處理逾時」，但後端其實還在跑而且會成功**。
 
-**修法（建議）：** 不要單純調大上限（真的卡死的 job 會空轉更久）。改成
-**「卡住才算逾時」**：後端每頁都回報 `OCR 辨識第 N/M 頁`，只要 stage 字串有變化就重設
-計時器，連續 N 分鐘沒進展才判逾時。約 3 行。
+**已確認沒有第二個坑：** `_prune_jobs()` 只清 `done`／`error` 的 job（`_INGEST_JOB_TTL`
+30 分鐘是完成後才起算），執行中的 job 不會被清掉。所以純粹是前端上限的問題，
+後端不需要改。
+
+**修法：把「總時長上限」換成「停滯上限」。**
+
+在 `pollIngestStatus` 裡追蹤 `lastStage` 與 `lastProgressAt`：stage 字串每次變化就重設
+計時器；連續 `_STALL_TIMEOUT_MS` 沒有任何進展才判逾時。另保留一個很寬鬆的絕對上限
+當最後防線（避免後端回報假進度時無限等待）。
+
+```
+_STALL_TIMEOUT_MS = 10 分鐘   // 連續無進展
+_ABSOLUTE_MAX_MS  = 90 分鐘   // 最後防線
+```
+
+兩者的錯誤訊息要不同：停滯 →「處理似乎停住了（已 N 分鐘沒有進展）」；
+絕對上限 →「處理時間過長」。使用者才知道是卡死還是單純很久。
+
+**風險——停滯門檻不能太小。** 並非每個階段都會頻繁更新 stage：
+`建立知識圖譜` 這一步在長文件上會切成最多 6 個 chunk、每個 chunk 一次 Gemini 呼叫，
+期間 stage 字串完全不變，可能數分鐘沒有動靜。10 分鐘是為此保留的餘裕；
+若之後想縮短，要先讓後端在該階段回報更細的進度（例如「抽取概念 2/6」）。
+
+**驗收標準：** 14 頁手寫 PDF（約 12 分鐘）從畫面上傳到完成不再誤報逾時；
+手動停掉後端模擬卡死時，10 分鐘後出現停滯訊息而非一直轉。
 
 ### L4 ✅ DONE（2026-08-17，commit 見 DEVLOG）：題目裡的 LaTeX 被 JSON 跳脫打壞
 

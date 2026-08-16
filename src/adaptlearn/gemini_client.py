@@ -355,6 +355,9 @@ From the material below, extract at most {max_concepts} core concepts.
 
 Course: {course_name}
 
+IMPORTANT: inside JSON strings, every backslash must be doubled so LaTeX survives
+parsing. A single backslash before t/n/r/b/f is read as a control character and the
+command is destroyed. Correct: "$V \\\\to V$" and "$a \\\\neq b$".
 Return ONLY valid JSON array with this schema:
 [
   {{
@@ -427,6 +430,9 @@ You are an adaptive tutor. Generate {per_concept} diagnostic questions per conce
 {lang_rule}
 For any mathematical expressions, wrap them in $...$ (e.g. $A^{{-1}}$, $\\lambda_1$).
 
+IMPORTANT: inside JSON strings, every backslash must be doubled so LaTeX survives
+parsing. A single backslash before t/n/r/b/f is read as a control character and the
+command is destroyed. Correct: "$V \\\\to V$" and "$a \\\\neq b$".
 Return ONLY valid JSON array with schema:
 [
   {{
@@ -504,6 +510,9 @@ Concept: {name}
 Chapter: {chapter}
 Short hint: {description}
 
+IMPORTANT: inside JSON strings, every backslash must be doubled so LaTeX survives
+parsing. A single backslash before t/n/r/b/f is read as a control character and the
+command is destroyed. Correct: "$V \\\\to V$" and "$a \\\\neq b$".
 Return ONLY valid JSON with schema:
 {{
   "definition": "2-3 sentence complete definition",
@@ -559,6 +568,9 @@ Reference answer:
 Student answer:
 {user_answer}
 
+IMPORTANT: inside JSON strings, every backslash must be doubled so LaTeX survives
+parsing. A single backslash before t/n/r/b/f is read as a control character and the
+command is destroyed. Correct: "$V \\\\to V$" and "$a \\\\neq b$".
 Return ONLY valid JSON object:
 {{
   "score": 0.0 to 1.0,
@@ -636,6 +648,50 @@ def _clean_transcription_text(raw: str) -> str:
     return cleaned.strip()
 
 
+# LaTeX commands whose backslash the model sometimes forgets to escape in JSON.
+# json.loads then reads the pair as a control-character escape and the command is
+# silently destroyed: "$V \to V$" arrives as "$V <TAB>o V$".
+#
+# The mapping back is exact for these four — a raw TAB/backspace/formfeed/CR never
+# belongs in transcribed course material, so seeing one means the escape was eaten.
+#   \t → \to, \times, \theta …      \f → \frac, \forall …
+#   \b → \begin, \bar …             \r → \rangle, \rightarrow …
+#
+# \n is deliberately NOT repaired: "\neq" and a real line break are indistinguishable
+# after parsing, and answers legitimately contain line breaks. That case is handled by
+# asking for correct escaping in the prompt instead.
+_LATEX_CONTROL_REPAIRS = {
+    "\t": r"\t",
+    "\x08": r"\b",
+    "\x0c": r"\f",
+    "\x0b": r"\v",
+}
+
+
+def _repair_latex_escapes(value: Any) -> Any:
+    """Undo control-character damage from unescaped LaTeX backslashes."""
+    if isinstance(value, str):
+        repaired = value
+        for control, latex in _LATEX_CONTROL_REPAIRS.items():
+            if control in repaired:
+                repaired = repaired.replace(control, latex)
+        # A CR is only damage when it is not part of a CRLF line ending.
+        if "\r" in repaired:
+            repaired = re.sub(r"\r(?!\n)", r"\\r", repaired)
+        if repaired != value:
+            logger.warning(
+                "Repaired LaTeX escapes mangled by JSON parsing (%d chars): %.60s",
+                len(value),
+                value.replace("\t", "<TAB>"),
+            )
+        return repaired
+    if isinstance(value, list):
+        return [_repair_latex_escapes(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _repair_latex_escapes(item) for key, item in value.items()}
+    return value
+
+
 def _parse_json_payload(raw: str) -> Any:
     raw = raw.strip()
     if not raw:
@@ -643,7 +699,7 @@ def _parse_json_payload(raw: str) -> Any:
 
     for candidate in _candidate_json_strings(raw):
         try:
-            return json.loads(candidate)
+            return _repair_latex_escapes(json.loads(candidate))
         except json.JSONDecodeError:
             continue
     return None

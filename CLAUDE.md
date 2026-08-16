@@ -317,6 +317,9 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | L1 | **優先・已診斷** | **ChromaDB 與 PostgreSQL 不同步**：Chroma 有 80 筆幽靈向量（概念已被 `reset_learning_state` 從 PG 刪除，向量庫沒清）。導致跨課程比對全部命中幽靈，手寫課程建立的 65 條連結**全指向不存在的概念**。前端顯示「沒有關聯」是正確行為。修法兩層（根因＋連結器防線）見 `plan.md` 待辦 L1 |
 | L2 | 小・已診斷 | 空白頁被算成 OCR 成功——模型把 prompt 裡的課程名／頁標吐回來當內容 |
 | L3 | **會實際發生・已診斷** | 前端輪詢上限 12 分鐘，14 頁手寫 PDF 約需 12 分鐘 → 使用者看到「處理逾時」但後端其實成功。建議改成「卡住才算逾時」 |
+| L4 | **demo 看得到・已診斷** | 題目裡的 LaTeX 被打壞：LLM 產 JSON 時 `\to` 沒跳脫，`json.loads` 轉成 TAB，畫面上公式破碎（6 題中 2 題）。修在 prompt 層或解析層，**不要**在解析後猜回去 |
+| L5 | demo 話術風險 | `/api/tonight` 的通過率（實測 94%）來自未驗證的佔位公式，且當時只有 1 筆作答。評審問起要有答案；demo 建議講相對提升而非絕對數字 |
+| L6 | demo 操作提醒 | **多課程時不要按「重算複習計畫」**——待辦 G 會刪掉其他課程的計畫。修好 G 前，demo 流程避開這個按鈕 |
 | G | **會實際發生** | `review_plan` 表是全域的（審查 #4）：重算複習計畫會刪掉其他課程的計畫。本機已有兩門課，不再是「多課程才爆」 |
 | H | 已決策（部分） | **OCR 定案走 Ollama 本機**（`OLLAMA_OCR_MODEL=qwen2.5vl:7b`——**不要用 qwen3-vl:8b，它是思考型模型，密集手寫頁會靜默回空**；歷程見 `.env` 註解）——手寫講義不再吃 Gemini vision 配額。**Embedding 永遠留在 Gemini**（`gemini-embedding-001`，Anthropic 沒有 embedding API，且它走獨立配額）。**尚未決策**：文字層（概念抽取／出題／批改）要不要換 Claude API——技術上可行且便宜（Sonnet 5 約 NT$5–8／份講義），但 Claude Pro 訂閱不含 API 額度，要另外儲值。動工前先切 Opus 更新 plan.md |
 | I | 小 | 跑 `pytest` 會把測試課程灌進本機 demo 資料庫，每次 demo 前要手動清 |

@@ -265,6 +265,47 @@ E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決�
 
 ---
 
+## 待辦 K：Demo 資料快照／還原（2026-08-16 規劃）
+
+> **動機：** 比賽上台只有 4 分鐘。手寫 PDF 的 OCR 實測約 150 秒／頁（14 頁 ≈ 35 分鐘），
+> 主題生成也要約 2 分鐘——現場等不起。課程必須事先建好，並能一鍵還原。
+> 同時解掉待辦 I（跑 `pytest` 會洗掉 demo 資料庫）。
+>
+> **內容必須是真實產出。** 事先跑真實管線、保存真實結果 = 正當的 demo 準備；
+> 手寫假概念塞進 DB 假裝是系統算的 = 不行，且沒必要——功能是真的會動。
+
+### 決策：用 pg_dump + tar，不要自己寫序列化腳本
+
+原本規劃「Python 腳本逐表 dump」被否決：資料全在 PostgreSQL（Homebrew 17.10，`pg_dump` 可用）
+與 `data/chroma`（2.4 MB）。`pg_dump` 已經把這件事做完，且**未來新增資料表不需要改腳本**，
+手寫版本則會默默漏表——這正是最難察覺的失敗模式。
+
+### 實作步驟
+
+1. **`scripts/demo_snapshot.sh`**（約 40 行，唯一新檔）：
+   - `save [名稱]` → `pg_dump --clean --if-exists` 寫到 `demo_snapshots/<名稱>.sql`
+     ＋ `tar czf demo_snapshots/<名稱>-chroma.tgz data/chroma`
+   - `restore <名稱>` → `psql < .sql` ＋ 解開 chroma tgz（**先停後端**，Chroma 開著時寫入會
+     報 `attempt to write a readonly database`）
+   - `list` → 列出現有快照
+   - **restore 前必須二次確認**（會覆蓋整個資料庫），除非帶 `--yes`
+   - DATABASE_URL 從 `.env` 讀，非 localhost 一律拒絕執行（防手滑打到正式庫）
+2. **`.gitignore`** — 加入 `demo_snapshots/`（含真實學習資料，不進版控）
+3. **`CLAUDE.md`** — 「Running Locally」補一段用法
+
+### 風險
+
+- **`restore` 是破壞性操作**：整個資料庫會被覆蓋。靠二次確認 + localhost 檢查擋。
+- Chroma 還原必須在後端停止時進行，否則向量庫損毀。腳本會檢查 port 8000 是否在監聽並拒絕執行。
+- 快照含真實學習紀錄，不進 git。
+
+### 驗收標準
+
+`save demo` → 手動刪掉一門課 → `restore demo` → 課程、概念、技能樹、跨課程連結全部回來，
+且圖譜頁與跨課程卡片渲染正常。
+
+---
+
 # 🟡 選配待辦（競賽後可做）
 
 ## 失敗測試：OCR 頁數上限訊息對不上（pre-existing，141a6bd 後壞）

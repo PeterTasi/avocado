@@ -107,6 +107,20 @@ cd webapp/frontend && npm run dev   # serves at http://localhost:5173
 cd webapp/frontend && npm run build
 ```
 
+### Demo 資料快照（待辦 K）
+
+比賽只有 4 分鐘，課程必須事先建好；`pytest` 又會洗掉本機 demo 資料庫（待辦 I）。
+
+```bash
+./scripts/demo_snapshot.sh save demo      # 存 PostgreSQL + ChromaDB
+./scripts/demo_snapshot.sh list
+./scripts/demo_snapshot.sh restore demo   # 覆蓋整個資料庫，需先停後端
+```
+
+`restore` 是破壞性操作：會二次確認（`--yes` 可略過）、`DATABASE_URL` 非 localhost 一律拒絕、
+後端還在 port 8000 執行時拒絕（Chroma 開著被覆寫會損毀向量庫）。
+快照存在 `demo_snapshots/`，含真實學習紀錄，已加入 `.gitignore`。
+
 ---
 
 ## API Routes (webapp/main.py)

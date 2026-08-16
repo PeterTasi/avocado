@@ -11,6 +11,9 @@ data/*.db-wal
 data/chroma/
 data/ocr_cache/
 
+# Demo 快照含真實學習紀錄，不進版控
+demo_snapshots/
+
 .streamlit/
 .pytest_cache/
 

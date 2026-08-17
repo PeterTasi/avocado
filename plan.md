@@ -72,10 +72,28 @@
 
 ### 風險
 
-- **破壞性變更：** migration 003 會 `DROP TABLE review_plan`。內容為推導得出的快取、
-  目前 0 筆，刪除零損失；但這是不可逆操作，本機請先確認 `demo_snapshot.sh save` 有備份。
-- **失敗面落在複習頁**（`/api/review`、`/api/tonight`），那是 demo 會走到的頁面 →
-  改完必須實機點過複習頁與今晚頁，不能只跑測試。
+**migration 003 的 `DROP TABLE`：已查證為零損失，不需要改成 RENAME 或略過（2026-08-18）。**
+
+- 沒有資料可以失去：本機 DB `SELECT COUNT(*)` = **0**，`demo_snapshots/demo.sql` 裡的
+  `COPY public.review_plan ... FROM stdin;` 後面**直接就是 `\.`**（空資料段）。全機器 0 筆。
+- 就算有資料，內容由 `attempts` + `concepts` 推導而來，兩者都保留 → 結構上不可能損失。
+- 程式碼 revert 無損：revert 會把 `CREATE TABLE IF NOT EXISTS` 帶回來，下次啟動重建空表，
+  等同今天的狀態。
+- **有** 003 反而讓舊快照自癒：`pg_dump --clean` 會把 `schema_version` 一併還原成 `{1,2}`，
+  啟動時 003 重跑、清掉還原回來的舊表，新舊 schema 自動收斂。
+  改成 `RENAME` 是為了保存 0 筆資料留一張永久孤兒表（日後仍要再 DROP 一次）；
+  略過 003 則讓新舊資料庫 schema 永久分歧。**兩者都是倒退。**
+- 唯一的邊角：若先 revert 再重新套用本變更，`schema_version` 已記錄 3、003 不會重跑，
+  那台資料庫會留著一張沒人讀寫的空表。無害，需要時手動 `DROP` 即可。
+
+**真正需要盯的風險（改 SQL 幫不上忙）：**
+
+- **失敗面落在複習頁與今晚頁**（`/api/review`、`/api/tonight`）——行為從「讀快取」改成
+  「即時計算」，而那是 demo 會走到的頁面。**這一項只能用實機驗證退場，不能用設計消除**：
+  改完必須實際點過複習頁與今晚頁，不能只跑測試。
+
+**其餘：**
+
 - 純後端，**前端零改動、不需 `npm run build`**。
 - 每次呼叫都重算 FSRS：一門課約 24 概念、attempts 上限 5000，實測為毫秒級，
   且 HTTP 層 `@cached` 仍在，不會每次請求都算。

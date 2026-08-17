@@ -412,17 +412,18 @@ class AdaptLearnService:
             "rationale": question.rationale,
         }
 
-    def build_and_save_review_plan(self) -> list[ReviewItem]:
-        # P1: scope to active course
+    def get_review_plan(self) -> list[ReviewItem]:
+        """Recompute the FSRS review plan for the active course.
+
+        No persistence: build_review_plan is a pure function of (concepts, attempts,
+        now), and retrievability decays with time, so a stored plan goes stale the
+        moment it's saved. Recomputing is cheap (one course's concepts, milliseconds)
+        and the HTTP layer already caches the response (see webapp/main.py).
+        """
         active_course_id = self.repo.get_active_course_id()
         concepts = self.repo.list_concepts(course_id=active_course_id)
         attempts = self.repo.list_attempts(limit=5000)
-        review_plan = build_review_plan(concepts=concepts, attempts=attempts)
-        self.repo.save_review_plan(review_plan)
-        return review_plan
-
-    def list_review_plan(self) -> list[ReviewItem]:
-        return self.repo.list_review_plan(limit=200)
+        return build_review_plan(concepts=concepts, attempts=attempts)
 
     def list_concepts(self) -> list[Concept]:
         # P1: scope to active course
@@ -482,10 +483,7 @@ class AdaptLearnService:
         active_course_id = self.repo.get_active_course_id()
         concepts = self.repo.list_concepts(course_id=active_course_id)
         attempts = self.repo.list_attempts(limit=5000)
-
-        review_items = self.repo.list_review_plan(limit=200)
-        if not review_items:
-            review_items = build_review_plan(concepts=concepts, attempts=attempts)
+        review_items = build_review_plan(concepts=concepts, attempts=attempts)
 
         top_n = max(1, top_n)
         focus_candidates = review_items[:top_n]

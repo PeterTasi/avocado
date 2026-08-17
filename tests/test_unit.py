@@ -9,6 +9,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 import sys
+
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
@@ -16,10 +17,16 @@ from db_guard import require_safe_db
 from adaptlearn.config import Settings
 from adaptlearn.database import StudyRepository
 from adaptlearn.knowledge_graph import build_knowledge_graph
-from adaptlearn.models import Attempt, Concept, Course, CrossCourseEdge, Question, ReviewItem
+from adaptlearn.models import (
+    Attempt,
+    Concept,
+    Course,
+    CrossCourseEdge,
+    Question,
+)
 from adaptlearn.pipeline import AdaptLearnService
 from adaptlearn.review_scheduler import build_review_plan
-from datetime import datetime, timedelta
+from datetime import datetime
 
 _TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/adaptlearn_test")
 
@@ -54,6 +61,7 @@ def repo(settings):
 def service(settings):
     require_safe_db()
     from adaptlearn.vector_store import ConceptVectorStore
+
     ConceptVectorStore.reset_singleton(settings.chroma_path)
     svc = AdaptLearnService(settings=settings, api_key="")
     yield svc
@@ -137,38 +145,6 @@ class TestStudyRepository:
         assert attempts[0].is_correct is True
         assert attempts[0].score == 1.0
 
-    def test_save_and_list_review_plan(self, repo):
-        item = ReviewItem(
-            concept_id="c-1",
-            concept_name="Test Concept",
-            priority=0.8,
-            next_review_at=datetime.now() + timedelta(days=1),
-            suggested_slot="morning",
-            reason="Test reason",
-        )
-        repo.save_review_plan([item])
-        items = repo.list_review_plan()
-        assert len(items) == 1
-        assert items[0].concept_id == "c-1"
-        assert items[0].priority == 0.8
-
-    def test_save_and_list_review_plan_retention_round_trip(self, repo):
-        item = ReviewItem(
-            concept_id="c-2",
-            concept_name="Retention Test",
-            priority=0.5,
-            next_review_at=datetime.now() + timedelta(days=3),
-            suggested_slot="evening",
-            reason="test",
-            retention=0.87,
-            stability=4.2,
-        )
-        repo.save_review_plan([item])
-        items = repo.list_review_plan()
-        assert len(items) == 1
-        assert abs(items[0].retention - 0.87) < 0.001
-        assert abs(items[0].stability - 4.2) < 0.001
-
     def test_get_metrics(self, repo):
         attempt = Attempt(
             question_id="q-1",
@@ -193,17 +169,19 @@ class TestStudyRepository:
             prerequisites=[],
         )
         repo.upsert_concepts([concept])
-        repo.save_questions([
-            Question(
-                id="q-1",
-                concept_id="c-1",
-                concept_name="Test",
-                difficulty="easy",
-                question_text="?",
-                answer_text="!",
-                rationale=".",
-            )
-        ])
+        repo.save_questions(
+            [
+                Question(
+                    id="q-1",
+                    concept_id="c-1",
+                    concept_name="Test",
+                    difficulty="easy",
+                    question_text="?",
+                    answer_text="!",
+                    rationale=".",
+                )
+            ]
+        )
         repo.reset_learning_state(include_attempts=False)
         assert len(repo.list_concepts()) == 0
         assert len(repo.list_questions()) == 0
@@ -215,18 +193,39 @@ class TestStudyRepository:
         repo.save_course(course_a)
         repo.save_course(course_b)
 
-        concept_a = Concept(id="concept-a", name="A1", chapter="Ch1", description="d", course_id="course-a")
-        concept_b = Concept(id="concept-b", name="B1", chapter="Ch1", description="d", course_id="course-b")
+        concept_a = Concept(
+            id="concept-a",
+            name="A1",
+            chapter="Ch1",
+            description="d",
+            course_id="course-a",
+        )
+        concept_b = Concept(
+            id="concept-b",
+            name="B1",
+            chapter="Ch1",
+            description="d",
+            course_id="course-b",
+        )
         repo.upsert_concepts([concept_a, concept_b])
-        repo.save_cross_course_edges([
-            CrossCourseEdge(from_concept_id="concept-a", to_concept_id="concept-b", similarity=0.9),
-        ])
+        repo.save_cross_course_edges(
+            [
+                CrossCourseEdge(
+                    from_concept_id="concept-a",
+                    to_concept_id="concept-b",
+                    similarity=0.9,
+                ),
+            ]
+        )
         repo.update_class_node_stats("course-a")
 
         repo.reset_course_state("course-a")
 
         remaining_edges = repo.list_cross_course_edges()
-        assert all(e.from_concept_id != "concept-a" and e.to_concept_id != "concept-a" for e in remaining_edges)
+        assert all(
+            e.from_concept_id != "concept-a" and e.to_concept_id != "concept-a"
+            for e in remaining_edges
+        )
         assert repo.list_class_node_stats("course-a") == []
         assert all(c.id != "concept-a" for c in repo.list_concepts())
         # course-b's data must survive untouched
@@ -573,6 +572,7 @@ class TestNativePdfTranscription:
 
             def transcribe_images(self, images, course_name=""):
                 return "matrix multiplication eigenvalues"
+
             # No transcribe_pdf -> uses page-by-page vision, which has no page cap.
 
         material = extract_material_text(
@@ -726,7 +726,9 @@ class TestNormalizeName:
         """'Matrix Multiplication' and 'MatrixMultiplication' must NOT normalize identically."""
         from adaptlearn.pipeline import _normalize_name  # type: ignore
 
-        assert _normalize_name("Matrix Multiplication") != _normalize_name("MatrixMultiplication")
+        assert _normalize_name("Matrix Multiplication") != _normalize_name(
+            "MatrixMultiplication"
+        )
 
     def test_normalize_strips_punctuation(self):
         from adaptlearn.pipeline import _normalize_name  # type: ignore
@@ -770,7 +772,9 @@ class TestCourseCreation:
             template_mode="generic",
         )
         course = next(c for c in service.list_courses() if c.subject == "Graph Theory")
-        concept_ids_before = {c.id for c in service.repo.list_concepts(course_id=course.id)}
+        concept_ids_before = {
+            c.id for c in service.repo.list_concepts(course_id=course.id)
+        }
         assert concept_ids_before
 
         service.clear_course(course.id)
@@ -880,4 +884,3 @@ class TestBuildReviewPlanRetention:
         items = build_review_plan([concept], [attempt])
         assert 0.0 < items[0].retention <= 1.0
         assert items[0].stability > 0.0
-

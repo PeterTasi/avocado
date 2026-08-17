@@ -20,7 +20,6 @@ from .models import (
     Course,
     CrossCourseEdge,
     Question,
-    ReviewItem,
 )
 
 logger = logging.getLogger("adaptlearn.db")
@@ -122,16 +121,6 @@ class StudyRepository:
                 )
             """)
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS review_plan (
-                    concept_id TEXT PRIMARY KEY,
-                    concept_name TEXT NOT NULL,
-                    priority DOUBLE PRECISION NOT NULL,
-                    next_review_at TEXT NOT NULL,
-                    suggested_slot TEXT NOT NULL,
-                    reason TEXT NOT NULL
-                )
-            """)
-            cur.execute("""
                 CREATE TABLE IF NOT EXISTS class_node_stats (
                     course_id TEXT NOT NULL,
                     concept_id TEXT NOT NULL,
@@ -176,19 +165,6 @@ class StudyRepository:
                 cur.execute(
                     "ALTER TABLE concepts ADD COLUMN course_id TEXT REFERENCES courses(id)"
                 )
-            # Migration: add retention/stability to review_plan if missing
-            cur.execute("""
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'review_plan' AND column_name = 'retention'
-            """)
-            if not cur.fetchone():
-                cur.execute(
-                    "ALTER TABLE review_plan ADD COLUMN retention REAL NOT NULL DEFAULT 0.0"
-                )
-                cur.execute(
-                    "ALTER TABLE review_plan ADD COLUMN stability REAL NOT NULL DEFAULT 0.0"
-                )
-
         # P5: run versioned migrations after base schema is ready
         self._run_migrations()
 
@@ -208,6 +184,7 @@ class StudyRepository:
         migrations = [
             (1, self._migration_001_add_timestamptz),
             (2, self._migration_002_concept_details),
+            (3, self._migration_003_drop_review_plan),
         ]
         for version, fn in migrations:
             if version not in applied:
@@ -263,6 +240,12 @@ class StudyRepository:
                 )
             """)
 
+    def _migration_003_drop_review_plan(self) -> None:
+        """複習計畫改即時計算（待辦 G）。這張表是 (concepts, attempts) 的過期快取，
+        沒有東西依賴它存活，刪除零損失——見 plan.md 待辦 G。"""
+        with self._connect() as cur:
+            cur.execute("DROP TABLE IF EXISTS review_plan")
+
     # ── P1: Course-scoped state management ────────────────────────
 
     def reset_course_state(self, course_id: str) -> None:
@@ -297,13 +280,6 @@ class StudyRepository:
             cur.execute(
                 """
                 DELETE FROM questions
-                WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
-            """,
-                (course_id,),
-            )
-            cur.execute(
-                """
-                DELETE FROM review_plan
                 WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = %s)
             """,
                 (course_id,),
@@ -350,7 +326,6 @@ class StudyRepository:
             cur.execute("DELETE FROM cross_course_edges")
             cur.execute("DELETE FROM concepts")
             cur.execute("DELETE FROM questions")
-            cur.execute("DELETE FROM review_plan")
             if include_attempts:
                 cur.execute("DELETE FROM attempts")
 
@@ -687,63 +662,6 @@ class StudyRepository:
             }
             for row in rows
         }
-
-    def save_review_plan(self, review_items: list[ReviewItem]) -> None:
-        with self._connect() as cur:
-            cur.execute("DELETE FROM review_plan")
-            if not review_items:
-                return
-
-            cur.executemany(
-                """
-                INSERT INTO review_plan
-                (concept_id, concept_name, priority, next_review_at, suggested_slot, reason, retention, stability)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        item.concept_id,
-                        item.concept_name,
-                        item.priority,
-                        item.next_review_at,
-                        item.suggested_slot,
-                        item.reason,
-                        item.retention,
-                        item.stability,
-                    )
-                    for item in review_items
-                ],
-            )
-
-    def list_review_plan(self, limit: int = 200) -> list[ReviewItem]:
-        with self._connect() as cur:
-            cur.execute(
-                """
-                SELECT concept_id, concept_name, priority, next_review_at, suggested_slot, reason,
-                       COALESCE(retention, 0.0) AS retention, COALESCE(stability, 0.0) AS stability
-                FROM review_plan
-                ORDER BY priority DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
-            rows = cur.fetchall()
-
-        review_items: list[ReviewItem] = []
-        for row in rows:
-            review_items.append(
-                ReviewItem(
-                    concept_id=row["concept_id"],
-                    concept_name=row["concept_name"],
-                    priority=float(row["priority"]),
-                    next_review_at=row["next_review_at"],
-                    suggested_slot=row["suggested_slot"],
-                    reason=row["reason"],
-                    retention=float(row["retention"]),
-                    stability=float(row["stability"]),
-                )
-            )
-        return review_items
 
     def get_metrics(self, course_id: str | None = None) -> dict[str, float]:
         with self._connect() as cur:

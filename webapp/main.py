@@ -486,7 +486,7 @@ def grade_question(
 @app.post("/api/review/recalculate")
 @limiter.limit("10/minute")
 def recalculate_review_plan(request: Request) -> dict[str, Any]:
-    items = _get_service().build_and_save_review_plan()
+    items = _get_service().get_review_plan()
     invalidate_cache("tonight", "review")
     return {"items": [_serialize_review_item(item) for item in items]}
 
@@ -494,7 +494,7 @@ def recalculate_review_plan(request: Request) -> dict[str, Any]:
 @app.get("/api/review")
 @cached(_cache)
 def list_review_plan() -> dict[str, Any]:
-    items = _get_service().list_review_plan()
+    items = _get_service().get_review_plan()
     return {"items": [_serialize_review_item(item) for item in items]}
 
 

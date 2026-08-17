@@ -302,19 +302,18 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 > 核心 Demo 亮點（技能樹＋卡關歸因、遺忘曲線、掌握度趨勢、手寫 OCR、跨課程語義橋）後端皆已完成並驗收。
 > 完整說明見 `plan.md`；已完成項目的除錯歷程見 `DEVLOG.md`。
 
-### 目前狀態（2026-08-16）
+### 目前狀態（2026-08-18）
 
 - **git push 被 GitHub 擋住（尚未解決）。** gh token 只有 `gist, read:org, repo`，缺 `workflow`；而 6/15 的 commit `935026f` 帶了 `.github/workflows/react-doctor.yml`，導致整批推送被拒。**`ui/graph-skill-tree` 那四個 commit 其實也從沒推上去過。** 解法：`gh auth refresh -s workflow`（需使用者本人授權）。
 - **分支 `feat/topic-skill-tree`**（自 `ui/graph-skill-tree` 分出）含主題生成技能樹（待辦 J ✅ commit `c3ae924`，已實機驗收）。技能樹本身也已驗收通過，可以合併。
 - **本機 demo 資料庫現有四門課**：線性代數的正交性、機率的貝氏定理（皆為主題生成）、Algorithms、Linear Algebra（8/15 測試殘留，待辦 I）。跨課程連結 63 條。
 - **Render 免費資源全掛**（PostgreSQL 與 web service 皆停用）。目前只有本機能跑，`.env` 的 `DATABASE_URL` 已指向 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`，使用者為 macOS 帳號、無密碼）。原 Render 字串在 `.env` 註解保留。
-- **跨課程語義橋後端已修好可用**（8/15 修掉三個疊在一起的 bug），目前實測 63 條連結——**但前端沒有任何元件消費它，畫面上看不到**（待辦 F，已規劃）。
+- **跨課程語義橋前端已完成**（commit `ae3e1ed`，8/16）：`CrossCourseBridgePanel.tsx` 掛在圖譜頁技能樹下方，後端 enrich endpoint、5 條測試都到位。待辦 F 已從 `plan.md` 移除。
 
 ### 未完成
 
 | # | 狀態 | 說明 |
 |---|------|------|
-| F | **優先・已規劃** | 跨課程語義橋的前端。**舊描述「後端與 API 都好了」是錯的**——`/api/cross-course-edges` 只回 concept_id，沒有概念名／課程名，前端也無法自行補（`/api/concepts` 只回 active course 的概念）。所以 F = 後端 enrich endpoint + 前端卡片。決策：放圖譜頁技能樹下方、只顯示與目前課程相關的連結。完整步驟見 `plan.md` |
 | L1 | ✅ 已修（8/17）| **ChromaDB 與 PostgreSQL 不同步**：Chroma 有 80 筆幽靈向量（概念已被 `reset_learning_state` 從 PG 刪除，向量庫沒清）。導致跨課程比對全部命中幽靈，手寫課程建立的 65 條連結**全指向不存在的概念**。前端顯示「沒有關聯」是正確行為。修法兩層（根因＋連結器防線）見 `plan.md` 待辦 L1 |
 | L2 | 小・已診斷 | 空白頁被算成 OCR 成功——模型把 prompt 裡的課程名／頁標吐回來當內容 |
 | L3 | ✅ 已修（8/17）| 前端輪詢上限 12 分鐘，14 頁手寫 PDF 約需 12 分鐘 → 使用者看到「處理逾時」但後端其實成功。建議改成「卡住才算逾時」 |

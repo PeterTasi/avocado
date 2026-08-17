@@ -204,6 +204,24 @@ CLAUDE.md 原寫「後端與 API 都好了，缺一張卡片（約 60–80 行�
 **active course** 的概念，所以前端無法自行補齊連結另一端那門課的名稱。
 F 實際上是「後端 enrich endpoint + 前端卡片」。規劃見 `plan.md`。
 
+### 待辦 F 實作 ✅ DONE — commit `ae3e1ed`（同日 23:20）
+
+規劃完當晚就做完了，但當時沒補這條 DEVLOG 條目，導致 `plan.md`／`CLAUDE.md` 的待辦清單
+一直沒清掉——8/18 檢查待辦清單時才發現「F」是假警報，程式碼其實已經在跑。
+
+- `database.py` 新增 `list_cross_course_edges_detailed()`：JOIN concepts×2 + courses×2；
+  既有 `list_cross_course_edges()` 不動（餵 ingest 流程）
+- `main.py` `/api/cross-course-edges?detailed=true` 分支；ingest 完成的 `invalidate_cache`
+  補上 `"cross"`（否則新連結最多 30 秒才出現）
+- `CrossCourseBridgePanel.tsx`：四級關係標籤（等價概念／一般化／類比／語義相關），
+  `analogy` 譯「類比」不譯「相似」——跨領域學習最有價值的正是這一級；空狀態文案依課程數分兩種
+- 順手修一個資料損壞 bug：`reset_learning_state()` 刪 concepts 沒刪 `cross_course_edges`
+  （無 FK），本機累積 63 條孤兒邊，INNER JOIN 已擋下不顯示殘缺列
+- 測試：`tests/test_cross_course_detailed.py` 5 條（含孤兒邊必須被濾掉）
+
+**驗證（8/18 補驗）：** `pytest tests/test_cross_course_detailed.py` 4 passed 1 skipped
+（skip 為需要真實 DB 連線的 case）；元件已掛載於 `App.tsx` 圖譜頁。
+
 ---
 
 ## 2026-08-15 — 待辦 E 實機驗收通過 + 修三個環境／整合 bug 🩹

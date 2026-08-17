@@ -8,18 +8,6 @@
 
 ---
 
-## 待辦 F：跨課程語義橋的前端（2026-08-15 新增，目前最大缺口）
-
-> **狀態：** 後端已完全可用——8/15 修好三個 bug 後，上傳線代＋機器學習兩份教材會自動產出 9 條連結，`/api/cross-course-edges` 正常回傳。**但前端沒有任何元件消費它**：`webapp/frontend/src/utils/graphUtils.ts` 只有一行 `// cross-course bridges` 註解。功能是通的，畫面上看不到。
-> **為什麼值得做：** 這是單文件工具（NotebookLM、一般 AI 筆記工具）結構上做不到的事——需要跨課程的概念向量與掌握度狀態。實測品質夠好可以直接 demo：「奇異值分解 ↔ 矩陣對角化」被標成 generalization (0.812)，是系統自己找出來的真實數學關係。
-
-- **最小可用版本：** 在 `KnowledgeGraphPanel` 下方加一張卡片，列出當前課程的跨課程連結（來源概念 ←→ 目標概念 ＋ 相似度 ＋ link_type），資料走現成的 `/api/cross-course-edges`。約 60–80 行，不動後端。
-- **進階版（選配）：** 在技能樹畫布上用虛線把跨課程概念接起來。要處理的是兩門課的節點不在同一張圖上——可能需要「並排兩棵技能樹」的佈局，工作量大得多。**先做最小版本。**
-- **前置：** `/api/concepts` 只回傳當前課程的概念，所以前端拿到的 `to_concept_id` 解不出名字。要嘛後端在 `/api/cross-course-edges` 回傳時就把兩端的 `name` / `subject` join 好（推薦，改一支 SQL），要嘛前端多打一支 API。
-- **驗收：** 上傳兩門有重疊概念的課程，卡片上看得到至少 3 條連結，且概念名稱與課程名稱都正確顯示。
-
----
-
 ## 待辦 G：`review_plan` 表是全域的（審查 #4，已從「多課程才爆」變成會實際發生）
 
 > **狀態升級原因：** 原本判定「Demo 只用一門課就完全無感、賽前不用修」。8/15 起本機已同時存在線代與機器學習兩門課，這個 bug 會真的觸發。
@@ -219,49 +207,6 @@
 ### 原 E1–E5
 
 E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決策如上。
-
----
-
-## 待辦 F：跨課程語義橋前端（2026-08-16 規劃，Opus 架構 / Sonnet 實作）
-
-> 後端 8/15 已修好並實測可用（63 條連結）。**但 CLAUDE.md 原本寫「API 都好了，缺一張卡片」是錯的**——
-> `/api/cross-course-edges` 只回 concept_id，沒有概念名稱與課程名稱，前端也無法自行補齊
-> （`/api/concepts` 只回 active course 的概念，查不到連結另一端那門課）。
-> 所以 F = 後端 enrich endpoint + 前端卡片，不是純前端。
-
-### 決策（已與使用者確認 2026-08-16）
-
-- **放置：** 圖譜頁，技能樹（KnowledgeGraphPanel）下方、熱力圖旁。語意一致、demo 動線順、只動 graph view。
-- **範圍：** 只顯示**至少一端屬於目前課程**的連結。63 條會縮到十幾條，不需分頁，且對學生有意義。
-
-### 實作步驟
-
-1. **`database.py`** — 新增 `list_cross_course_edges_detailed(course_id=None)`：
-   以 `cross_course_edges` 為主表，兩次 JOIN `concepts` 取兩端名稱，再 JOIN `courses` 取兩端課程名稱。
-   帶 `course_id` 時用 `WHERE from.course_id = %s OR to.course_id = %s` 過濾。
-   **不改既有的 `list_cross_course_edges()`**（它餵 ingest 流程，動它會波及既有行為）。
-2. **`pipeline.py`** — `list_cross_course_edges_detailed()` 薄包裝，預設帶入 active course_id。
-3. **`webapp/main.py`** — `/api/cross-course-edges` 加 `?detailed=true&scope=active` 分支回傳
-   enrich 後的欄位（兩端概念名/課程名/similarity/link_type）。
-   **舊的無參數行為保持不變**，避免破壞任何既有消費者。
-4. **`useApi.ts`** — `useCrossCourseEdges()` hook。
-5. **`CrossCourseBridgePanel.tsx`（新檔）** — 卡片：每列一條連結，左右兩端概念名 + 課程名 pill，
-   中間 link_type 標籤（equivalent/generalization/analogy/semantic 對應中文與色階），右側相似度。
-   空狀態：「目前只有一門課程，上傳第二份教材或輸入第二個主題後，系統會自動尋找關聯。」
-6. **`App.tsx`** — graph view 掛載新元件。
-7. **測試** — `tests/test_cross_course_detailed.py`：離線，驗證 JOIN 後欄位齊全、course_id 過濾正確、
-   單一課程時回空陣列。
-
-### 風險
-
-- **無破壞性變更、無 migration。** 只新增查詢與端點分支，既有 API 行為不變。
-- link_type 的中文對照要謹慎：`analogy` 是「類比」不是「相似」，跨領域學習最有價值的就是這一類。
-- 熱力圖的 `avg_attempts` 是假數字（fable5-review #6），本卡片不得引用任何 heatmap 數據。
-
-### 驗收標準
-
-圖譜頁在有兩門以上課程時，技能樹下方出現卡片，列出與目前課程相關的連結，
-兩端顯示可讀的概念名與課程名（非 ID），similarity 由高到低排序；只有一門課程時顯示空狀態而非空白區塊。
 
 ---
 

@@ -880,6 +880,22 @@ class StudyRepository:
             for row in rows
         ]
 
+    def filter_existing_concept_ids(self, concept_ids: list[str]) -> set[str]:
+        """Return the subset of *concept_ids* that still exist.
+
+        The vector store is an index; this table is the source of truth. When the two
+        drift apart (a wipe that cleared one and not the other), similarity search can
+        return concepts that no longer exist here — callers use this to drop them
+        rather than persist references to them.
+        """
+        if not concept_ids:
+            return set()
+        with self._connect() as cur:
+            cur.execute(
+                "SELECT id FROM concepts WHERE id = ANY(%s)", (list(concept_ids),)
+            )
+            return {row["id"] for row in cur.fetchall()}
+
     def list_cross_course_edges_detailed(
         self, course_id: str | None = None
     ) -> list[dict[str, Any]]:

@@ -54,13 +54,14 @@ function renderDetail(d: ConceptDetail | undefined, l: "zh" | "en") {
 }
 
 export function ConceptDrawer({ concept, lang, statusColor, onClose }: Props) {
-  // Esc 關閉
+  // Esc 關閉。刻意不加 `if (!concept) return` ——抽屜的開闔由父層的 openId 控制，
+  // 所以 concept 解析失敗時抽屜仍然是開的，而那正是最需要 Esc 的狀態。
+  // 舊寫法在那個情況下不註冊監聽器，使用者只能點 ✕ 或重整。
   useEffect(() => {
-    if (!concept) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [concept, onClose]);
+  }, [onClose]);
 
   // 中英對照分別抓 zh / en（後端各自快取）
   const wantZh = lang === "zh" || lang === "both";

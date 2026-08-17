@@ -270,6 +270,11 @@ class AdaptLearnService:
         self.repo.replace_edges(edges)
 
         _stage("建立向量索引")
+        # Mirror repo.reset_course_state above: that clears this course's rows, so the
+        # vectors must go too. Without this, re-ingesting a course leaves the previous
+        # run's vectors behind — their concept IDs are derived from name+chapter, so a
+        # changed concept set orphans the old ones permanently.
+        self.vector_store.delete_course(course_id)
         self.vector_store.upsert_concepts(
             concepts, replace_existing=False, course_id=course_id
         )
@@ -603,6 +608,17 @@ class AdaptLearnService:
         self.repo.reset_course_state(course_id)
         self.repo.delete_course(course_id)
         self.vector_store.delete_course(course_id)
+
+    def reset_all_learning_state(self, include_attempts: bool = True) -> None:
+        """Global wipe across BOTH stores.
+
+        Call this instead of repo.reset_learning_state(): that one only clears the
+        database, and the vectors it leaves behind are what made cross-course linking
+        match concepts that no longer existed.
+        """
+        self.repo.reset_learning_state(include_attempts=include_attempts)
+        removed = self.vector_store.delete_all()
+        logger.info("Global reset: cleared database state and %d vectors", removed)
 
     def list_cross_course_edges(self) -> list[CrossCourseEdge]:
         return self.repo.list_cross_course_edges()

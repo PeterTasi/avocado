@@ -245,6 +245,23 @@ class ConceptVectorStore:
             return
         collection.delete(where={"course_id": course_id})
 
+    def delete_all(self) -> int:
+        """Remove every vector. Returns how many were deleted.
+
+        Pairs with StudyRepository.reset_learning_state, which wipes the concepts this
+        index describes. Deleting one without the other leaves ghost vectors that
+        similarity search happily returns.
+        """
+        if not self.enabled:
+            return 0
+        collection = self._get_collection()
+        if collection is None:
+            return 0
+        ids = collection.get(include=[]).get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
+
     def close(self) -> None:
         """Release singleton resources for this instance."""
         key = str(self.storage_path.resolve())

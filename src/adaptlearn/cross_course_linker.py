@@ -4,6 +4,7 @@ After a new course's knowledge graph is built, this module scans the vector
 store for semantically similar concepts in *other* courses and creates
 cross-course bridge edges.
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,6 +70,24 @@ def find_cross_course_links(
                 match["similarity"],
                 edge.link_type,
             )
+
+    # The vector store is an index, not the source of truth. If it holds vectors for
+    # concepts that have since been deleted from the database, every match above is a
+    # ghost — that is how a real ingest once produced 65 edges of which none could be
+    # resolved. Drop matches whose target no longer exists instead of persisting them.
+    if edges:
+        targets = [edge.to_concept_id for edge in edges]
+        existing = repo.filter_existing_concept_ids(targets)
+        stale = [edge for edge in edges if edge.to_concept_id not in existing]
+        if stale:
+            logger.warning(
+                "Dropped %d/%d cross-course links whose target concept no longer exists "
+                "(vector store out of sync with the database): %s",
+                len(stale),
+                len(edges),
+                [edge.to_concept_id for edge in stale[:5]],
+            )
+            edges = [edge for edge in edges if edge.to_concept_id in existing]
 
     if edges:
         repo.save_cross_course_edges(edges)

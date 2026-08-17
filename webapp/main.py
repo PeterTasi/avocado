@@ -525,6 +525,38 @@ def list_courses() -> dict[str, Any]:
     }
 
 
+@app.post("/api/courses/{course_id}/activate")
+@limiter.limit("30/minute")
+def activate_course(request: Request, course_id: str) -> dict[str, Any]:
+    """Switch the active course so an already-ingested course can be revisited.
+
+    Everything downstream (concepts, graph, mastery, review, cross-course links) is
+    scoped to the active course, which until now was only ever set by an ingest — so a
+    course uploaded earlier could not be brought back without re-uploading it.
+    """
+    service = _get_service()
+    course = next(
+        (c for c in service.list_courses() if c.id == course_id),
+        None,
+    )
+    if course is None:
+        raise HTTPException(status_code=404, detail="找不到這門課程。")
+
+    service.repo.set_active_course(course_id)
+    invalidate_cache(
+        "concept",
+        "mastery",
+        "tonight",
+        "graph",
+        "health",
+        "review",
+        "questions",
+        "course",
+        "cross",
+    )
+    return {"ok": True, "course_id": course_id, "subject": course.subject}
+
+
 @app.delete("/api/courses/{course_id}")
 @limiter.limit("10/minute")
 def delete_course(request: Request, course_id: str) -> dict[str, Any]:

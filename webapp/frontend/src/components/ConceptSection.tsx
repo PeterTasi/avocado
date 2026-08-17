@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Concept, ConceptMastery } from "../hooks/useApi";
 import { ConceptDrawer } from "./ConceptDrawer";
 
@@ -36,9 +36,17 @@ export function ConceptSection({ concepts, search, sessionUploaded, isError, mas
       `${c.name} ${c.chapter} ${c.description}`.toLowerCase().includes(keyword));
   }, [concepts, search]);
 
+  // 從未過濾的 concepts 找，不是 filtered：搜尋只該影響下方的卡片牆，
+  // 不該把已經打開的概念從抽屜裡抽走（那會讓抽屜開著卻是空的）。
   const openConcept = useMemo(
-    () => filtered.find((c) => c.id === openId) ?? null, [filtered, openId]);
+    () => concepts.find((c) => c.id === openId) ?? null, [concepts, openId]);
   const openStatus = openConcept ? (statusByName.get(openConcept.name.toLowerCase()) ?? "new") : "new";
+
+  // 概念清單換掉時（切換課程、重新 ingest、資料被清空），openId 可能指向
+  // 已不存在的概念。抽屜的開闔是看 openId，所以不清掉就會卡在空白狀態。
+  useEffect(() => {
+    if (openId && !openConcept) setOpenId(null);
+  }, [openId, openConcept]);
 
   return (
     <div className="mt-5">

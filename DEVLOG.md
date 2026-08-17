@@ -23,6 +23,44 @@
 
 **已知限制：** 主題模式完全依賴 Gemini generateContent 配額（沒教材就只能靠 LLM 生），錯誤訊息會明講是配額問題。
 
+### Bug — 教材頁出現關不掉的空白抽屜 ✅ FIXED
+
+**症狀（使用者回報，附截圖）：** 教材頁跑出一個空白面板，只有 ✕ 和「Esc 關閉」字樣，
+按 Esc 沒反應。
+
+**根因是兩個獨立的 bug 疊在一起：**
+
+1. `ConceptSection` 的 `openConcept` 從 **`filtered`**（搜尋過濾後的清單）取，
+   但抽屜的開闔由 `openId` 控制的 CSS class 決定：
+
+   ```js
+   const openConcept = filtered.find(c => c.id === openId) ?? null;  // filtered
+   <div className={`concept-stage ${openId ? "open" : ""}`}>          // openId
+   ```
+
+   概念清單一換（切課程、重新 ingest、資料被清空），`openId` 就指向不存在的概念，
+   抽屜於是「開著卻是空的」。
+
+2. `ConceptDrawer` 的 Esc 監聽器寫著 `if (!concept) return;`——
+   **正好在卡住的那個狀態下不註冊**，使用者只剩點 ✕ 或重整。
+
+**修法（三處）：** `openConcept` 改從未過濾的 `concepts` 取；`openId` 指向不存在的概念時
+自動清掉；Esc 監聽改成抽屜存在就註冊，不依賴 `concept` 是否解析成功。
+
+**驗證：** 開啟抽屜 → 切換課程 → 抽屜自動關閉（不再卡住）；Esc 正常關閉。
+附帶發現：搜尋框目前不在 UI 上（`App.tsx` 的 `setSearch` 是未使用的死碼），
+所以「搜尋過濾造成孤兒」這條路徑目前觸發不到，但修法同樣涵蓋。
+
+### 功能 — 點課程直接切回既有結果 ✅
+
+先前只有 ingest 會設定 active course，所以早先上傳的課程**無法回去看**，只能重新上傳。
+新增 `POST /api/courses/{id}/activate`，課程列表改成可點擊並標示「使用中」。
+
+**關鍵細節：** `SetupPanel` 有 `sessionUploaded` 閘門（Bug 5 方案 A），沒在本次 session
+上傳過就顯示「尚未上傳教材」。切換課程時必須一併打開這個閘門，否則概念切了也看不到。
+
+**驗證：** 點「線性代數 8-1~8-3（手寫）」→ 閘門打開、24 張概念卡出現、標示「使用中」。
+
 ### Bug — 題目裡的 LaTeX 被 JSON 跳脫吃掉（待辦 L4）✅ FIXED
 
 **症狀：** 產生的 6 題有 2 題長這樣：`設 $V$ 為複數內積空間，$T: V <TAB>o V$ 為線性算子`。

@@ -225,11 +225,19 @@ async function pollIngestStatus(
   onStage?: (stage: string) => void,
 ): Promise<unknown> {
   const POLL_INTERVAL_MS = 1500;
-  // 本地 Ollama OCR 處理多頁手寫教材較慢但穩定，給足時間（無 API 限流會被打斷的問題）
-  const MAX_WAIT_MS = 12 * 60 * 1000; // ceiling so a stuck job doesn't spin forever
-  const deadline = Date.now() + MAX_WAIT_MS;
+  // 逾時看的是「有沒有進展」，不是總時長。14 頁手寫 PDF 本地 OCR 約需 12 分鐘，
+  // 舊的 12 分鐘總時長上限會在後端仍正常工作時誤報失敗。後端每頁都會更新 stage
+  // （「OCR 辨識第 N/M 頁」），所以 stage 一變就重設計時器。
+  //
+  // 10 分鐘不能再短：「建立知識圖譜」階段最多切 6 個 chunk、每個一次 Gemini 呼叫，
+  // 期間 stage 完全不變。要縮短得先讓後端回報更細的進度。
+  const STALL_TIMEOUT_MS = 10 * 60 * 1000;
+  const ABSOLUTE_MAX_MS = 90 * 60 * 1000; // 後端回報假進度時的最後防線
+  const startedAt = Date.now();
+  let lastStage = "";
+  let lastProgressAt = Date.now();
 
-  while (Date.now() < deadline) {
+  while (Date.now() - startedAt < ABSOLUTE_MAX_MS) {
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     const status = (await apiFetch(`/api/material/ingest/status/${jobId}`)) as {
       status: string;
@@ -242,8 +250,18 @@ async function pollIngestStatus(
     if (status.status === "error") {
       throw new Error(status.detail || "教材處理失敗，請稍後再試。");
     }
+
+    if (status.stage && status.stage !== lastStage) {
+      lastStage = status.stage;
+      lastProgressAt = Date.now();
+    } else if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
+      const mins = Math.round(STALL_TIMEOUT_MS / 60000);
+      throw new Error(
+        `處理似乎停住了（已 ${mins} 分鐘沒有進展）。請重新整理後再試一次。`,
+      );
+    }
   }
-  throw new Error("教材處理逾時，請稍後再試或改用較小的檔案。");
+  throw new Error("教材處理時間過長，請改用較小的檔案或分章節上傳。");
 }
 
 export function useIngestMaterial(onStage?: (stage: string) => void) {
@@ -413,6 +431,28 @@ export function useCrossCourseLinks() {
     queryFn: () =>
       apiFetch("/api/cross-course-edges?detailed=true") as Promise<{ items: CrossCourseLink[] }>,
     staleTime: 60000,
+  });
+}
+
+// 切回先前上傳過的課程。概念／圖譜／掌握度／複習全部 scope 到 active course，
+// 所以切換後這些 query 都要重抓。
+export function useActivateCourse() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/courses/${courseId}/activate`, { method: "POST" }) as Promise<{
+        course_id: string;
+        subject: string;
+      }>,
+    onSuccess: () => {
+      for (const key of [
+        "health", "concepts", "mastery", "mastery-chapters", "tonight",
+        "graph", "questions", "review-plan", "cross-course-links", "courses",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    },
   });
 }
 

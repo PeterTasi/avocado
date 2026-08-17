@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
-import { useCourses, useConceptMastery, useDeleteCourse, useIngestMaterial, useIngestTopic, useSaveApiKey } from "../hooks/useApi";
+import { useActivateCourse, useCourses, useConceptMastery, useDeleteCourse, useIngestMaterial, useIngestTopic, useSaveApiKey } from "../hooks/useApi";
 import type { Concept, Course } from "../hooks/useApi";
 import { ConceptSection } from "./ConceptSection";
 
@@ -82,6 +82,9 @@ export function SetupPanel({
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
+  const activateCourse = useActivateCourse();
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const courses = coursesData?.items ?? [];
 
@@ -113,6 +116,18 @@ export function SetupPanel({
     await ingestMaterial.mutateAsync(formData);
     onIngested();
   }, [materialFile, courseName, templateMode, apiKey, ingestMaterial, onIngested]);
+
+  const handleActivate = useCallback(async (course: Course) => {
+    setActivatingId(course.id);
+    try {
+      await activateCourse.mutateAsync(course.id);
+      setActiveCourseId(course.id);
+      // 同一個閘門：沒開的話畫面會停在「尚未上傳教材」，切了課也看不到概念。
+      onIngested();
+    } finally {
+      setActivatingId(null);
+    }
+  }, [activateCourse, onIngested]);
 
   const handleIngestTopic = useCallback(async () => {
     if (!topic.trim()) return;
@@ -470,12 +485,28 @@ export function SetupPanel({
                 key={course.id}
                 className="card-subtle flex items-center justify-between gap-3 px-4 py-2.5"
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{course.subject}</p>
+                {/* 點一下就切回這門課，直接看到既有的概念與圖譜——不必重新上傳 */}
+                <button
+                  type="button"
+                  onClick={() => handleActivate(course)}
+                  disabled={activateCourse.isPending}
+                  title={`切換到「${course.subject}」`}
+                  className="min-w-0 flex-1 text-left disabled:opacity-60"
+                >
+                  <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">
+                    {course.subject}
+                    {activeCourseId === course.id && (
+                      <span className="pill ml-2 align-middle text-[10px]"
+                            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+                        使用中
+                      </span>
+                    )}
+                  </p>
                   <p className="truncate text-xs text-[color:var(--text-muted)]">
                     {course.filename} · {new Date(course.uploaded_at).toLocaleString("zh-TW")}
+                    {activateCourse.isPending && activatingId === course.id && " · 切換中…"}
                   </p>
-                </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => setCourseToDelete(course)}

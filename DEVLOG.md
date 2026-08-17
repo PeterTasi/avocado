@@ -36,6 +36,40 @@
 目前 0 筆）；失敗面落在複習頁與今晚頁，改完必須實機點過，不能只跑測試。
 前端零改動——`/api/review` 回傳結構不變。
 
+## 2026-08-18 — 待辦 G 實作完成：刪掉 `review_plan` 表 ✅ FIXED（commit `da926a4`）
+
+**改動：** `database.py` 移除 `review_plan` 的 `CREATE TABLE`、`save_review_plan`／
+`list_review_plan`、兩處 `DELETE FROM review_plan`，新增 migration 003
+`DROP TABLE IF EXISTS review_plan`。`pipeline.py` 把 `build_and_save_review_plan()` 和
+`list_review_plan()` 合併成單一 `get_review_plan()`（純函數，不寫 DB）；
+`get_tonight_study_dashboard` 拿掉「表為空才即時算」的 fallback，直接算。
+`main.py` 的 `/api/review` 與 `/api/review/recalculate` 都改呼叫 `get_review_plan()`，
+HTTP 層 `@cached`／`invalidate_cache` 不變，重算按鈕語意不變。前端零改動。
+
+**測試：** 移除兩條測試已刪除持久化的舊測試（`test_save_and_list_review_plan` 及其
+retention round-trip 版本）；`test_service_workflow.py` 新增
+`test_review_plan_scoped_to_active_course`——兩門課切換 active course，驗證
+`get_review_plan()` 只回傳當前課程的概念，互不污染。`pytest tests/` 91 passed
+（5 個既有失敗與此改動無關，已用 `git stash` 對照乾淨樹確認）。
+
+**實機驗證（瀏覽器 + curl）：**
+- 複習頁「今晚衝刺計畫」章節正確顯示「8-1」，不再是 Unknown（L2 症狀同步消失）
+- 課程「機器學習的主成分分析」重算複習計畫（15 項）後切回「線性代數 8-1~8-3（手寫）」，
+  24 項複習計畫原封不動——這是修復前 G 會直接炸掉的場景
+- 用 8/16 舊快照（`schema_version={1,2}`）驗證了 migration 003 的自癒行為：
+  還原後啟動，migration 3 自動套用、清掉還原回來的舊表
+
+**意外插曲：** 驗證過程中兩次不慎用 `pytest` 洗掉本機 demo 資料庫——
+`test_service_workflow.py` 的 `setUp()` 呼叫 `reset_learning_state()`，而
+`.env` 的 `DATABASE_URL` 指向本機真實 demo DB（非隔離測試庫），跑一次測試套件
+就把 `concepts` 表清空。這正是**待辦 I** 記錄的已知症狀，與本次 G 的改動無關，
+純粹是驗證流程踩到既有雷。兩次都用 `./scripts/demo_snapshot.sh restore demo` 復原，
+最終 120 概念、四門課程資料完整。**待辦 I 目前仍未修**——只要有人在本機對著
+真實 `DATABASE_URL` 跑 `pytest`，這個雷還會再踩到一次。
+
+**待辦 L6 同步作廢：** 「多課程時不要按重算複習計畫」的 demo 操作提醒，
+在沒有 `review_plan` 表可以被錯誤清空之後，不再是真的風險。
+
 ---
 
 ## 2026-08-18 — 空白抽屜 bug 第三個根因（前兩個已修，這個沒抓到）✅ FIXED

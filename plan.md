@@ -8,106 +8,6 @@
 
 ---
 
-## 待辦 G：刪掉 `review_plan` 表，複習計畫改即時計算（2026-08-18 Opus 重新規劃）
-
-> **重新規劃的原因：** 原方案（加 `course_id` 欄位 + migration）建立在一個錯誤前提上，
-> 且只涵蓋了一半的 bug。追查後改採根因解。**舊方案已否決，不要照著做。**
-
-### 追查結果（2026-08-18，動工前必讀）
-
-1. **不需要加欄位。** `_concept_id()`（`knowledge_graph.py:533`）把 `course_id` 算進 hash，
-   概念 ID 全域唯一、可反查所屬課程。原方案想加的 `review_plan.course_id` 是把一個
-   **已經推導得出的值**反正規化，還多一個與 `concepts.course_id` 不同步的風險。
-   `reset_course_state`（`database.py:304`）早就用 `concept_id IN (SELECT id FROM concepts
-   WHERE course_id=%s)` 對 `review_plan` 做過課程限定——repo 內已有前例。
-2. **舊描述漏了一半 bug。** 寫入端 `save_review_plan` 全域 `DELETE` 是一半；讀取端
-   `list_review_plan()` **同樣沒有課程過濾**，`get_tonight_study_dashboard` 因此撈進別門課的
-   項目、對不到當前課程的 `concept_map` → 這才是「chapter 顯示 Unknown」的真正來源。
-3. **這張表是「沒有 key 的快取」。** `build_review_plan()` 是 (concepts, attempts, now) 的純函數；
-   FSRS 卡片狀態從 `attempts` 重播重建，**沒有任何東西依賴這張表存活**。
-   `get_tonight_study_dashboard` 在表為空時已經會即時計算（`pipeline.py:486`）——
-   即時計算是已經在跑、已被驗證的路徑。
-4. **而且持久化的數字一放就過期。** retrievability 隨時間衰減，昨天存的 priority 今天就是錯的。
-5. **目前表內 0 筆資料**（被 pytest 洗掉），不需要 backfill 或資料遷移。
-6. **前端零改動。** `/api/review` 回傳的 `ReviewItem` 結構不變，`useReviewPlan()` 不受影響，
-   **不需要 `npm run build`**。`build_review_plan()` 自己已經 `sort(priority DESC)`
-   （`review_scheduler.py:55`），排序與原本的 SQL `ORDER BY priority DESC` 一致。
-
-### 方案：刪表，一律即時計算
-
-一次消滅三件事——待辦 G 這整類 bug（沒有表就沒有東西可以被誤刪）、過期數字、
-以及待辦 L6 的 demo 地雷（「多課程時不要按重算複習計畫」自動作廢）。淨刪約 80 行。
-
-### 實作步驟
-
-1. **`database.py`** — 移除以下全部（由下往上改，避免行號位移）：
-   - `save_review_plan`（691–716）、`list_review_plan`（718–735）兩個方法
-   - `reset_learning_state` 內的 `DELETE FROM review_plan`（353）
-   - `reset_course_state` 內的 `DELETE FROM review_plan ...`（304–310）
-   - `_migration_001_add_timestamptz` 的 `("review_plan", "next_review_at")`（228）
-     ——該 migration 有 `if row and ...` 保護，不移除也不會炸，但留著是指向已刪除資料表的死碼
-   - retention/stability 的 migration 分支（179–190）
-   - `CREATE TABLE IF NOT EXISTS review_plan`（124–133）
-2. **`database.py` 新增 migration 003** — `DROP TABLE IF EXISTS review_plan`。
-   **必要，不是選配**：不加的話新資料庫沒有這張表、舊資料庫留著一張再也沒人寫的孤兒表，
-   兩者永久分歧。內容是推導得出的快取，刪掉零損失。
-3. **`pipeline.py`** — `build_and_save_review_plan()`（415）與 `list_review_plan()`（424）
-   在刪掉持久化後會變成**完全相同的東西**，合併成單一方法 `get_review_plan()`：
-   取 active course 概念 + attempts → `build_review_plan()` → 直接回傳。
-   舊的 `LIMIT 200` 不保留：那個上限是套在**全域**表上的，改成 per-course 之後
-   概念數本身就是天然上界（實測一門課約 24 個）。
-4. **`pipeline.py`** — `get_tonight_study_dashboard`（480）刪掉 `if not review_items:` 的
-   fallback 分支。它在 482–484 行已經握有 `concepts` 與 `attempts`，直接呼叫
-   `build_review_plan(concepts=concepts, attempts=attempts)`，連 repo 都不必碰。
-5. **`webapp/main.py`** — `/api/review/recalculate`（489）與 `/api/review`（497）都改呼叫
-   `get_review_plan()`。**`invalidate_cache("tonight", "review")` 要留著**——
-   HTTP 層仍有 `@cached`，重算按鈕的作用從「重建快照」變成「清 HTTP 快取拿最新數字」，
-   對使用者的語意不變。
-6. **`tests/`** —
-   - 刪 `test_unit.py` 的 `test_save_and_list_review_plan`（140）與
-     `test_save_and_list_review_plan_retention_round_trip`（155）：測的是已不存在的持久化
-   - `test_service_workflow.py:67` 改呼叫 `get_review_plan()`
-   - **新增 G 的回歸測試**：兩門課各自有概念，切換 active course 後
-     `get_review_plan()` 只回傳當前課程的概念，且對 A 呼叫不影響 B 的結果
-
-### 風險
-
-**migration 003 的 `DROP TABLE`：已查證為零損失，不需要改成 RENAME 或略過（2026-08-18）。**
-
-- 沒有資料可以失去：本機 DB `SELECT COUNT(*)` = **0**，`demo_snapshots/demo.sql` 裡的
-  `COPY public.review_plan ... FROM stdin;` 後面**直接就是 `\.`**（空資料段）。全機器 0 筆。
-- 就算有資料，內容由 `attempts` + `concepts` 推導而來，兩者都保留 → 結構上不可能損失。
-- 程式碼 revert 無損：revert 會把 `CREATE TABLE IF NOT EXISTS` 帶回來，下次啟動重建空表，
-  等同今天的狀態。
-- **有** 003 反而讓舊快照自癒：`pg_dump --clean` 會把 `schema_version` 一併還原成 `{1,2}`，
-  啟動時 003 重跑、清掉還原回來的舊表，新舊 schema 自動收斂。
-  改成 `RENAME` 是為了保存 0 筆資料留一張永久孤兒表（日後仍要再 DROP 一次）；
-  略過 003 則讓新舊資料庫 schema 永久分歧。**兩者都是倒退。**
-- 唯一的邊角：若先 revert 再重新套用本變更，`schema_version` 已記錄 3、003 不會重跑，
-  那台資料庫會留著一張沒人讀寫的空表。無害，需要時手動 `DROP` 即可。
-
-**真正需要盯的風險（改 SQL 幫不上忙）：**
-
-- **失敗面落在複習頁與今晚頁**（`/api/review`、`/api/tonight`）——行為從「讀快取」改成
-  「即時計算」，而那是 demo 會走到的頁面。**這一項只能用實機驗證退場，不能用設計消除**：
-  改完必須實際點過複習頁與今晚頁，不能只跑測試。
-
-**其餘：**
-
-- 純後端，**前端零改動、不需 `npm run build`**。
-- 每次呼叫都重算 FSRS：一門課約 24 概念、attempts 上限 5000，實測為毫秒級，
-  且 HTTP 層 `@cached` 仍在，不會每次請求都算。
-
-### 驗收標準
-
-1. 兩門課分別開啟、各按一次「重算複習計畫」，切回第一門仍看得到**自己**的複習計畫
-   （原本會被清空）。
-2. 今晚頁的 focus 項目 chapter 不再出現 "Unknown"。
-3. `/api/review` 回傳結構與排序與修改前一致（priority 由高到低）。
-4. 全測試綠燈（既有 5 條 async ingest 失敗不計，那是既有問題）。
-
----
-
 ## 待辦 H：Claude API 當第一層、Gemini 當第二層（2026-08-15 討論，**尚未決策**）
 
 > **動機：** 8/02 與 8/15 兩次都因 Gemini 免費額度（20 次/日）中斷 demo；且概念抽取／批改是判斷密集的活，模型品質差異直接反映在產品上（LLM 掛掉時 heuristic 會切出「主成分分析是最常用的」這種假概念）。
@@ -488,12 +388,6 @@ P = 0.32 + 0.46·avg_score + 0.16·accuracy + 0.06·experience_bonus
 **這不是程式 bug，是展示風險。** 評審若問「94% 怎麼算的」，需要有誠實答案。
 demo 建議不要主動指這個絕對數字，改講相對量（「今晚讀完預估提升 +0.3」）。
 賽後若要留這個功能，應該改成有依據的估計或明確標示為粗估。
-
-### L6（demo 操作提醒）：多課程時不要按「重算複習計畫」
-
-待辦 G 的實際觸發條件。2026-08-17 測試時沒炸，只是因為 `review_plan` 剛好被 pytest 洗空。
-**demo 前若已建好多門課程，按下重算會刪掉其他課程的複習計畫。** 修好 G 之前，
-demo 流程請避開這個按鈕。
 
 ---
 

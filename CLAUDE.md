@@ -309,6 +309,7 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 - **本機 demo 資料庫現有四門課**：線性代數的正交性、機率的貝氏定理（皆為主題生成）、Algorithms、Linear Algebra（8/15 測試殘留，待辦 I）。跨課程連結 63 條。
 - **Render 免費資源全掛**（PostgreSQL 與 web service 皆停用）。目前只有本機能跑，`.env` 的 `DATABASE_URL` 已指向 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`，使用者為 macOS 帳號、無密碼）。原 Render 字串在 `.env` 註解保留。
 - **跨課程語義橋前端已完成**（commit `ae3e1ed`，8/16）：`CrossCourseBridgePanel.tsx` 掛在圖譜頁技能樹下方，後端 enrich endpoint、5 條測試都到位。待辦 F 已從 `plan.md` 移除。
+- **待辦 G 已修**（commit `da926a4`，8/18）：`review_plan` 表整個刪掉，複習計畫改即時計算——根因不是加課程過濾，是這張表本身就是會過期的多餘快取。L6 的操作提醒同步作廢。**待辦 I 仍未修**：驗證過程中兩次示範了它的症狀（`pytest` 洗空本機 demo DB），已用 `demo_snapshot.sh restore` 復原。
 
 ### 未完成
 
@@ -318,11 +319,10 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | L2 | 小・已診斷 | 空白頁被算成 OCR 成功——模型把 prompt 裡的課程名／頁標吐回來當內容 |
 | L3 | ✅ 已修（8/17）| 前端輪詢上限 12 分鐘，14 頁手寫 PDF 約需 12 分鐘 → 使用者看到「處理逾時」但後端其實成功。建議改成「卡住才算逾時」 |
 | L5 | demo 話術風險 | `/api/tonight` 的通過率（實測 94%）來自未驗證的佔位公式，且當時只有 1 筆作答。評審問起要有答案；demo 建議講相對提升而非絕對數字 |
-| L6 | demo 操作提醒 | **多課程時不要按「重算複習計畫」**——待辦 G 會刪掉其他課程的計畫。修好 G 前，demo 流程避開這個按鈕 |
-| G | **會實際發生** | `review_plan` 表是全域的（審查 #4）：重算複習計畫會刪掉其他課程的計畫。本機已有兩門課，不再是「多課程才爆」 |
+| G | ✅ 已修（8/18）| `review_plan` 表整個刪掉，複習計畫改即時計算。詳見 DEVLOG |
 | H | 已決策（部分） | **OCR 定案走 Ollama 本機**（`OLLAMA_OCR_MODEL=qwen2.5vl:7b`——**不要用 qwen3-vl:8b，它是思考型模型，密集手寫頁會靜默回空**；歷程見 `.env` 註解）——手寫講義不再吃 Gemini vision 配額。**Embedding 永遠留在 Gemini**（`gemini-embedding-001`，Anthropic 沒有 embedding API，且它走獨立配額）。**尚未決策**：文字層（概念抽取／出題／批改）要不要換 Claude API——技術上可行且便宜（Sonnet 5 約 NT$5–8／份講義），但 Claude Pro 訂閱不含 API 額度，要另外儲值。動工前先切 Opus 更新 plan.md |
-| I | 小 | 跑 `pytest` 會把測試課程灌進本機 demo 資料庫，每次 demo 前要手動清 |
-| 測試 | 已知 | 71 條測試 66 通過；5 條失敗是 ingest 改非同步（回 202）後舊整合測試沒更新，非產品缺陷 |
+| I | **會實際發生（8/18 兩度示範）** | 跑 `pytest` 會把本機 demo 資料庫洗空——`test_service_workflow.py` 的 `reset_learning_state()` 連的是 `.env` 真實 DB，非隔離測試庫。demo 前跑過測試的話，記得 `./scripts/demo_snapshot.sh restore demo` |
+| 測試 | 已知 | 5 條失敗是 ingest 改非同步（回 202）後舊整合測試沒更新，非產品缺陷 |
 | Bug 5 B | 選配 | 後端 `session_id` scope（需 DB schema migration）。方案 A（前端 modal）+ 方案 C（清除課程資料 DELETE endpoint）皆已完成，夠用 |
 | P6 | 賽後 | ChromaDB 存本地碟，Render free redeploy 後向量庫歸零 |
 | A1 | 賽後 | 全域單例 → 完整多租戶（短期解已決策不做） |

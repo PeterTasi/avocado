@@ -5,6 +5,31 @@
 
 ---
 
+## 2026-08-18 — 空白抽屜 bug 第三個根因（前兩個已修，這個沒抓到）✅ FIXED
+
+**症狀：** 8/17 那次修完（見下方 8/16 條目「兩個獨立 bug 疊在一起」）後，使用者回報教材頁還是會
+出現同一塊空白面板（截圖：右側「目前狀態」欄位置疊著一片空白，帶 ✕ 與「Esc 關閉」）。
+
+**追查（`systematic-debugging`，實機 DOM 量測）：** 在本機 `/setup` 用瀏覽器 JS 量測抽屜元素，
+`openId` 其實是 `null`（抽屜邏輯上是「關閉」的），但 `.concept-drawer` 的 `visibility`／`opacity`／
+`pointer-events` 全部維持預設可見可點，`z-index: 20`。關閉狀態只用
+`transform: translateX(100%)` 把它推到 stage 右緣外 420px——而那塊區域沒有任何祖先設
+`overflow: hidden`，右側「目前狀態」欄剛好在那個位置，於是「關閉」的抽屜整片畫在使用者眼前，
+還吃掉那一整欄的點擊。8/17 修的兩條路徑都成立、也真的修對了，但兩者都只處理
+「`openId` 指向不存在的概念」這條路徑；這次的成因是**抽屜本來就沒有 `openId` 時該有的「真正隱藏」**，
+是第三個獨立成因，範圍更廣（只要視窗寬度讓 stage 右側有空間露出來就會發生，不需要切課程觸發）。
+
+**修法：** `webapp/frontend/src/index.css` `.concept-drawer` 關閉狀態加
+`visibility: hidden; pointer-events: none`，`.concept-stage.open .concept-drawer` 加回
+`visibility: visible; pointer-events: auto`。`visibility` 走獨立的 `0s linear .55s` transition，
+等滑出動畫跑完才真的隱藏；開啟時立刻可見，不影響原本的 spring 滑入動畫。
+
+**驗證（瀏覽器實機）：** 關閉狀態量測 `visibility: hidden`／`pointer-events: none`，
+右側「目前狀態」欄可正常點擊；開一張概念卡確認滑入動畫、酪梨蓋章、內容都正常；
+按 Esc 關閉後畫面完全乾淨、無殘影，與使用者原始截圖同視窗尺寸（1280×800）下重現確認。
+
+---
+
 ## 2026-08-16 — 主題生成技能樹（待辦 J）+ OCR 換 qwen3-vl + 待辦 F 規劃 🌱
 
 ### 待辦 J：沒有教材也能學 ✅ — commit `c3ae924`

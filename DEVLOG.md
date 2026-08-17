@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-08-18 — 待辦 G 重新規劃：決定刪掉 `review_plan` 表 📐
+
+**決策：** 待辦 G（`review_plan` 全域表）改採根因解——**刪表，複習計畫一律即時計算**，
+而非原方案的「加 `course_id` 欄位 + migration」。完整實作步驟見 `plan.md` 待辦 G。
+
+**為什麼推翻原方案（Opus 重新規劃，2026-08-18）：**
+
+1. **原方案的前提是錯的。** 它寫「`review_plan` 需加 `course_id` 欄位」，但 `_concept_id()`
+   已經把 `course_id` 算進 hash，概念 ID 可反查課程；而 `reset_course_state` 早就用
+   `concept_id IN (SELECT id FROM concepts WHERE course_id=%s)` 對這張表做過課程限定。
+   加欄位等於把推導得出的值反正規化，還多一個不同步的風險。
+2. **原描述只涵蓋一半的 bug。** 寫入端全域 `DELETE` 是一半，讀取端 `list_review_plan()`
+   同樣沒有課程過濾——那才是「chapter 顯示 Unknown」的真正來源。只修寫入端不會好。
+3. **更根本的問題：這張表是沒有 key 的快取。** `build_review_plan()` 是
+   (concepts, attempts, now) 的純函數，FSRS 狀態從 `attempts` 重播重建，沒有任何東西依賴
+   這張表存活；`get_tonight_study_dashboard` 在表為空時**已經**會即時計算。
+   而且 retrievability 隨時間衰減，**持久化的數字一放就過期**——快取本身在製造錯誤答案。
+
+**評估過但沒選的中間方案：** 讀寫兩端都加 `course_id` 參數、用子查詢過濾（約 15 行、無 migration）。
+它能修好 G，風險最低，原本是我的建議；使用者選了刪表的根因解。差別在於刪表額外解決了
+數字過期，並讓待辦 L6 的 demo 地雷（「多課程時不要按重算複習計畫」）自動作廢，淨刪約 80 行。
+
+**已知取捨：** migration 003 會 `DROP TABLE review_plan`（不可逆，但內容是推導得出的快取、
+目前 0 筆）；失敗面落在複習頁與今晚頁，改完必須實機點過，不能只跑測試。
+前端零改動——`/api/review` 回傳結構不變。
+
+---
+
 ## 2026-08-18 — 空白抽屜 bug 第三個根因（前兩個已修，這個沒抓到）✅ FIXED
 
 **症狀：** 8/17 那次修完（見下方 8/16 條目「兩個獨立 bug 疊在一起」）後，使用者回報教材頁還是會

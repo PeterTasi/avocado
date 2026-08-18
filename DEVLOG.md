@@ -42,6 +42,28 @@ OCR 特化模型（`glm-ocr` / `deepseek-ocr`）的 prompt 裡沒有注入這兩
 誤判方向不對稱：漏判只是 `pages_ok` 虛高一頁；誤判會讓 `pages_ok` 虛低，
 可能誤觸 `_OCR_MIN_PAGE_RATIO = 0.6` 對使用者跳出不該跳的警告。判定要往保守側倒。
 
+## 2026-08-18 — 待辦 I 實作完成：`pytest` 不再洗掉本機 demo 資料庫 ✅ FIXED（commit `f714897`）
+
+**改動：** `conftest.py` 的 `DATABASE_URL` 覆寫從「只在設了 `TEST_DATABASE_URL` 時才做」
+改成無條件執行——沒設就從現有 `DATABASE_URL`（shell env 或 `.env`）推導出 `<name>_test`；
+都沒有就退回 `postgresql://localhost/adaptlearn_test`。測試庫不存在時用
+`CREATE DATABASE` 自動建立（只認 `_test` 結尾的名字，多一層防呆避免誤建）。
+`db_guard.require_safe_db()` 的判斷條件從「主機是不是 localhost」改成
+「資料庫名稱是不是以 `_test` 結尾」。
+
+**驗證：**
+- 兩次跑 `pytest tests/`，demo DB 的 `concepts` 筆數維持 120 不變（先前會被洗成 0）
+- `adaptlearn_test` 自動建立，92 passed（5 個既有失敗與此改動無關）
+- 附帶驗證：`test_cross_course_detailed.py` 裡原本因 `DATABASE_URL` 不含
+  `"adaptlearn_test"` 而被跳過的 `test_global_reset_clears_cross_course_edges`，
+  現在正確執行且通過——這條測試本來就是同一個問題的局部修補，
+  修好 `db_guard` 之後它終於能真的跑到
+- 手動把 `DATABASE_URL` 指到 demo DB 直接呼叫 `require_safe_db()`，正確 `SkipTest`
+  而非放行
+
+**待辦 K 同步生效：** demo 快照的 `restore` 不再是「跑完測試的必要善後步驟」，
+純粹回到它原本的定位——賽前準備已知良好狀態。
+
 ---
 
 ## 2026-08-18 — 待辦 G 重新規劃：決定刪掉 `review_plan` 表 📐

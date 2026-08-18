@@ -64,6 +64,32 @@ OCR 特化模型（`glm-ocr` / `deepseek-ocr`）的 prompt 裡沒有注入這兩
 **待辦 K 同步生效：** demo 快照的 `restore` 不再是「跑完測試的必要善後步驟」，
 純粹回到它原本的定位——賽前準備已知良好狀態。
 
+## 2026-08-18 — 待辦 L2 實作完成：空白頁不再被誤判成 OCR 成功 ✅ FIXED（commit `a533a74`）
+
+**改動：** `ollama_client.py` 新增 `_is_prompt_echo(page_text, context, label)`：
+扣掉注入 prompt 的 `context`（課程名）與 `label`（頁標）兩個已知字串，
+再扣掉所有標點與空白（用 `unicodedata.category().startswith("P")` 判斷，
+含全形標點），殘留為空就視為回吐。`transcribe_images` 迴圈內在
+`_transcribe_one` 之後、`is_specialized` 為否時呼叫這個檢查，命中就設
+`page_text = ""`、`last_error` 帶上原因，直接沿用既有的 `failed_pages` 分支
+與 log，不新增額外的錯誤處理路徑。OCR 特化模型（`glm-ocr`／`deepseek-ocr`）
+的 prompt 沒有注入這兩個值，用 `is_specialized` 擋掉，避免誤殺那條路徑上
+真實寫在紙上的課程名。
+
+**為什麼是精確比對而不是門檻：** 原本的修法備註擔心「誤殺只有一行標題的
+頁」，但那兩個被回吐的字串是我們自己塞進去的已知值，不需要猜測「像不像
+標題」——這比任何啟發式門檻都安全，也不會有假陽性。
+
+**測試：** 新增 `PromptEchoTest`（純回吐視為空白頁、回吐+真實內容完整保留
+不截斷、特化模型不受檢查影響）與 `IsPromptEchoUnitTest`（標點/空白清除的
+直接單元測試），共 5 條，都放進既有的 `test_ocr_partial_failure.py`
+（待辦 L 系列測試檔）。用回報 bug 的原始字串
+（`線性代數 8-1~8-3（手寫）` / `PDF page 14`）額外做了一次 sanity check，
+包含真實模型可能加的結尾句點。
+
+**驗證：** `pytest tests/` 97 passed（5 個既有失敗與此改動無關）；demo DB
+概念數維持 120 不變（待辦 I 生效）；`ruff`／`mypy` 乾淨。
+
 ---
 
 ## 2026-08-18 — 待辦 G 重新規劃：決定刪掉 `review_plan` 表 📐

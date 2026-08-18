@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-08-18 — 待辦 I／L2 規劃：兩個都比原記錄更嚴重 📐
+
+Opus 規劃，尚未實作。完整步驟見 `plan.md` 待辦 I 與 L2。
+
+### 待辦 I：根因是 `db_guard` 的判斷條件問了錯的問題
+
+原記錄寫「小但煩：跑測試會灌進一批測試垃圾課程」。做 G 驗證時兩度親身觸發，
+實際症狀是 `test_service_workflow.py` 的 `setUp()` 呼叫 `reset_learning_state()`，
+**把 `concepts` 表整個清空**（120 → 0），不是灌垃圾。
+
+追查後發現根因不在「conftest 沒設測試庫」，而在 `db_guard.require_safe_db()`
+問錯了問題：它檢查的是「**是不是本機**」（`localhost` / `127.0.0.1` / `adaptlearn_test`）。
+這道 guard 當初是為了擋 Render 正式庫而寫的，但 demo 資料庫本身就在本機，
+所以它穩穩通過——**真正發生災情的地方正是它放行的那一側**。
+正確的判斷條件是「**是不是可以隨便丟掉的測試庫**」。
+
+方案兩層：conftest 把測試庫從 opt-in 改成預設（沒設 `TEST_DATABASE_URL` 就從
+`DATABASE_URL` 推導出 `_test` 後綴的名字，並自動建立），db_guard 改成檢查
+資料庫名稱是否為測試庫。第一層讓正確的事自動發生，第二層在第一層失效時擋下來。
+順帶查到 `adaptlearn_test` 目前根本不存在，所以現在就算去設 `TEST_DATABASE_URL`
+也只會連線失敗。
+
+### 待辦 L2：偵測可以是精確比對，不需要啟發式門檻
+
+原修法備註寫「把只包含課程名／頁標的回應視為空白，門檻要小心，別誤殺只有一行標題的頁」。
+查完發現不需要任何門檻：**那兩個被回吐的字串是我們自己塞進 prompt 的**
+（`Course context: {context}.` / `Page label: {label}.`），所以可以拿已知值做精確比對，
+而不是猜「這看起來像不像標題」。
+
+另外兩個原記錄沒提到的點：`_clean_transcription_text` 是拿不到 `context`／`label` 的
+module-level 純函式，不是正確的下手處（該在 `transcribe_images` 迴圈內處理）；
+OCR 特化模型（`glm-ocr` / `deepseek-ocr`）的 prompt 裡沒有注入這兩個值，
+那條路徑出現課程名就是真的寫在紙上，檢查必須用 `is_specialized` 擋掉。
+
+誤判方向不對稱：漏判只是 `pages_ok` 虛高一頁；誤判會讓 `pages_ok` 虛低，
+可能誤觸 `_OCR_MIN_PAGE_RATIO = 0.6` 對使用者跳出不該跳的警告。判定要往保守側倒。
+
+---
+
 ## 2026-08-18 — 待辦 G 重新規劃：決定刪掉 `review_plan` 表 📐
 
 **決策：** 待辦 G（`review_plan` 全域表）改採根因解——**刪表，複習計畫一律即時計算**，

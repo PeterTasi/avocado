@@ -35,11 +35,68 @@
 
 ---
 
-## 待辦 I：本機測試會污染 demo 資料庫（2026-08-15 新增，小但煩）
+## 待辦 I：`pytest` 會洗掉本機 demo 資料庫（2026-08-18 Opus 重新規劃）
 
-- **症狀：** `tests/` 直連 `.env` 的本機 PostgreSQL，跑一次 `pytest` 就灌進一批測試課程（Algorithms/notes.txt、Linear Algebra/handwritten.png…）。8/15 當日庫裡累積 11 個課程、81 個概念，多數是測試垃圾，每次 demo 前要手動清。
-- **修法選項：** (a) `tests/conftest.py` 改用獨立測試資料庫（`adaptlearn_test`）；(b) 測試結束自動清理自己建的課程。(a) 較乾淨。
-- **註：** `tests/db_guard.py` 已有白名單機制，但目前允許本機 DB。
+> **升級原因：** 原本標記「小但煩」，描述是「灌進一批測試垃圾課程」。
+> 2026-08-18 做待辦 G 驗證時**兩度親身觸發**，實際症狀比記錄的更嚴重：
+> 不是「灌垃圾進去」，是 `test_service_workflow.py` 的 `setUp()` 呼叫
+> `reset_learning_state()`，**把整個 `concepts` 表清空**（120 → 0）。
+> 兩次都靠 `demo_snapshot.sh restore demo` 才救回來。
+
+### 追查結果（2026-08-18，動工前必讀）
+
+1. **`conftest.py` 的覆寫是 opt-in 的。** 目前只有在 `TEST_DATABASE_URL` 有設時才覆寫
+   `DATABASE_URL`；沒設就直接沿用 `.env` 的值——也就是那個裝著 demo 資料的
+   `postgresql://localhost:5432/adaptlearn`。所以「直接跑 `pytest`」＝「對 demo 庫跑測試」。
+2. **`db_guard` 的判斷條件是錯的（這才是根因）。** 它檢查的是
+   `any(h in db_url for h in ("localhost", "127.0.0.1", "adaptlearn_test"))`——
+   也就是「**是不是本機**」。但 demo 資料庫本身就在本機，所以它**穩穩通過**這道防線。
+   這個 guard 當初是為了擋 Render 正式庫（`render.com`）而寫的，
+   而真正發生災情的地方正是它放行的那一側。
+   **正確的判斷條件不是「是不是本機」，而是「是不是可以隨便丟掉的測試庫」。**
+3. **`adaptlearn_test` 資料庫目前不存在**（`psql -l` 只有 `adaptlearn`），
+   所以就算現在去設 `TEST_DATABASE_URL` 指過去，也會直接連線失敗。
+
+### 方案：測試庫改成預設，並修正 guard 的判斷條件
+
+兩層，缺一不可——第一層讓正確的事情自動發生，第二層在第一層失效時擋下來。
+
+1. **`tests/conftest.py`——測試庫變成預設，不再是 opt-in。**
+   - `TEST_DATABASE_URL` 有設 → 照用（保留現有的逃生門）
+   - 沒設 → **從 `DATABASE_URL` 推導**：資料庫名稱加上 `_test` 後綴
+     （`.../adaptlearn` → `.../adaptlearn_test`），保留原本的 host／帳密設定
+   - 兩者都沒有 → 退回 `postgresql://localhost/adaptlearn_test`
+   - 覆寫必須發生在**任何 adaptlearn import 之前**（`config.py` 在 import 時就讀 env，
+     現有的 conftest 已經遵守這個順序，照著放即可）
+2. **`tests/conftest.py`——測試庫不存在就自動建。**
+   連到 `postgres` 維護資料庫下 `CREATE DATABASE adaptlearn_test`（約 10 行）。
+   不做的話，第一次跑測試的人會撞到一句沒頭沒尾的「database does not exist」。
+   *替代方案：* 文件寫一行 `createdb adaptlearn_test` 要人自己跑——程式碼少，
+   但忘記時的錯誤訊息很難懂。建議自動建。
+3. **`tests/db_guard.py`——把判斷條件從「是不是本機」改成「是不是測試庫」。**
+   改成檢查資料庫名稱是否以 `_test` 結尾（或等於 `TEST_DATABASE_URL` 指定的那個）。
+   這樣一來，**未來任何情況下只要測試被指到 demo 庫，會直接 skip 而不是把它洗掉**。
+   這一層才是今天真正失效的東西。
+
+### 風險
+
+- **建立資料庫需要 CREATEDB 權限。** Homebrew PostgreSQL 的 macOS 帳號是 superuser，
+  本機沒問題；CI 或其他環境可能不同，建不起來時要給清楚的錯誤訊息而不是 traceback。
+- **測試改跑在空資料庫上。** 目前測試都自己建資料，理論上不受影響，但
+  `StudyRepository.initialize()` 必須在新庫上跑過一次建 schema——
+  實作時要確認每個碰 DB 的 fixture 都會觸發它。
+- **`db_guard` 改嚴後，任何忘記設定的環境會變成 skip 而非失敗。** 這是刻意的：
+  對 demo 庫「什麼都不做」永遠優於「洗掉它」。但要確保 skip 訊息講清楚原因。
+- 不動任何產品程式碼，純測試基礎設施。
+
+### 驗收標準
+
+1. 在 `.env` 的 `DATABASE_URL` 指向 demo 庫的情況下，直接跑 `pytest tests/`，
+   跑完之後 demo 庫的 `concepts` 筆數**完全不變**（目前是 120）。
+2. `adaptlearn_test` 被自動建立，測試在它上面正常通過。
+3. 手動把 `DATABASE_URL` 指向 demo 庫並繞過 conftest（模擬未來的迴歸），
+   `require_safe_db()` 要 skip 而不是放行。
+4. 修好之後，待辦 K 的快照還原不再是「跑完測試的必要善後步驟」。
 
 ---
 
@@ -299,13 +356,57 @@ E1–E5 ✅ 已完成並推送 `demo/sprint-pack`（見各項）。E6 已改決�
 **驗收標準：** 修完後 ingest 一門課，`Chroma 的 id 集合 ⊆ Postgres 的 id 集合`；
 跨課程卡片在有兩門以上相關課程時顯示得出連結（目前顯示 0 條）。
 
-### L2：空白頁被算成 OCR 成功
+### L2：空白頁被算成 OCR 成功（2026-08-18 Opus 補完規劃）
 
 第 14 頁是空白頁，但模型輸出了 `線性代數 8-1~8-3（手寫）\nPDF page 14`——把 prompt 裡的
 課程名與頁標當成內容吐回來，於是計為成功，`pages_ok` 報 14 而非 13。
 
-**修法：** `_clean_transcription_text` 或 `transcribe_images` 把「只包含課程名／頁標」
-的回應視為空白。門檻要小心，別誤殺真的只有一行標題的頁。
+**追查結果（2026-08-18）：**
+
+1. **回吐的兩個字串是我們自己塞進 prompt 的。** `ollama_client.transcribe_images`
+   對非 OCR 特化模型組的 prompt 結尾是：
+   ```
+   Course context: {context}.
+   Page label: {label}.
+   ```
+   `context` = 課程名（空的話是 `"General study notes"`），`label` = 頁標（預設 `page N`）。
+   模型在空白頁上沒東西可轉寫，就把這兩個值抄回來了。
+2. **所以偵測可以是精確比對，不是啟發式。** 原本的修法備註寫「門檻要小心，
+   別誤殺只有一行標題的頁」——但我們**確切知道自己注入了哪兩個字串**，
+   不需要猜「這看起來像不像標題」。把回應扣掉 `context`、`label` 與標點空白後
+   如果什麼都不剩，就是回吐。這比任何門檻都安全。
+3. **OCR 特化模型不受影響。** `glm-ocr` / `deepseek-ocr` 走的是
+   `prompt = "Text Recognition:"`，prompt 裡根本沒有課程名與頁標，
+   模型不可能從 prompt 抄。那條路徑上若出現課程名，就是**真的寫在紙上**——
+   所以這個檢查要用 `is_specialized` 擋掉，只作用在有注入的那條路徑。
+4. **`_clean_transcription_text` 不是正確的下手處。** 它是 module-level 純函式，
+   拿不到 `context` 與 `label`。正確位置是 `transcribe_images` 迴圈內
+   `page_text = self._transcribe_one(...)` 之後——那裡兩個值都在 scope 裡。約 6 行。
+5. **算錯的後果比想像中大。** `pages_ok` 餵給 `pipeline.py:41` 的
+   `_OCR_MIN_PAGE_RATIO = 0.6`：低於 60% 會設 `ocr_failed` 並對使用者顯示
+   「只成功辨識出 N 頁」的警告（概念仍保留，不是硬性拒絕），
+   前端 `SetupPanel` 也會顯示「已辨識 X／Y 頁」。
+
+**修法：** 在 `transcribe_images` 的迴圈內、`_transcribe_one` 回傳之後加一道回吐檢查：
+非特化模型時，把 `page_text` 去掉 `context`、`label` 以及標點與空白，
+若殘餘為空 → 視同該頁無文字（走既有的 `failed_pages` 分支，沿用現成的 log）。
+
+**風險（誤判方向不對稱，要往保守的一側倒）：**
+
+- **漏判**（空白頁被算成功）＝ `pages_ok` 虛高一頁，影響輕微。
+- **誤判**（真的只寫著課程名的標題頁被丟掉）＝ `pages_ok` 虛低一頁，
+  可能誤觸 60% 門檻、對使用者跳出不該跳的警告。**這一側比較糟**，
+  所以判定條件必須嚴格到「除了那兩個注入字串以外什麼都不剩」才算回吐。
+- 極端邊角：整份只有一頁、而那一頁就是純標題頁 → 會被判定為 0/1 頁。
+  可接受（那份文件本來也抽不出概念），但要在測試裡明確記下這個行為。
+
+**驗收標準：**
+
+1. 用那份 14 頁手寫 PDF 重跑，`pages_ok` 報 13 而非 14。
+2. 新增離線單元測試（fake 掉 HTTP，不需要真的跑 Ollama）：
+   - 回應是 `f"{course_name}\n{label}"` → 該頁計入 `failed_pages`
+   - 回應是課程名**加上**真實內容 → 正常計為成功，且內容不被裁掉
+   - 特化模型（`glm-ocr`）回應課程名 → **不**判定為回吐（那條路徑沒有注入）
 
 ### L3：前端輪詢 12 分鐘上限，手寫大檔必定逾時
 

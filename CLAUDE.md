@@ -306,7 +306,8 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 
 - **git push 被 GitHub 擋住（尚未解決）。** gh token 只有 `gist, read:org, repo`，缺 `workflow`；而 6/15 的 commit `935026f` 帶了 `.github/workflows/react-doctor.yml`，導致整批推送被拒。**`ui/graph-skill-tree` 那四個 commit 其實也從沒推上去過。** 解法：`gh auth refresh -s workflow`（需使用者本人授權）。
 - **分支 `feat/topic-skill-tree`**（自 `ui/graph-skill-tree` 分出）含主題生成技能樹（待辦 J ✅ commit `c3ae924`，已實機驗收）。技能樹本身也已驗收通過，可以合併。
-- **本機 demo 資料庫現有四門課**：線性代數的正交性、機率的貝氏定理（皆為主題生成）、Algorithms、Linear Algebra（8/15 測試殘留，已隨快照凍結，不會再變多）。跨課程連結 63 條。
+- **本機 demo 資料庫已於 8/18 重建**（詳見 DEVLOG）：4 門課（機率的貝氏定理／線性代數的正交性／機器學習的主成分分析／線性代數 8-1~8-3 手寫）、63 概念、44 條跨課程連結、12 題、3 筆真實作答。測試殘留的 11 門課已清除。唯一有掌握度的是「正交基底」67%。快照 `demo`（含作答紀錄）＋ `pre-rebuild`（重建前回滾點）。**ChromaDB 63 = PostgreSQL 63，幽靈向量 0。**
+- **講稿 `docs/pitch-4min.md` 已對齊真實資料**：卡關歸因走 `內積 → 正交向量 → 正交集合 → 正交基底`（三層，根因是內積）；跨課程引用 `正交集合 ↔ 單範正交集`（等價 87%）。**上台不要按「產生測驗」**——Gemini 若遇 503 會降級成英文模板題，題目已事先產好。
 - **Render 免費資源全掛**（PostgreSQL 與 web service 皆停用）。目前只有本機能跑，`.env` 的 `DATABASE_URL` 已指向 Homebrew PostgreSQL 17（`localhost:5432/adaptlearn`，使用者為 macOS 帳號、無密碼）。原 Render 字串在 `.env` 註解保留。
 - **跨課程語義橋前端已完成**（commit `ae3e1ed`，8/16）：`CrossCourseBridgePanel.tsx` 掛在圖譜頁技能樹下方，後端 enrich endpoint、5 條測試都到位。待辦 F 已從 `plan.md` 移除。
 - **待辦 G 已修**（commit `da926a4`，8/18）：`review_plan` 表整個刪掉，複習計畫改即時計算——根因不是加課程過濾，是這張表本身就是會過期的多餘快取。L6 的操作提醒同步作廢。

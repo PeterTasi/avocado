@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -99,6 +100,15 @@ class OllamaClient:
                     f"{_OCR_PROMPT}\nCourse context: {context}.\nPage label: {label}."
                 )
             page_text = self._transcribe_one(bytes(data), prompt)
+            if (
+                page_text
+                and not is_specialized
+                and _is_prompt_echo(page_text, context, label)
+            ):
+                # Blank page: nothing to transcribe, so the model parroted the
+                # injected "Course context: ... Page label: ..." values back instead.
+                self.last_error = "Ollama echoed the injected course/page context back (likely a blank page)."
+                page_text = ""
             if page_text:
                 transcripts.append(page_text)
                 self.pages_ok += 1
@@ -166,3 +176,22 @@ def _clean_transcription_text(raw: str) -> str:
     cleaned = re.sub(r"^```[A-Za-z0-9_-]*\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
     return cleaned.strip()
+
+
+def _is_prompt_echo(page_text: str, context: str, label: str) -> bool:
+    """True if page_text is just the injected course/page context echoed back.
+
+    Empty page -> nothing to transcribe -> the model parrots the prompt values
+    instead. We know exactly what we injected (`context`, `label`), so this is
+    an exact-substring check, not a heuristic: strip both out, then strip
+    whitespace and punctuation (any Unicode category starting with "P", so this
+    also catches full-width CJK punctuation); if nothing survives, it's an echo.
+    A page that echoes the context *and* writes real content is left alone.
+    """
+    residue = page_text.replace(context, "").replace(label, "")
+    residue = "".join(
+        ch
+        for ch in residue
+        if not ch.isspace() and not unicodedata.category(ch).startswith("P")
+    )
+    return not residue

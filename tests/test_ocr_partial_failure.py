@@ -24,7 +24,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from adaptlearn.ollama_client import OllamaClient
+from adaptlearn.ollama_client import OllamaClient, _is_prompt_echo
 from adaptlearn.pdf_parser import ExtractedMaterial
 from adaptlearn.pipeline import _OCR_MIN_PAGE_RATIO
 
@@ -128,6 +128,78 @@ class ThresholdTest(unittest.TestCase):
         self.assertFalse(
             self._flagged(ExtractedMaterial("typed text", "pdf-text", False))
         )
+
+
+class _EchoStubOllama(OllamaClient):
+    """Returns canned per-page responses, in order, bypassing real HTTP."""
+
+    def __init__(self, model: str, responses: list[str]) -> None:
+        super().__init__(model=model)
+        self._responses = responses
+
+    def _transcribe_one(self, image_bytes: bytes, prompt: str) -> str:  # type: ignore[override]
+        self._page = getattr(self, "_page", 0) + 1
+        text = self._responses[self._page - 1]
+        if not text:
+            self.last_error = "Ollama returned empty response."
+        return text
+
+
+class PromptEchoTest(unittest.TestCase):
+    """待辦 L2: a blank page has nothing to transcribe, so the model parrots the
+    injected "Course context: ... Page label: ..." values back instead of
+    transcribing — and that used to be counted as a successful page."""
+
+    def test_pure_echo_is_treated_as_blank(self) -> None:
+        course = "線性代數 8-1~8-3（手寫）"
+        label = "PDF page 14"
+        client = _EchoStubOllama("stub-vl:7b", [f"{course}\n{label}"])
+
+        text = client.transcribe_images(
+            [{"data": b"fake-png-bytes", "label": label}], course_name=course
+        )
+
+        self.assertEqual(client.pages_ok, 0)
+        self.assertEqual(client.failed_pages, [1])
+        self.assertEqual(text, "")
+
+    def test_echo_plus_real_content_is_kept_in_full(self) -> None:
+        course = "Linear Algebra"
+        label = "page 1"
+        real = f"{course}\n{label}\nAdjoint operator: <Tx, y> = <x, T*y>."
+        client = _EchoStubOllama("stub-vl:7b", [real])
+
+        text = client.transcribe_images(
+            [{"data": b"fake-png-bytes", "label": label}], course_name=course
+        )
+
+        self.assertEqual(client.pages_ok, 1)
+        self.assertEqual(text, real)  # untouched — not truncated to strip the echo
+
+    def test_specialized_model_is_exempt_from_the_check(self) -> None:
+        # glm-ocr's prompt has no injected context/label ("Text Recognition:" only),
+        # so a course name in its output was actually written on the page.
+        course = "線性代數 8-1~8-3（手寫）"
+        client = _EchoStubOllama("glm-ocr", [course])
+
+        text = client.transcribe_images(
+            [{"data": b"fake-png-bytes", "label": "page 1"}], course_name=course
+        )
+
+        self.assertEqual(client.pages_ok, 1)
+        self.assertEqual(text, course)
+
+
+class IsPromptEchoUnitTest(unittest.TestCase):
+    """Direct unit coverage of the residue-stripping logic itself."""
+
+    def test_punctuation_and_whitespace_around_echo_do_not_survive(self) -> None:
+        self.assertTrue(_is_prompt_echo("課程A\n頁 1", "課程A", "頁 1"))
+        self.assertTrue(_is_prompt_echo("課程A。頁 1。", "課程A", "頁 1"))
+        self.assertTrue(_is_prompt_echo("（課程A）「頁 1」", "課程A", "頁 1"))
+
+    def test_any_real_content_survives(self) -> None:
+        self.assertFalse(_is_prompt_echo("課程A\n頁 1\n定義：...", "課程A", "頁 1"))
 
 
 if __name__ == "__main__":

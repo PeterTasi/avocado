@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import re
+import time
 from typing import Any
 
 try:
@@ -52,6 +53,44 @@ _CONCEPT_MAX_CHUNKS = 6
 # and run ChromaDB's default local ONNX model (~80 MB) — the bottleneck that made big
 # ingests stall for minutes. 3072-dim output.
 _EMBED_MODEL = "gemini-embedding-001"
+
+# Transient-failure retry. The model fallback chain used to make a single pass: during a
+# Google-side demand spike every candidate returns 503 UNAVAILABLE within a second or two,
+# the chain gave up immediately, and question generation silently degraded to English
+# template questions. Google's own 503 body says the spike is "usually temporary", so the
+# chain is retried with backoff before we accept degraded output.
+#
+# Deliberately small: the worst case adds ~8s before degrading, which is far better than
+# putting template questions on screen, but still fails fast enough for a live demo.
+_RETRY_BACKOFF_S = (2.0, 6.0)
+
+
+def _is_retryable(exc: Exception | None) -> bool:
+    """True for failures that a later attempt might survive.
+
+    Retrying a permanent error (invalid key, malformed request) buys nothing and only
+    delays the graceful degradation, so 4xx is excluded — except 429, which is rate
+    limiting and clears on its own.
+    """
+    if exc is None:
+        return False
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    if _httpx is not None and isinstance(
+        exc, (_httpx.TimeoutException, _httpx.TransportError)
+    ):
+        return True
+    if genai_errors is not None:
+        if isinstance(exc, genai_errors.ServerError):  # 5xx, incl. 503 UNAVAILABLE
+            return True
+        if isinstance(exc, genai_errors.ClientError):
+            return getattr(exc, "code", None) == 429
+    if google_exceptions is not None and isinstance(exc, google_exceptions.RetryError):
+        return True
+    # Unknown error type carrying an HTTP-ish code (e.g. legacy google.api_core).
+    code = getattr(exc, "code", None)
+    return code in (429, 500, 502, 503, 504)
+
 
 # Specific exceptions we expect from the Gemini API. Anything listed here is caught in
 # _generate_content and turned into graceful degradation (last_error set, "" returned)
@@ -106,33 +145,51 @@ class GeminiClient:
             return ""
 
         last_error: Exception | None = None
-        for candidate_model in self._model_candidates:
-            try:
-                response = self._client.models.generate_content(
-                    model=candidate_model,
-                    contents=contents,
-                )
-            except _API_ERRORS as exc:
-                logger.warning("Gemini API error (model=%s): %s", candidate_model, exc)
-                last_error = exc
-                continue
-            except Exception as exc:
-                # Unexpected error — log and re-raise so bugs aren't silently swallowed
-                logger.error(
-                    "Unexpected error calling Gemini (model=%s): %s",
-                    candidate_model,
-                    exc,
-                )
-                raise
+        # One pass over the fallback chain per attempt; a demand spike takes out every
+        # candidate at once, so retrying the whole chain is what actually helps.
+        for attempt in range(len(_RETRY_BACKOFF_S) + 1):
+            for candidate_model in self._model_candidates:
+                try:
+                    response = self._client.models.generate_content(
+                        model=candidate_model,
+                        contents=contents,
+                    )
+                except _API_ERRORS as exc:
+                    logger.warning(
+                        "Gemini API error (model=%s): %s", candidate_model, exc
+                    )
+                    last_error = exc
+                    continue
+                except Exception as exc:
+                    # Unexpected error — log and re-raise so bugs aren't silently swallowed
+                    logger.error(
+                        "Unexpected error calling Gemini (model=%s): %s",
+                        candidate_model,
+                        exc,
+                    )
+                    raise
 
-            self.model_name = candidate_model
-            self.last_error = ""
-            logger.debug(
-                "Gemini response OK (model=%s, len=%d)",
-                candidate_model,
-                len(_safe_text(response)),
+                self.model_name = candidate_model
+                self.last_error = ""
+                logger.debug(
+                    "Gemini response OK (model=%s, len=%d)",
+                    candidate_model,
+                    len(_safe_text(response)),
+                )
+                return _safe_text(response)
+
+            if attempt >= len(_RETRY_BACKOFF_S) or not _is_retryable(last_error):
+                break
+            delay = _RETRY_BACKOFF_S[attempt]
+            logger.warning(
+                "All Gemini candidates failed with a transient error; retrying in %.0fs "
+                "(attempt %d/%d): %s",
+                delay,
+                attempt + 2,
+                len(_RETRY_BACKOFF_S) + 1,
+                last_error,
             )
-            return _safe_text(response)
+            time.sleep(delay)
 
         self.last_error = (
             str(last_error) if last_error else "Gemini returned no response."

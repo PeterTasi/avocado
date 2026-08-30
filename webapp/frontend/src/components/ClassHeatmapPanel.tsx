@@ -50,7 +50,8 @@ export function ClassHeatmapPanel() {
         <div>
           <p className="section-eyebrow">班級視角</p>
           <h2 className="mt-0.5 text-base font-semibold text-[color:var(--text-primary)]">班級知識熱力圖</h2>
-          <p className="text-xs text-[color:var(--text-muted)]">彙整全班作答，找出共同弱點</p>
+          {/* ponytail: 誠實標示樣本範圍——系統目前是單租戶，寫「全班」是假的 */}
+          <p className="text-xs text-[color:var(--text-muted)]">彙整所有使用者的作答，找出共同弱點 · 目前為單一使用者</p>
         </div>
       </div>
 

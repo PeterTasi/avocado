@@ -35,6 +35,7 @@ import {
   useConceptMastery,
   useConcepts,
   useCourses,
+  useQuestions,
   useHealth,
   useKnowledgeGraph,
   useReviewPlan,
@@ -149,6 +150,22 @@ export default function App() {
 
   const { data: healthData } = useHealth();
   const { data: coursesData, isLoading: coursesLoading } = useCourses();
+  // 題目一直是 DB 裡的，但沒有人去拿——測驗頁只在按下「產生題目」那一刻才有東西，
+  // 重新整理或換頁回來就歸零。後端 list_questions 現在會 scope 到 active course，
+  // 所以切課後這個 query 被 invalidate、重抓，就會換成那門課的題目。
+  const { data: serverQuestions } = useQuestions();
+  useEffect(() => {
+    const items = serverQuestions?.items ?? [];
+    const serverIds = new Set(items.map((q) => q.id));
+    // 本地那批還全部在伺服器清單裡 → 是剛產生完的子集，不要用完整清單蓋掉它。
+    // 有任何一題不在 → 課程換了，整批替換（換到沒題目的課就清空）。
+    const localStillValid =
+      questions.length > 0 && questions.every((q) => serverIds.has(q.id));
+    if (localStillValid) return;
+    if (questions.length === 0 && items.length === 0) return;
+    setQuestions(items);
+    setQuestionIndex(0);
+  }, [serverQuestions, questions]);
   const showEmptyState = !coursesLoading && (coursesData?.items?.length ?? 0) === 0;
   const { data: conceptsData, isLoading: conceptsLoading, isError: conceptsError } = useConcepts();
   const { data: masteryData, isLoading: masteryLoading } = useConceptMastery();

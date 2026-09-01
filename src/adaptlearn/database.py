@@ -535,17 +535,33 @@ class StudyRepository:
                 ],
             )
 
-    def list_questions(self, limit: int = 50) -> list[Question]:
+    def list_questions(
+        self, limit: int = 50, course_id: str | None = None
+    ) -> list[Question]:
         with self._connect() as cur:
-            cur.execute(
-                """
-                SELECT id, concept_id, concept_name, difficulty, question_text, answer_text, rationale
-                FROM questions
-                ORDER BY created_at DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
+            if course_id:
+                cur.execute(
+                    """
+                    SELECT q.id, q.concept_id, q.concept_name, q.difficulty,
+                           q.question_text, q.answer_text, q.rationale
+                    FROM questions q
+                    JOIN concepts c ON c.id = q.concept_id
+                    WHERE c.course_id = %s
+                    ORDER BY q.created_at DESC
+                    LIMIT %s
+                    """,
+                    (course_id, limit),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, concept_id, concept_name, difficulty, question_text, answer_text, rationale
+                    FROM questions
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
             rows = cur.fetchall()
         return [
             Question(

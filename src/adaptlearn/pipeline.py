@@ -530,7 +530,11 @@ class AdaptLearnService:
         }
 
     def list_questions(self, limit: int = 100) -> list[Question]:
-        return self.repo.list_questions(limit=limit)
+        # Scoped to the active course, like list_concepts / list_edges / get_graphviz.
+        # Without this the quiz page mixes every course together and cannot follow
+        # a course switch.
+        active_course_id = self.repo.get_active_course_id()
+        return self.repo.list_questions(limit=limit, course_id=active_course_id)
 
     def get_question(self, question_id: str) -> Question | None:
         return self.repo.get_question(question_id)

@@ -84,7 +84,6 @@ export function SetupPanel({
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
   const activateCourse = useActivateCourse();
   const [activatingId, setActivatingId] = useState<string | null>(null);
-  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const courses = coursesData?.items ?? [];
 
@@ -121,7 +120,6 @@ export function SetupPanel({
     setActivatingId(course.id);
     try {
       await activateCourse.mutateAsync(course.id);
-      setActiveCourseId(course.id);
       // 同一個閘門：沒開的話畫面會停在「尚未上傳教材」，切了課也看不到概念。
       onIngested();
     } finally {
@@ -495,7 +493,7 @@ export function SetupPanel({
                 >
                   <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">
                     {course.subject}
-                    {activeCourseId === course.id && (
+                    {course.is_active && (
                       <span className="pill ml-2 align-middle text-[10px]"
                             style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
                         使用中

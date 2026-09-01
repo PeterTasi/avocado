@@ -392,6 +392,8 @@ export interface Course {
   subject: string;
   filename: string;
   uploaded_at: string;
+  /** 由伺服器決定，不要用前端自己記的狀態推——重整後前端的猜測會掉。 */
+  is_active?: boolean;
 }
 
 export interface ClassNodeStat {

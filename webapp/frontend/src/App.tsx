@@ -207,7 +207,11 @@ export default function App() {
 
   const runtimeLabel = metrics.llm_enabled ? "Gemini 已啟用" : "備援模式";
   const runtimeHint = metrics.llm_enabled ? "可使用生成式診斷、摘要與評分" : "目前以規則與既有資料回應";
-  const activeCourseName = courseName.trim() || "通用課程";
+  // 以伺服器回報的 is_active 為準。courseName 是上傳表單的輸入框，不能拿它
+  // 當「目前課程」——切換既有課程時它不會變，重整後也會掉回預設值。
+  const activeCourse = coursesData?.items?.find((c) => c.is_active);
+  const activeCourseName =
+    activeCourse?.subject ?? (courseName.trim() || "通用課程");
   const selectedFileLabel = materialFile?.name ?? "尚未選擇教材檔案";
   const topChapter = sessionUploaded ? (chapterMastery[0]?.chapter ?? "等待教材建立章節") : "等待教材建立章節";
   const topFocus = sessionUploaded ? (tonight.focus_items[0]?.concept ?? "尚未產生今晚優先概念") : "尚未產生今晚優先概念";

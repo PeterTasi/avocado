@@ -511,7 +511,11 @@ def tonight_dashboard(top_n: int = 5) -> dict[str, Any]:
 @app.get("/api/courses")
 @cached(_cache)
 def list_courses() -> dict[str, Any]:
-    courses = _get_service().list_courses()
+    service = _get_service()
+    courses = service.list_courses()
+    # The active course lived only in server memory, so the client kept its own guess
+    # and showed 「通用課程」 everywhere. Say which one it is instead.
+    active_course_id = service.repo.get_active_course_id()
     return {
         "items": [
             {
@@ -519,6 +523,7 @@ def list_courses() -> dict[str, Any]:
                 "subject": c.subject,
                 "filename": c.filename,
                 "uploaded_at": c.uploaded_at.isoformat(timespec="seconds"),
+                "is_active": c.id == active_course_id,
             }
             for c in courses
         ]

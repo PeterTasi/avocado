@@ -51,12 +51,14 @@ def get_weak_concepts(
     """
     all_stats = repo.list_class_node_stats(course_id)
     weak = [s for s in all_stats if s.error_rate >= error_threshold and s.sample_count > 0]
+    names = {c.id: c.name for c in repo.list_concepts(course_id)}
 
     results: list[dict] = []
     for stat in weak[:top_n]:
         estimated_uplift = round(min(uplift_cap, stat.error_rate * uplift_ratio), 3)
         results.append({
             "concept_id": stat.concept_id,
+            "concept_name": names.get(stat.concept_id, stat.concept_id),
             "error_rate": stat.error_rate,
             "sample_count": stat.sample_count,
             "estimated_uplift": estimated_uplift,

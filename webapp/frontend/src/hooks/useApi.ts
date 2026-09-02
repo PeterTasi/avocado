@@ -490,7 +490,7 @@ export function useClassWeakConcepts(courseId: string | null, topN = 3) {
     queryKey: ["heatmap-weak", courseId, topN],
     queryFn: () =>
       apiFetch(`/api/heatmap/${courseId}/weak?top_n=${topN}`) as Promise<{
-        items: Array<{ concept_id: string; error_rate: number; sample_count: number; estimated_uplift: number }>;
+        items: Array<{ concept_id: string; concept_name: string; error_rate: number; sample_count: number; estimated_uplift: number }>;
       }>,
     enabled: !!courseId,
     staleTime: 30000,

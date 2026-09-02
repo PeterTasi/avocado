@@ -145,8 +145,15 @@ export default function App() {
   const [questionIndex, setQuestionIndex] = useState(0);
   // Session gate: until this session successfully ingests a file, concept &
   // insight panels stay empty so stale DB data from a prior session can't be
-  // mistaken for the freshly uploaded material. Resets on page reload.
-  const [sessionUploaded, setSessionUploaded] = useState(false);
+  // mistaken for the freshly uploaded material. Kept in sessionStorage so a
+  // reload doesn't zero the dashboard; closing the tab still clears it.
+  const [sessionUploaded, setSessionUploadedState] = useState(() => {
+    try { return sessionStorage.getItem("adaptlearn_session_uploaded") === "1"; } catch { return false; }
+  });
+  const setSessionUploaded = useCallback((value: boolean) => {
+    setSessionUploadedState(value);
+    try { sessionStorage.setItem("adaptlearn_session_uploaded", value ? "1" : "0"); } catch { /* 無痕模式：退回記憶體 */ }
+  }, []);
 
   const { data: healthData } = useHealth();
   const { data: coursesData, isLoading: coursesLoading } = useCourses();
@@ -200,7 +207,7 @@ export default function App() {
       id: `focus-${index}`,
       title: `優先複習：${item.concept}`,
       description: `${item.chapter} · 建議時段 ${item.slot}。優先度 ${safeNumber(item.priority).toFixed(2)}。`,
-      impact: `預估提升 +${(safeNumber(item.estimated_gain) * 100).toFixed(1)}%`,
+      impact: `優先度 ${safeNumber(item.priority).toFixed(2)}`,
       level: (index < 2 ? "high" : "medium") as "high" | "medium",
     }));
   }, [tonight.focus_items, sessionUploaded]);

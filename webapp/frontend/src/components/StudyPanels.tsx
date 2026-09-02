@@ -1,6 +1,6 @@
 import { Clock3, CalendarClock } from "lucide-react";
 import type { ReviewItem, TonightDashboard } from "../hooks/useApi";
-import { formatPercent, safeNumber } from "../utils/helpers";
+import { safeNumber } from "../utils/helpers";
 import { ForgettingCurve } from "./ForgettingCurve";
 
 function formatTimestamp(value: string): string {
@@ -21,7 +21,6 @@ interface TonightProps {
 }
 
 export function TonightPanel({ tonight }: TonightProps) {
-  const upliftPct = (safeNumber(tonight.uplift) * 100).toFixed(1);
   const hasData = tonight.has_data !== false && (tonight.before > 0 || tonight.after > 0);
 
   return (
@@ -39,30 +38,9 @@ export function TonightPanel({ tonight }: TonightProps) {
         </div>
       </div>
 
-      {/* Before / Uplift / After — big numbers */}
-      {hasData ? (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="card-subtle p-3 text-center">
-            <p className="section-eyebrow">目前通過率</p>
-            <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
-              {formatPercent(tonight.before)}
-            </p>
-          </div>
-          <div className="card-subtle p-3 text-center" style={{ borderColor: "rgba(14,164,114,0.25)", background: "var(--high-soft)" }}>
-            <p className="section-eyebrow" style={{ color: "var(--high)" }}>預估提升</p>
-            <p className="mt-2 font-mono-data text-2xl font-bold" style={{ color: "var(--high)" }}>
-              +{upliftPct}%
-            </p>
-          </div>
-          <div className="card-subtle p-3 text-center">
-            <p className="section-eyebrow">預估通過率</p>
-            <p className="mt-2 font-mono-data text-2xl font-bold text-[color:var(--text-primary)]">
-              {formatPercent(tonight.after)}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <p className="text-xs text-[color:var(--text-muted)]">尚無作答記錄。先上傳教材並完成測驗，通過率預估才會出現。</p>
+      {/* ponytail: 通過率 before/after 是未驗證的佔位公式（pipeline._estimate_pass_probability），不給人看 */}
+      {!hasData && (
+        <p className="text-xs text-[color:var(--text-muted)]">尚無作答記錄。先上傳教材並完成測驗，今晚清單才會出現。</p>
       )}
 
       {/* Chapter tags */}
@@ -90,7 +68,7 @@ export function TonightPanel({ tonight }: TonightProps) {
               </p>
               <p className="mt-0.5 text-xs text-[color:var(--accent)]">{item.chapter} · {item.slot}</p>
               <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                優先度 {safeNumber(item.priority).toFixed(2)} · 預估提升 +{(safeNumber(item.estimated_gain) * 100).toFixed(1)}%
+                優先度 {safeNumber(item.priority).toFixed(2)}
               </p>
             </article>
           ))

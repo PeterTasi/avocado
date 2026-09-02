@@ -29,7 +29,7 @@ export function ClassHeatmapPanel() {
 
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const activeCourseId = selectedCourseId ?? courses[0]?.id ?? null;
+  const activeCourseId = selectedCourseId ?? courses.find(c => c.is_active)?.id ?? courses[0]?.id ?? null;
 
   const { data: heatmapData, isLoading: heatmapLoading } = useClassHeatmap(activeCourseId);
   const { data: weakData } = useClassWeakConcepts(activeCourseId, 3);
@@ -82,10 +82,10 @@ export function ClassHeatmapPanel() {
               <ul className="space-y-1.5">
                 {weak.map((w) => (
                   <li key={w.concept_id} className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-[color:var(--text-primary)]">{w.concept_id}</span>
+                    <span className="font-medium text-[color:var(--text-primary)]">{w.concept_name}</span>
+                    {/* ponytail: estimated_uplift 是封頂常數不是實測，不顯示；sample_count 才是真的 */}
                     <span className="text-[color:var(--text-secondary)]">
-                      錯誤率 {(w.error_rate * 100).toFixed(0)}%
-                      · 補強可提升 +{(w.estimated_uplift * 100).toFixed(1)}%
+                      錯誤率 {(w.error_rate * 100).toFixed(0)}% · {w.sample_count} 次作答
                     </span>
                   </li>
                 ))}

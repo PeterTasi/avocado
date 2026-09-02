@@ -185,6 +185,7 @@ class StudyRepository:
             (1, self._migration_001_add_timestamptz),
             (2, self._migration_002_concept_details),
             (3, self._migration_003_drop_review_plan),
+            (4, self._migration_004_course_activated_at),
         ]
         for version, fn in migrations:
             if version not in applied:
@@ -246,6 +247,11 @@ class StudyRepository:
         with self._connect() as cur:
             cur.execute("DROP TABLE IF EXISTS review_plan")
 
+    def _migration_004_course_activated_at(self) -> None:
+        """目前課程原本只存在記憶體，後端一重啟就掉回最新上傳的那門。改記在資料庫。"""
+        with self._connect() as cur:
+            cur.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ")
+
     # ── P1: Course-scoped state management ────────────────────────
 
     def reset_course_state(self, course_id: str) -> None:
@@ -294,8 +300,14 @@ class StudyRepository:
                 self._active_course_id = None
 
     def set_active_course(self, course_id: str) -> None:
-        """Mark a course as active within this process (called by ingest_material)."""
+        """Mark a course as active (called by ingest_material and the activate endpoint).
+
+        Persisted so the choice survives a backend restart; the in-memory copy
+        keeps same-process reads instant.
+        """
         self._active_course_id = course_id
+        with self._connect() as cur:
+            cur.execute("UPDATE courses SET activated_at = now() WHERE id = %s", (course_id,))
 
     def get_active_course_id(self) -> str | None:
         """Return the active course id.
@@ -310,7 +322,10 @@ class StudyRepository:
             return self._active_course_id
         with self._connect() as cur:
             cur.execute(
-                "SELECT id FROM courses WHERE uploaded_at <= now() ORDER BY uploaded_at DESC LIMIT 1"
+                """
+                SELECT id FROM courses WHERE uploaded_at <= now()
+                ORDER BY activated_at DESC NULLS LAST, uploaded_at DESC LIMIT 1
+                """
             )
             row = cur.fetchone()
         return row["id"] if row else None

@@ -1194,3 +1194,17 @@ Google AI Studio 從 2026 年 4 月起確實會發 `AQ.` 新格式金鑰,且 Goo
 
 測試 113 通過／5 失敗（同一批 ingest 改非同步後未更新的舊測試）。
 另注意：**後端重啟後「目前課程」會掉回最新上傳的那門**（機率），上台前開完後端要先到教材頁點一次「線性代數的正交性」。
+
+## 2026-09-02 — 決賽前網站再修五處（同分支 `fix/demo-site-polish`）
+
+1. **跨課程標籤降級**：「等價概念／一般化／類比／語義相關」改成「高度相似／相似／可能相關／弱相關」，
+   面板底部加註「標籤只代表有多像，不代表數學上等價」。後端 `link_type` 不動。
+   起因：「正交集合 ↔ 單範正交集」被判 equivalent，數學上是特例不是等價，餘弦距離管線不懂數學。
+2. **目前課程改記在資料庫**（migration 004：`courses.activated_at`）。以前只在記憶體，後端一重啟就掉回最新上傳的那門。
+   `get_active_course_id` 改 `ORDER BY activated_at DESC NULLS LAST, uploaded_at DESC`。新增 `tests/test_active_course_persists.py`。
+3. **複習排程沒作答的概念顯示「尚未測驗」**，不再顯示 100%（那是 priority，不是記憶率）。
+4. **Landing 看過一次就記在 sessionStorage**，重整不再跳回開場畫面。
+5. **技能樹滾輪錯誤**：React 的 `onWheel` 是 passive，`preventDefault()` 被拒絕並印錯誤。改用 `addEventListener("wheel", …, { passive: false })`。
+   驗證：派發 cancelable WheelEvent 後 `defaultPrevented === true`。
+
+測試 114 通過／5 失敗（同一批舊測試）。

@@ -122,9 +122,13 @@ export function StudyPlansPanel({ reviewItems, isLoading }: StudyPlansProps) {
                         🧠 {Math.round(item.retention * 100)}%
                       </span>
                     )}
-                    <span className="font-mono-data text-[11px] text-[color:var(--text-muted)]">
-                      {(priority * 100).toFixed(0)}%
-                    </span>
+                    {item.stability > 0 ? (
+                      <span className="font-mono-data text-[11px] text-[color:var(--text-muted)]">
+                        {(priority * 100).toFixed(0)}%
+                      </span>
+                    ) : (
+                      <span className="pill text-[10px]">尚未測驗</span>
+                    )}
                   </div>
                 </div>
                 {/* Priority bar */}

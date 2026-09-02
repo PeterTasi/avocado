@@ -2,19 +2,20 @@ import { Waypoints } from "lucide-react";
 import { useCourses, useCrossCourseLinks } from "../hooks/useApi";
 import type { CrossCourseLink } from "../hooks/useApi";
 
-/** 關係分級的中文與色彩。
+/** 分級只反映嵌入向量的餘弦相似度，不是數學判斷。
  *
  * 門檻定義在 cross_course_linker._infer_link_type，依 gemini-embedding-001 校準：
  * equivalent ≥0.84、generalization ≥0.76、analogy ≥0.71、semantic ≥0.68。
  *
- * `analogy` 必須譯成「類比」而非「相似」——跨領域學習最有價值的正是這一級
- * （線代的特徵向量 ↔ ML 的主成分分析就落在這裡）。譯成「相似」會把它講小。
+ * ponytail: 以前寫「等價概念／一般化／類比」，但「正交集合 ↔ 單範正交集」被判 equivalent，
+ * 數學上是特例關係不是等價——這條管線根本不懂數學，標籤不能講得像它懂。
+ * 所以介面只講「有多像」，要不要當同一件事由使用者自己看。
  */
 const LINK_META: Record<string, { label: string; hint: string; color: string; soft: string }> = {
-  equivalent:     { label: "等價概念", hint: "兩門課在講同一件事", color: "var(--high)",   soft: "var(--high-soft)" },
-  generalization: { label: "一般化",   hint: "一個是另一個的特例", color: "var(--accent)", soft: "var(--accent-soft)" },
-  analogy:        { label: "類比",     hint: "結構相同、領域不同", color: "var(--medium)", soft: "var(--medium-soft)" },
-  semantic:       { label: "語義相關", hint: "主題上有關聯",       color: "var(--text-muted)", soft: "var(--bg-sunken)" },
+  equivalent:     { label: "高度相似", hint: "相似度 ≥ 84%，很可能在講同一件事，但不保證數學上等價", color: "var(--high)",   soft: "var(--high-soft)" },
+  generalization: { label: "相似",     hint: "相似度 ≥ 76%，可能是特例或延伸關係",                   color: "var(--accent)", soft: "var(--accent-soft)" },
+  analogy:        { label: "可能相關", hint: "相似度 ≥ 71%，結構或用法上有共通點",                   color: "var(--medium)", soft: "var(--medium-soft)" },
+  semantic:       { label: "弱相關",   hint: "相似度 ≥ 68%，主題上有關聯",                           color: "var(--text-muted)", soft: "var(--bg-sunken)" },
 };
 
 function meta(linkType: string) {
@@ -116,7 +117,7 @@ export function CrossCourseBridgePanel() {
             ))}
           </ul>
           <p className="mt-4 text-xs leading-5 text-[color:var(--text-muted)]">
-            由概念向量的語義相似度自動比對而來，只列出與目前課程相關的連結。
+            由概念向量的語義相似度自動比對而來，只列出與目前課程相關的連結。標籤只代表「有多像」，不代表數學上等價。
             相似度為概念嵌入的餘弦相似度，非人工標註。
           </p>
         </>

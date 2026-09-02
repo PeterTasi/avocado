@@ -124,7 +124,10 @@ export default function App() {
     }
     return getViewFromPathname(window.location.pathname);
   });
-  const [showLanding, setShowLanding] = useState(true);
+  // 每次重整都跳 landing 很煩；看過一次就記住，關掉分頁才重來。
+  const [showLanding, setShowLanding] = useState(() => {
+    try { return sessionStorage.getItem("adaptlearn_landing_seen") !== "1"; } catch { return true; }
+  });
 
   // 從 URL ?key=xxx 注入 API key 到 localStorage（一次性，mount 時執行）
   useEffect(() => {
@@ -484,7 +487,11 @@ export default function App() {
   };
 
   if (showLanding) {
-    return <LandingScreen onEnter={() => { setShowLanding(false); navigateTo("home"); }} />;
+    return <LandingScreen onEnter={() => {
+      try { sessionStorage.setItem("adaptlearn_landing_seen", "1"); } catch { /* 無痕模式 */ }
+      setShowLanding(false);
+      navigateTo("home");
+    }} />;
   }
 
   return (

@@ -262,16 +262,24 @@ export function MindMapCanvas({ graph, masteryItems }: Props) {
 
   const onMouseUp = useCallback(() => { dragging.current = false; }, []);
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    if (e.ctrlKey) {
-      // Mac pinch-to-zoom (ctrlKey=true on trackpad pinch) — slow factor
-      const factor = e.deltaY < 0 ? 1.04 : 0.96;
-      setZoom(z => Math.min(3, Math.max(0.25, z * factor)));
-    } else {
-      // Two-finger scroll → pan the canvas
-      setPan(p => ({ x: p.x - e.deltaX / zoom, y: p.y - e.deltaY / zoom }));
-    }
+  // React 的 onWheel 是 passive listener，preventDefault() 會被瀏覽器拒絕並印錯誤；
+  // 要擋掉整頁捲動只能自己用 { passive: false } 掛原生事件。
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        // Mac pinch-to-zoom (ctrlKey=true on trackpad pinch) — slow factor
+        const factor = e.deltaY < 0 ? 1.04 : 0.96;
+        setZoom(z => Math.min(3, Math.max(0.25, z * factor)));
+      } else {
+        // Two-finger scroll → pan the canvas
+        setPan(p => ({ x: p.x - e.deltaX / zoom, y: p.y - e.deltaY / zoom }));
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
   }, [zoom]);
 
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1); }, []);
@@ -341,7 +349,6 @@ export function MindMapCanvas({ graph, masteryItems }: Props) {
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
-      onWheel={onWheel}
     >
       <svg
         width={containerW}

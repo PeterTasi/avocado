@@ -1,4 +1,4 @@
-"""先修關係「向後引用」回歸測試（docs/fable5-review.md #2）。
+"""先修關係「向後引用」回歸測試（docs/fable5.1-review.md #2）。
 
 LLM 輸出順序不保證拓撲序：概念 A 的 prerequisites 可能指向列表中
 排在 A 後面的概念 B。單遍過濾會把這種先修默默丟掉。

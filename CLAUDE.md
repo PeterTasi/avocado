@@ -331,7 +331,7 @@ Easing：--ease-out / --ease-in-out / --ease-drawer（自訂 cubic-bezier，Emil
 | A1 | 賽後 | 全域單例 → 完整多租戶（短期解已決策不做） |
 | A4 | 賽後 | 拆 God object（`database.py` / `pipeline.py` / `App.tsx` / `SetupPanel.tsx` — react-doctor 標記 too-large）— 純可維護性問題、不影響功能 |
 
-> `docs/fable5-review.md`（2026-07-06 全 repo 審查）的第 1、2、3 項已修，其餘（#4=待辦 G、#5 PDF OCR 記憶體、#6 熱力圖 `avg_attempts` 是假數字別引用、#7 模板題永遠英文、#8 `llm_degraded` 漏報、#9 API key 全域競態）仍未修。**修之前先讀那份報告，別重審。**
+> `docs/fable5.1-review.md`（2026-07-06 全 repo 審查）的第 1、2、3 項已修，其餘（#4=待辦 G、#5 PDF OCR 記憶體、#6 熱力圖 `avg_attempts` 是假數字別引用、#7 模板題永遠英文、#8 `llm_degraded` 漏報、#9 API key 全域競態）仍未修。**修之前先讀那份報告，別重審。**
 
 ---
 

@@ -87,7 +87,7 @@ uvicorn webapp.main:app --host 127.0.0.1 --port 8000
 3. 全部放上去，但**準備好誠實的答案**：「這是粗估公式，目前樣本數很少，
    我們展示的是相對排序而非絕對數值」
 
-同理，**班級熱力圖的 `avg_attempts` 是假數字**（`docs/fable5-review.md` #6），
+同理，**班級熱力圖的 `avg_attempts` 是假數字**（`docs/fable5.1-review.md` #6），
 也不要截。
 
 ---

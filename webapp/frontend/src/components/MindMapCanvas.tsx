@@ -9,7 +9,9 @@ const STATUS_COLORS: Record<string, string> = {
   mastered:     "#2a8c35",   // var(--high) — forest green
   learning:     "#b07828",   // var(--medium) — warm amber-brown
   needs_review: "#c44040",   // var(--low) — warm red
-  new:          "#3d6b28",   // var(--accent) — deep avocado green
+  // ponytail: 未測驗必須是灰的。原本是 #3d6b28 深酪梨綠，跟 mastered 的 #2a8c35 幾乎分不出來，
+  // 0 次作答的概念看起來像已經學會——畫面在誤導人，跟「不知道就說不知道」的原則相牴觸。
+  new:          "#8b929c",   // var(--text-muted) — neutral grey
 };
 
 const STATUS_LABELS: Record<string, string> = {

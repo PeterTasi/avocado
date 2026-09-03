@@ -38,7 +38,8 @@ export function KnowledgeGraphPanel({ dotSource, isLoading, masteryItems = [], c
             <Network size={15} style={{ color: "var(--accent)" }} />
           </div>
           <div>
-            <p className="section-eyebrow">觀念心智圖</p>
+            {/* ponytail: 不是心智圖——心智圖畫隸屬，這張畫先修依賴，而且節點綁掌握度 */}
+            <p className="section-eyebrow">先修技能樹</p>
             <h2 className="mt-0.5 text-base font-semibold text-[color:var(--text-primary)]">知識圖譜</h2>
           </div>
         </div>

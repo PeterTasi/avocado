@@ -434,7 +434,7 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
     </div>
     <div class="rule-mark reveal d1" style="margin-bottom:36px"></div>
 
-    <h2 class="reveal d2">接下來的七頁，是我自己問過的<em>七個問題</em>。</h2>
+    <h2 class="reveal d2">接下來，是我自己問過的<em>七個問題</em>。</h2>
 
     <div class="qlist">
       <div class="qrow reveal d3"><span class="qnum">1</span><span class="qtext">我該讀哪裡？</span><span class="qwhere">技能樹</span></div>
@@ -446,7 +446,7 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
       <div class="qrow reveal d6"><span class="qnum">7</span><span class="qtext">它錯了我知道嗎？</span><span class="qwhere">誠實原則</span></div>
     </div>
 
-    <div class="small reveal d7" style="margin-top:30px">一頁解決一個問題。上面那條進度條會告訴你，現在走到第幾個。</div>
+    <div class="small reveal d7" style="margin-top:30px">上面那條進度條會一路跟著，告訴你現在走到第幾個問題。</div>
   </div>
   <div class="pageno">04</div>
 </section>
@@ -567,21 +567,22 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
     </h2>
 
     <div class="two-4060" style="margin-top:38px;align-items:start">
-      <div class="reveal d2" style="display:flex;flex-direction:column;gap:26px;padding-top:4px">
+      <!-- 01、02 縮成小字（講稿沒講，讓評審自己看）；主角是 03「分數會回流」 -->
+      <div class="reveal d2" style="display:flex;flex-direction:column;gap:20px;padding-top:4px">
         <div class="step">
-          <span class="step-n">01</span>
-          <div><h3 style="font-size:31px">不是隨機出題</h3>
-          <div class="small" style="margin-top:8px;font-size:23px">系統挑我最弱、最沒測過的概念出題，主動把漏洞逼出來。</div></div>
+          <span class="step-n" style="font-size:19px">01</span>
+          <div class="small" style="font-size:23px;padding-top:2px"><strong style="font-weight:700">不是隨機出題</strong> —— 系統挑我最弱、最沒測過的概念。</div>
         </div>
         <div class="step">
-          <span class="step-n">02</span>
-          <div><h3 style="font-size:31px">開放式作答，AI 批改</h3>
-          <div class="small" style="margin-top:8px;font-size:23px">不是選擇題比對答案。它會指出我的推理是在哪一步斷掉的。</div></div>
+          <span class="step-n" style="font-size:19px">02</span>
+          <div class="small" style="font-size:23px;padding-top:2px"><strong style="font-weight:700">開放式作答，AI 批改</strong> —— 它指出我的推理在哪一步斷掉。</div>
         </div>
-        <div class="step">
-          <span class="step-n">03</span>
-          <div><h3 style="font-size:31px">分數會回流</h3>
-          <div class="small" style="margin-top:8px;font-size:23px">每一次作答同時更新掌握度、技能樹狀態與複習排程 —— 是一個閉環。</div></div>
+        <div class="card card-tint" style="padding:32px 34px;margin-top:10px">
+          <div class="eyebrow" style="font-size:19px">03</div>
+          <h3 style="font-size:40px;margin-top:10px">分數會回流</h3>
+          <div class="body" style="margin-top:14px;font-size:26px;color:var(--ink)">
+            每一次作答，同時更新<strong>掌握度、技能樹狀態與複習排程</strong> —— 是一個閉環。
+          </div>
         </div>
       </div>
       <div class="shot shot-plain reveal d3" style="height:510px">
@@ -614,16 +615,18 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
     </h2>
 
     <div class="two" style="margin-top:38px;align-items:start">
+      <!-- 主角換成講稿裡的情境話；FSRS 技術說明縮成一行小字 -->
       <div class="reveal d2">
-        <div class="body" style="font-size:26px">
-          每個概念是一張記憶卡片。系統把我全部的作答歷史重放進
-          <strong>FSRS-5 間隔重複模型</strong>，重建每個概念的記憶穩定度，
-          算出「此刻還記得的機率」。
+        <div style="font-family:var(--f-serif);font-weight:600;font-size:38px;line-height:1.5">
+          上次錯的要看，新的也怕忘 ——<br>
+          <em>最後常常全部再看一次。</em>
         </div>
         <div style="margin-top:30px;display:flex;flex-direction:column;gap:16px">
-          <div class="card" style="padding:22px 28px"><div class="body" style="font-size:25px">快忘掉的、又是弱點的，<strong>排最前面</strong></div></div>
-          <div class="card" style="padding:22px 28px"><div class="body" style="font-size:25px">錯的東西不會消失，<strong>它會排隊等我回來</strong></div></div>
-          <div class="card" style="padding:22px 28px"><div class="body" style="font-size:25px">所以我不再「全部再看一次」，<strong>只補真的會忘的</strong></div></div>
+          <div class="card" style="padding:24px 30px"><div class="body" style="font-size:26px">快忘掉的、又是弱點的，<strong>排最前面</strong></div></div>
+          <div class="card" style="padding:24px 30px"><div class="body" style="font-size:26px">錯的東西不會消失，<strong>它會排隊等我回來</strong></div></div>
+        </div>
+        <div class="small" style="margin-top:24px;font-size:21px">
+          每個概念是一張記憶卡片。系統把作答歷史重放進 <strong style="font-weight:700">FSRS-5 間隔重複模型</strong>，重建記憶穩定度，算出「此刻還記得的機率」。
         </div>
       </div>
       <div class="reveal d3">
@@ -743,7 +746,58 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
 </section>
 
 <!-- ==========================================================
-     正片 11 ｜ 問題 7：它錯了我知道嗎（誠實原則）
+     正片 11 ｜ 問題 7-a：它錯了我知道嗎（故事頁，講稿的兩個【停】停在這裡）
+     ========================================================== -->
+<section class="slide">
+  <div class="pad pad-fill" style="padding-top:150px;padding-bottom:112px">
+    <div class="chain">
+      <span class="chain-item done">我該讀哪裡</span><span class="chain-sep">›</span>
+      <span class="chain-item done">我為什麼卡住</span><span class="chain-sep">›</span>
+      <span class="chain-item done">我真的會了嗎</span><span class="chain-sep">›</span>
+      <span class="chain-item done">三天後還記得嗎</span><span class="chain-sep">›</span>
+      <span class="chain-item done">以前學的能用嗎</span><span class="chain-sep">›</span>
+      <span class="chain-item done">它真的有用嗎</span><span class="chain-sep">›</span>
+      <span class="chain-item now">它錯了我知道嗎</span>
+    </div>
+
+    <div class="eyebrow-zh reveal d1">我修過的一個 bug</div>
+
+    <div class="reveal d2" style="margin-top:26px;font-family:var(--f-serif);font-weight:700;font-size:76px;line-height:1.36;letter-spacing:-.01em">
+      AI 最危險的，不是它答錯。<br>
+      是它<em>錯了，你卻不知道</em>。
+    </div>
+
+    <div class="two" style="margin-top:56px">
+      <div class="card reveal d4" style="background:#fbeeec;border-color:#e6bdb6">
+        <div class="eyebrow" style="font-size:19px;color:var(--red)">以前</div>
+        <div style="margin-top:20px;display:inline-flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:16px 26px">
+          <span style="color:var(--green);font-size:28px;line-height:1">✓</span>
+          <span style="font-family:var(--f-serif);font-weight:700;font-size:31px">建立完成</span>
+        </div>
+        <div class="body" style="margin-top:22px;font-size:26px;color:var(--ink)">
+          但那些概念<strong>根本不是從我的筆記來的</strong>。<br>
+          辨識失敗了，系統安靜地套了模板 —— 然後告訴我：成功。
+        </div>
+      </div>
+
+      <div class="card card-tint reveal d5">
+        <div class="eyebrow" style="font-size:19px">現在</div>
+        <div style="margin-top:20px;display:inline-flex;align-items:center;gap:14px;background:var(--surface);border:1px solid #e6bdb6;border-radius:14px;padding:16px 26px">
+          <span style="color:var(--amber);font-size:28px;line-height:1">⚠</span>
+          <span style="font-family:var(--f-serif);font-weight:700;font-size:27px">目前顯示的是模板概念，不是你的教材</span>
+        </div>
+        <div class="body" style="margin-top:22px;font-size:26px;color:var(--ink)">
+          辨識失敗就<strong>直接告訴使用者</strong>。<br>
+          這不是設想出來的情境 —— 是我自己踩過、然後修掉的 bug。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="pageno">11</div>
+</section>
+
+<!-- ==========================================================
+     正片 12 ｜ 問題 7-b：技術怎麼做到的（只講一句，其餘讓評審自己看）
      ========================================================== -->
 <section class="slide">
   <div class="pad pad-fill" style="padding-top:150px;padding-bottom:112px">
@@ -758,7 +812,7 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
     </div>
 
     <h2 class="reveal d1" style="font-size:54px">
-      AI 一定會犯錯 —— 所以我<em>把失敗也設計進去</em>。
+      所以我<em>把失敗也設計進系統裡</em>。
     </h2>
 
     <div class="three reveal d2" style="margin-top:36px">
@@ -796,11 +850,11 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
   <div class="cite" style="right:96px;font-family:var(--f-mono);font-size:18px;letter-spacing:.04em">
     React ／ FastAPI ／ PostgreSQL ／ ChromaDB ／ Gemini API ／ 本機 Ollama 視覺模型
   </div>
-  <div class="pageno">11</div>
+  <div class="pageno">12</div>
 </section>
 
 <!-- ==========================================================
-     正片 12 ｜ 結尾
+     正片 13 ｜ 結尾
      ========================================================== -->
 <section class="slide">
   <div class="pad">
@@ -821,7 +875,7 @@ body.editing .edit-toggle{opacity:1;pointer-events:auto;background:var(--green);
       </div>
     </div>
   </div>
-  <div class="pageno">12</div>
+  <div class="pageno">13</div>
 </section>
 
 <!-- ==========================================================

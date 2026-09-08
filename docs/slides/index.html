@@ -71,6 +71,10 @@ img,video,canvas,svg{max-width:100%;max-height:100%}
   .slide{position:relative;display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;width:1920px;height:1080px;break-after:page;page-break-after:always}
   .slide:last-child{break-after:auto;page-break-after:auto}
   .deck-controls{display:none!important}
+  /* 列印／輸出 PDF 時沒有 .visible，動畫元素要強制顯示，否則整頁空白 */
+  .reveal{opacity:1!important;transform:none!important}
+  .chain-item.now::after{width:78%!important}
+  .progress-bar,.edit-toggle,.edit-hotzone{display:none!important}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.2s!important}

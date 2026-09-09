@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>AdaptLearn 決賽 · 評審問答小抄</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700;900&family=Noto+Sans+TC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ===========================================
+   A4 直式，印出來拿在手上用
+   =========================================== */
+@page { size: A4; margin: 0; }
+
+:root{
+  --paper:#fafaf7;
+  --ink:#14201a;
+  --muted:#5f6a63;
+  --faint:#8a938c;
+  --rule:#dcdfd7;
+  --rule-soft:#e8eae3;
+  --surface:#ffffff;
+
+  /* 六個分類色 —— 側標靠顏色快速定位 */
+  --cA:#2f6b3e;   /* 技術可信度 */
+  --cB:#1f5f73;   /* 差在哪裡   */
+  --cC:#6b4a86;   /* 教與學     */
+  --cD:#b07408;   /* 成效驗證   */
+  --cE:#4a5a6b;   /* 落地永續   */
+  --cF:#c0392b;   /* 危險題     */
+
+  --f-serif:'Noto Serif TC', serif;
+  --f-sans:'Noto Sans TC', sans-serif;
+  --f-mono:'IBM Plex Mono', monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#e7e9e3}
+body{font-family:var(--f-sans);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+.page{
+  position:relative;
+  width:210mm; height:296.6mm;
+  background:var(--paper);
+  padding:14mm 20mm 12mm 16mm;   /* 右邊留 20mm 給側標 */
+  overflow:hidden;
+  break-after:page; page-break-after:always;
+}
+.page:last-child{break-after:auto;page-break-after:auto}
+
+/* --- 右側拇指索引：走到哪一類，哪一格是實心 --- */
+.thumbs{position:absolute;right:0;top:34mm;width:13mm}
+.tab{
+  height:32mm;margin-bottom:2mm;border-radius:3mm 0 0 3mm;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-mono);font-size:8pt;font-weight:600;letter-spacing:.1em;
+  writing-mode:vertical-rl;color:#fff;opacity:.16;
+}
+.tab.on{opacity:1}
+.tA{background:var(--cA)} .tB{background:var(--cB)} .tC{background:var(--cC)}
+.tD{background:var(--cD)} .tE{background:var(--cE)} .tF{background:var(--cF)}
+
+/* --- 頁首 --- */
+.head{display:flex;align-items:baseline;gap:5mm;padding-bottom:3mm;border-bottom:.8mm solid var(--ink)}
+.head .letter{font-family:var(--f-serif);font-weight:900;font-size:26pt;line-height:1}
+.head .name{font-family:var(--f-serif);font-weight:700;font-size:16pt}
+.head .cont{margin-left:auto;font-family:var(--f-mono);font-size:8.5pt;color:var(--faint)}
+.hA .letter,.hA .name{color:var(--cA)} .hA{border-color:var(--cA)}
+.hB .letter,.hB .name{color:var(--cB)} .hB{border-color:var(--cB)}
+.hC .letter,.hC .name{color:var(--cC)} .hC{border-color:var(--cC)}
+.hD .letter,.hD .name{color:var(--cD)} .hD{border-color:var(--cD)}
+.hE .letter,.hE .name{color:var(--cE)} .hE{border-color:var(--cE)}
+.hF .letter,.hF .name{color:var(--cF)} .hF{border-color:var(--cF)}
+
+/* --- 一題一張卡 --- */
+.qa{margin-top:5.5mm;padding-left:4mm;border-left:1mm solid var(--rule)}
+.qa.a{border-color:var(--cA)} .qa.b{border-color:var(--cB)} .qa.c{border-color:var(--cC)}
+.qa.d{border-color:var(--cD)} .qa.e{border-color:var(--cE)} .qa.f{border-color:var(--cF)}
+
+.q{font-family:var(--f-serif);font-weight:700;font-size:13.5pt;line-height:1.35}
+.q .id{font-family:var(--f-mono);font-size:9pt;color:var(--faint);margin-right:2.5mm}
+
+.first{
+  margin-top:2.2mm;padding:2.6mm 3.5mm;border-radius:1.5mm;
+  background:#eef3ee;border:.25mm solid #cfdcd2;
+  font-size:11.5pt;line-height:1.5;font-weight:500;
+}
+.first::before{content:"先這樣答　";font-family:var(--f-mono);font-size:8pt;color:var(--cA);letter-spacing:.08em}
+.qa.b .first{background:#eaf2f5;border-color:#c6dbe3}
+.qa.b .first::before{color:var(--cB)}
+.qa.c .first{background:#f2eef6;border-color:#dccfe6}
+.qa.c .first::before{color:var(--cC)}
+.qa.d .first{background:#f8f1e2;border-color:#e6d4ae}
+.qa.d .first::before{color:var(--cD)}
+.qa.e .first{background:#eef0f2;border-color:#d2d8dd}
+.qa.e .first::before{color:var(--cE)}
+.qa.f .first{background:#fbecea;border-color:#e8c2bc}
+.qa.f .first::before{color:var(--cF)}
+
+ul.more{margin:2.2mm 0 0 4.5mm;font-size:10pt;line-height:1.55;color:var(--muted)}
+ul.more li{margin-bottom:.9mm}
+ul.more b{color:var(--ink);font-weight:700}
+
+.goto{
+  margin-top:2mm;display:inline-block;
+  font-family:var(--f-mono);font-size:8.5pt;letter-spacing:.06em;
+  color:var(--faint);border:.25mm solid var(--rule);border-radius:6mm;padding:.8mm 3mm;
+}
+.warn{
+  margin-top:2mm;font-size:9.5pt;line-height:1.5;color:var(--cF);font-weight:700;
+}
+
+/* --- 頁尾 --- */
+.foot{
+  position:absolute;left:16mm;right:20mm;bottom:7mm;
+  display:flex;justify-content:space-between;
+  font-family:var(--f-mono);font-size:8pt;color:var(--faint);
+  border-top:.25mm solid var(--rule);padding-top:2mm;
+}
+
+/* ===========================================
+   封面／索引
+   =========================================== */
+.cover-title{font-family:var(--f-serif);font-weight:900;font-size:30pt;line-height:1.2;color:var(--ink)}
+.cover-sub{margin-top:3mm;font-size:11pt;color:var(--muted);line-height:1.6}
+
+.idx{margin-top:8mm;display:flex;flex-direction:column;gap:3.4mm}
+.idxrow{display:flex;align-items:stretch;border:.3mm solid var(--rule);border-radius:2mm;overflow:hidden;background:var(--surface)}
+.idxkey{
+  flex:0 0 26mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#fff;padding:2.5mm 1mm;
+}
+.idxkey .L{font-family:var(--f-serif);font-weight:900;font-size:19pt;line-height:1}
+.idxkey .N{font-family:var(--f-sans);font-size:8.5pt;margin-top:1mm;font-weight:500;text-align:center;line-height:1.3}
+.kA{background:var(--cA)} .kB{background:var(--cB)} .kC{background:var(--cC)}
+.kD{background:var(--cD)} .kE{background:var(--cE)} .kF{background:var(--cF)}
+.idxbody{flex:1;padding:2.6mm 4mm;font-size:9.5pt;line-height:1.65;color:var(--muted)}
+.idxbody b{color:var(--ink);font-weight:700}
+.idxpage{flex:0 0 15mm;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-mono);font-size:13pt;font-weight:600;color:var(--faint);border-left:.3mm solid var(--rule-soft)}
+
+.lifeline{margin-top:7mm;border:.5mm solid var(--cA);border-radius:2mm;padding:4mm 5mm;background:#eef3ee}
+.lifeline h3{font-family:var(--f-serif);font-size:12pt;color:var(--cA);margin-bottom:2.5mm}
+.lifeline p{font-size:11pt;line-height:1.8;font-weight:500}
+.lifeline .num{font-family:var(--f-mono);font-size:9pt;color:var(--cA);margin-right:2mm}
+
+/* ===========================================
+   數字小抄
+   =========================================== */
+.numgrid{margin-top:5mm;display:grid;grid-template-columns:1fr 1fr;gap:3mm}
+.numcard{border:.3mm solid var(--rule);border-radius:2mm;background:var(--surface);padding:3mm 4mm}
+.numcard .v{font-family:var(--f-mono);font-weight:600;font-size:15pt;color:var(--cA)}
+.numcard .k{font-size:9.5pt;color:var(--muted);margin-top:.8mm;line-height:1.45}
+
+table.appx{width:100%;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}
+table.appx th{background:#eef3ee;color:var(--cA);font-family:var(--f-mono);font-size:8.5pt;
+  text-align:left;padding:2mm 3mm;letter-spacing:.06em}
+table.appx td{border-top:.25mm solid var(--rule-soft);padding:2mm 3mm;color:var(--muted);line-height:1.5}
+table.appx td:first-child{font-family:var(--f-mono);color:var(--ink);font-weight:600;width:18mm}
+
+.sec-title{font-family:var(--f-serif);font-weight:700;font-size:13pt;margin-top:6mm;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- ==========================================================
+     P1 ｜ 封面 + 索引
+     ========================================================== -->
+<section class="page">
+  <div class="cover-title">評審問答小抄</div>
+  <div class="cover-sub">
+    AdaptLearn ｜ 中原大學 2026 AI 教與學標竿課程實踐暨成果展演競賽　學生組<br>
+    組名 avocado ｜ 蔡旻烜　—　<b>右邊有六個顏色標籤，用拇指直接翻到那一類。</b>
+  </div>
+
+  <div class="idx">
+    <div class="idxrow">
+      <div class="idxkey kA"><span class="L">A</span><span class="N">技術<br>可信度</span></div>
+      <div class="idxbody">掌握度 67% 怎麼算 ／ 0.68 門檻 ／ 卡關歸因會不會亂猜 ／ <b>LLM 幻覺</b> ／ FSRS-5 ／ 手寫辨識 ／ 技術架構</div>
+      <div class="idxpage">P2–3</div>
+    </div>
+    <div class="idxrow">
+      <div class="idxkey kB"><span class="L">B</span><span class="N">跟別人<br>差在哪</span></div>
+      <div class="idxbody"><b>ChatGPT</b> ／ NotebookLM 心智圖 ／ Anki 間隔重複 ／ 可汗、均一的知識地圖</div>
+      <div class="idxpage">P4</div>
+    </div>
+    <div class="idxrow">
+      <div class="idxkey kC"><span class="L">C</span><span class="N">教與學<br>價值</span></div>
+      <div class="idxbody"><b>老師在哪裡</b> ／ 老師要花多少時間 ／ 對教學的幫助 ／ 學生會不會更依賴 AI</div>
+      <div class="idxpage">P5</div>
+    </div>
+    <div class="idxrow">
+      <div class="idxkey kD"><span class="L">D</span><span class="N">成效<br>驗證</span></div>
+      <div class="idxbody"><b>22→10 能證明什麼</b> ／ 有沒有使用者測試 ／ 是工具還是你變認真 ／ 多少人在用</div>
+      <div class="idxpage">P6</div>
+    </div>
+    <div class="idxrow">
+      <div class="idxkey kE"><span class="L">E</span><span class="N">落地<br>永續</span></div>
+      <div class="idxbody">成本多少 ／ <b>資料隱私</b> ／ 只能用在線性代數嗎 ／ 接下來要做什麼</div>
+      <div class="idxpage">P7</div>
+    </div>
+    <div class="idxrow">
+      <div class="idxkey kF"><span class="L">F</span><span class="N">危險題<br>不能答錯</span></div>
+      <div class="idxbody"><b>通過率 94%</b> ／ 熱力圖平均次數 ／ 老師端做好了嗎 ／ 線上開得起來嗎 ／ <b>是你自己寫的嗎</b> ／ 5 條測試沒過</div>
+      <div class="idxpage">P8–9</div>
+    </div>
+  </div>
+
+  <div class="lifeline">
+    <h3>忘記怎麼答的時候，用這三句保命</h3>
+    <p><span class="num">1</span>「這個我有準備，請看附錄 A□。」　<span style="color:var(--faint);font-size:9.5pt">— 翻投影片，比硬講可信</span></p>
+    <p><span class="num">2</span>「我不敢說全部都是它的功勞。」　<span style="color:var(--faint);font-size:9.5pt">— 被質疑成效時先讓一步</span></p>
+    <p><span class="num">3</span>「這是下一步，不是已完成的功能。」　<span style="color:var(--faint);font-size:9.5pt">— 被問到還沒做的東西</span></p>
+  </div>
+
+  <div class="foot"><span>評審問答小抄 · 索引</span><span>P1 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P2 ｜ A 技術可信度（上）
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA on">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hA"><span class="letter">A</span><span class="name">技術可信度</span><span class="cont">1 / 2</span></div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A1</span>掌握度 67% 怎麼算的？三次作答就下結論？</div>
+    <div class="first">掌握度是<b>排序訊號</b>，不是測量值 —— 它決定我今天先讀哪一個，不是宣稱我學會了幾成。</div>
+    <ul class="more">
+      <li>67% 是 <b>3 次實際作答</b>算出來的，畫面上就寫著「3 次作答」</li>
+      <li>「0 次作答」跟「答錯很多次」系統分得很清楚，不會混在一起</li>
+      <li>樣本少我承認 —— 所以我把樣本數印在數字旁邊，讓使用者自己判斷這個數字有多重</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A5</span>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A2</span>跨課程相似度門檻 0.68 是怎麼定的？</div>
+    <div class="first">用<b>標註樣本的實測分佈</b>校準出來的，不是拍腦袋定的。</div>
+    <ul class="more">
+      <li>分級：<b>0.84 等價</b> ／ 0.76 高度相似 ／ 0.71 相似</li>
+      <li>校準表寫在程式碼註解裡 —— <b>換嵌入模型就必須重新校準</b></li>
+      <li>嵌入用 gemini-embedding-001，3072 維，走獨立配額</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A5</span>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A3</span>卡關歸因怎麼決定「根因」？會不會亂猜？</div>
+    <div class="first">它不是猜。它沿著<b>先修關係</b>往回走，找掌握度最低、而且還沒測驗過的那一個。</div>
+    <ul class="more">
+      <li>例子：正交基底卡住 → 正交集合 → 正交向量 → <b>內積（0 次作答）</b></li>
+      <li>先修關係是從教材抽出來的，不是憑空生成</li>
+      <li>系統寫的是「<b>最可能的</b>根因」，不是斷言</li>
+    </ul>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A4</span>概念圖是 LLM 生的，怎麼確保它不亂編？</div>
+    <div class="first">三道防線，而且<b>失敗一定告警</b>，絕不靜默套模板假裝成功。</div>
+    <ul class="more">
+      <li>先修邊<b>只能指向同一批抽出來的概念</b>，不能憑空指到不存在的東西</li>
+      <li>過濾行政雜訊（課程大綱、評分方式那些不是概念）</li>
+      <li>概念 ID 決定論生成 —— 同一個概念不會分裂成兩個</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A7</span>
+  </div>
+
+  <div class="foot"><span>A · 技術可信度</span><span>P2 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P3 ｜ A 技術可信度（下）
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA on">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hA"><span class="letter">A</span><span class="name">技術可信度</span><span class="cont">2 / 2</span></div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A5</span>為什麼用 FSRS-5？它是什麼？</div>
+    <div class="first">它是目前<b>開源間隔重複裡最新、最被驗證</b>的排程模型 —— 不是我自己發明的公式。</div>
+    <ul class="more">
+      <li>每個概念是一張記憶卡片，把我全部作答歷史<b>重放</b>進去，重建記憶穩定度</li>
+      <li>算出「此刻還記得的機率」，<b>快忘掉又是弱點的排最前面</b></li>
+      <li>用現成成熟模型，而不是自己編一個，這件事本身就是可信度</li>
+    </ul>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A6</span>手寫辨識準嗎？失敗了怎麼辦？</div>
+    <div class="first"><b>四層備援，取第一個成功的</b>；四層全失敗就明確告警，絕不假裝成功。</div>
+    <ul class="more">
+      <li>本機 Ollama 視覺 → Chandra → Gemini 原生 PDF → Gemini 逐頁</li>
+      <li>實測 <b>14 頁手寫約 5 分鐘</b>（我筆電的實測值，<b>不是保證值</b>，密集手寫會更久）</li>
+      <li>本機跑的好處：離線、不用付費、<b>資料不外傳</b></li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A6</span>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A7</span>用了什麼技術？整體架構長怎樣？</div>
+    <div class="first">React ／ FastAPI ／ PostgreSQL ／ ChromaDB ／ Gemini API ／ 本機 Ollama 視覺模型。</div>
+    <ul class="more">
+      <li>PostgreSQL 存學習狀態，<b>ChromaDB 存向量</b>做跨課程比對</li>
+      <li>目前 <b>63 個概念節點、4 門課、44 條跨課程連結</b></li>
+      <li><b>105 / 110</b> 自動化測試通過</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A7</span>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A8</span>題目是 AI 出的，品質怎麼保證？</div>
+    <div class="first">題目<b>不是隨機出</b>的 —— 系統挑我最弱、最沒測過的概念，而且是開放式作答。</div>
+    <ul class="more">
+      <li>批改不是比對答案，是<b>指出推理斷在哪一步</b>（附錄 A3 有實例）</li>
+      <li>每次作答同時更新掌握度、技能樹狀態、複習排程 —— 是一個閉環</li>
+      <li>學理依據：<b>Retrieval Practice</b>（Roediger &amp; Karpicke, 2006）</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A3</span>
+  </div>
+
+  <div class="foot"><span>A · 技術可信度</span><span>P3 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P4 ｜ B 跟別人差在哪
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB on">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hB"><span class="letter">B</span><span class="name">跟別人差在哪</span><span class="cont">1 / 1</span></div>
+
+  <div class="qa b">
+    <div class="q"><span class="id">B1</span>跟 ChatGPT 差在哪？</div>
+    <div class="first">ChatGPT <b>記得我問過什麼，不記得我會了什麼</b>。</div>
+    <ul class="more">
+      <li>它能告訴我<b>這一題</b>為什麼錯，但不知道我<b>一直</b>在哪裡錯</li>
+      <li>AdaptLearn 有持續累積的掌握度狀態，下一次它知道我上次哪裡錯</li>
+      <li>而且它會<b>往回追先修</b>，指出根因，不是只回答眼前這題</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A1</span>
+  </div>
+
+  <div class="qa b">
+    <div class="q"><span class="id">B2</span>跟 NotebookLM 的心智圖差在哪？</div>
+    <div class="first">心智圖畫的是「<b>這個屬於那個</b>」；技能樹畫的是「<b>我要先會什麼，才學得動這個</b>」。</div>
+    <ul class="more">
+      <li>心智圖是知識的<b>結構</b>；技能樹是學習的<b>順序</b></li>
+      <li>我的圖有先修方向，而且會依我的掌握度<b>上鎖／解鎖</b></li>
+      <li>它記得我的資料，但不記得我；我的系統記得我學到哪裡</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A1</span>
+  </div>
+
+  <div class="qa b">
+    <div class="q"><span class="id">B3</span>間隔重複 Anki 早就有了，你差在哪？</div>
+    <div class="first">Anki 要我<b>自己建卡片</b>；AdaptLearn 是從我的教材<b>自己長出</b>卡片，而且會往回追根因。</div>
+    <ul class="more">
+      <li>Anki 卡片人工建；我的是從講義／投影片／<b>手寫筆記</b>自動抽概念</li>
+      <li>Anki <b>不知道概念之間的先修關係</b>，我的知道</li>
+      <li>排程一樣用 FSRS，但決定「<b>排什麼</b>」的邏輯完全不同</li>
+    </ul>
+  </div>
+
+  <div class="qa b">
+    <div class="q"><span class="id">B4</span>可汗、均一那些平台不是也有知識地圖？</div>
+    <div class="first">他們的地圖是<b>官方預先建好的</b>；我的是從<b>學生自己的教材</b>長出來的。</div>
+    <ul class="more">
+      <li>我可以吃老師這學期實際給的講義、投影片，甚至我的手寫筆記</li>
+      <li>所以它對得上<b>這一堂課的進度</b>，不是通用課綱</li>
+      <li>換一門課、換一個老師，重新丟一次就好</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>B · 跟別人差在哪</span><span>P4 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P5 ｜ C 教與學價值
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC on">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hC"><span class="letter">C</span><span class="name">教與學價值</span><span class="cont">1 / 1</span></div>
+
+  <div class="qa c">
+    <div class="q"><span class="id">C1</span>這是教與學競賽，老師在哪裡？<span style="color:var(--cF);font-size:9pt">　★ 最可能被問</span></div>
+    <div class="first">同一份資料換個視角就是老師端 —— 每個概念的<b>全班錯誤率熱力圖</b>。</div>
+    <ul class="more">
+      <li>老師看到的不是「這班笨」，是「<b>第幾章沒教好</b>」</li>
+      <li><b>要主動承認：</b>目前只有我一個使用者，所以「班級」其實是我自己</li>
+      <li>資料結構已經在了，多人使用就直接是班級視圖</li>
+      <li><b>教師端儀表板是下一步，不是已完成的功能</b> —— 不要講成做好了</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A4</span>
+  </div>
+
+  <div class="qa c">
+    <div class="q"><span class="id">C2</span>老師要花多少時間準備？</div>
+    <div class="first">把<b>原本就有的講義</b>丟進去就好，不用另外備課。</div>
+    <ul class="more">
+      <li>支援 PDF、圖片、手寫筆記</li>
+      <li>概念圖、題目、複習排程都是系統長出來的</li>
+      <li>老師真正要做的只有一件事：<b>看熱力圖決定下次補哪一章</b></li>
+    </ul>
+  </div>
+
+  <div class="qa c">
+    <div class="q"><span class="id">C3</span>對教學有什麼實際幫助？</div>
+    <div class="first">它把「不知道學生哪裡不會」變成「<b>明確的弱點清單</b>」。</div>
+    <ul class="more">
+      <li>傳統考卷只告訴老師分數，不告訴老師<b>是哪個先修概念沒教好</b></li>
+      <li>熱力圖直接指出章節層級的問題，不是個別題目</li>
+      <li><b>誠實補一句：</b>這部分目前是設計，還沒有真實課堂驗證</li>
+    </ul>
+  </div>
+
+  <div class="qa c">
+    <div class="q"><span class="id">C4</span>學生會不會反而更依賴 AI、不思考？</div>
+    <div class="first">剛好相反 —— 它<b>逼我作答</b>，不是給我答案。</div>
+    <ul class="more">
+      <li>開放式作答，要自己寫推理過程，<b>不是選擇題</b></li>
+      <li>學理依據：主動提取（Retrieval Practice）比重複閱讀更能形成長期記憶</li>
+      <li>它給的是「<b>你為什麼不會</b>」，不是「答案是什麼」</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>C · 教與學價值</span><span>P5 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P6 ｜ D 成效驗證
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD on">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hD"><span class="letter">D</span><span class="name">成效驗證</span><span class="cont">1 / 1</span></div>
+
+  <div class="qa d">
+    <div class="q"><span class="id">D1</span>22 → 10 能證明什麼？<span style="color:var(--cF);font-size:9pt">　★ 最可能被問</span></div>
+    <div class="first"><b>不能證明因果，我也沒有這樣宣稱。</b></div>
+    <ul class="more">
+      <li>成績受多重因素影響，<b>無法全數歸因於單一工具</b></li>
+      <li>我能確定的是<b>行為改變</b>：從「重讀已經會的」變成「先找缺口，再補缺口」</li>
+      <li>這是 <b>n = 1 的個人紀錄</b>，不是實驗數據 —— 我在簡報上就寫了這句</li>
+    </ul>
+  </div>
+
+  <div class="qa d">
+    <div class="q"><span class="id">D2</span>有沒有做過使用者測試？</div>
+    <div class="first">沒有正式的使用者研究，<b>目前使用者就是我自己</b>。</div>
+    <ul class="more">
+      <li>但我有的是<b>真實的作答紀錄和真實的教材</b>，不是假資料</li>
+      <li>下一步就是找同學做小規模試用</li>
+      <li><b>千萬不要說「有很多人在用」</b> —— 被追問會很難看</li>
+    </ul>
+  </div>
+
+  <div class="qa d">
+    <div class="q"><span class="id">D3</span>怎麼證明是工具的功勞，不是你變認真？</div>
+    <div class="first">我證明不了，<b>所以我沒有宣稱</b>。</div>
+    <ul class="more">
+      <li>我能說的是：這個行為改變<b>是工具直接造成的</b> —— 因為它給了我弱點清單</li>
+      <li>沒有這份清單，我不會知道要從「內積」開始補</li>
+      <li>誠實回答比硬凹可信 —— 評審在意的是你知不知道自己數據的極限</li>
+    </ul>
+  </div>
+
+  <div class="qa d">
+    <div class="q"><span class="id">D4</span>現在有多少人在用？</div>
+    <div class="first"><b>目前只有我一個。</b></div>
+    <ul class="more">
+      <li>系統設計上是多使用者，但還沒開放</li>
+      <li>我把它做成<b>我自己真的在用的工具</b>，不是為了比賽做的殼</li>
+      <li>63 個概念、4 門課、真實作答紀錄，都是我這學期實際累積的</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>D · 成效驗證</span><span>P6 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P7 ｜ E 落地永續
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE on">E 落地</div><div class="tab tF">F 危險</div>
+  </div>
+
+  <div class="head hE"><span class="letter">E</span><span class="name">落地與永續</span><span class="cont">1 / 1</span></div>
+
+  <div class="qa e">
+    <div class="q"><span class="id">E1</span>成本多少？跑得起來嗎？</div>
+    <div class="first">最貴的手寫辨識<b>在本機跑，不花錢</b>；只有文字處理走 API。</div>
+    <ul class="more">
+      <li>本機 Ollama 視覺模型做 OCR —— 離線、免費、資料不外傳</li>
+      <li>商業化的話成本主要在 LLM API，可以用更便宜的模型換</li>
+      <li><b>誠實補一句：</b>目前雲端免費額度已用完，所以是在本機執行</li>
+    </ul>
+  </div>
+
+  <div class="qa e">
+    <div class="q"><span class="id">E2</span>資料隱私？學生的資料存在哪？</div>
+    <div class="first">手寫筆記<b>在本機辨識，不上傳</b>；學習資料在自己的 PostgreSQL。</div>
+    <ul class="more">
+      <li>OCR <b>優先走本機</b>，雲端只是備援</li>
+      <li>沒有第三方分析、沒有廣告、沒有把學習紀錄賣掉</li>
+      <li>這是我一開始就選本機 OCR 的原因之一</li>
+    </ul>
+  </div>
+
+  <div class="qa e">
+    <div class="q"><span class="id">E3</span>只能用在線性代數嗎？</div>
+    <div class="first">不是。概念抽取是通用的 —— <b>目前已經有 4 門課</b>。</div>
+    <ul class="more">
+      <li>機率的貝氏定理 ／ 線性代數的正交性 ／ 機器學習的主成分分析 ／ 線性代數手寫講義</li>
+      <li><b>跨課程連結本來就要靠多門課才成立</b>，這就是證明</li>
+      <li>數理科目最合適，因為先修關係最明確</li>
+    </ul>
+  </div>
+
+  <div class="qa e">
+    <div class="q"><span class="id">E4</span>接下來要做什麼？</div>
+    <div class="first"><b>教師端儀表板</b>，然後找同學做小規模試用。</div>
+    <ul class="more">
+      <li>教師端的資料結構已經在了，缺的是介面</li>
+      <li>之後真正要驗證的是：<b>對別人也有用嗎？</b></li>
+      <li>我不會說它已經是成品 —— 它是一個我每天在用、還在長的工具</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>E · 落地與永續</span><span>P7 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P8 ｜ F 危險題（上）
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF on">F 危險</div>
+  </div>
+
+  <div class="head hF"><span class="letter">F</span><span class="name">危險題 · 答錯會扣分</span><span class="cont">1 / 2</span></div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F1</span>「通過率 94%」這個數字怎麼算的？</div>
+    <div class="warn">⚠ 這個數字千萬不要主動講出來。</div>
+    <div class="first">那是一個<b>佔位估計公式，還沒有經過驗證</b>，所以我不會把它當成成效宣稱。</div>
+    <ul class="more">
+      <li>它是啟發式公式，不是統計預測 —— 而且當時只有 1 筆作答</li>
+      <li>答完立刻把話題帶回：「<b>掌握度是排序訊號，不是測量值</b>」</li>
+      <li>承認一個數字不可靠，比為它辯護安全得多</li>
+    </ul>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F2</span>熱力圖上的「平均作答次數」是什麼？</div>
+    <div class="warn">⚠ 不要引用那一欄的數字。</div>
+    <div class="first">熱力圖我要看的是<b>錯誤率分級</b>；平均作答次數那欄目前還不可靠。</div>
+    <ul class="more">
+      <li>只講顏色分級：紅 → 黃 → 綠</li>
+      <li>要舉例就講：琥珀色那格是「正交基底」，3 次作答錯 1 次 = 33%</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A4</span>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F3</span>老師端做好了嗎？</div>
+    <div class="first"><b>沒有。教師端儀表板是下一步，不是已完成的功能。</b></div>
+    <ul class="more">
+      <li>熱力圖的後端已經在跑，資料結構到位</li>
+      <li>缺的是給老師用的介面</li>
+      <li><b>我在簡報附錄 A4 就主動寫了這句</b> —— 主動承認比被抓到好</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A4</span>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F4</span>現在線上開得起來嗎？</div>
+    <div class="first">雲端免費資源已經停用，<b>目前是本機執行</b>。</div>
+    <ul class="more">
+      <li>這是<b>資源問題，不是技術問題</b></li>
+      <li>部署設定是完整的，恢復額度就能上線</li>
+      <li>今天的展示跑的是<b>真實資料庫</b>，不是錄影或假畫面</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>F · 危險題</span><span>P8 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P9 ｜ F 危險題（下）
+     ========================================================== -->
+<section class="page">
+  <div class="thumbs">
+    <div class="tab tA">A 技術</div><div class="tab tB">B 差異</div><div class="tab tC">C 教學</div>
+    <div class="tab tD">D 成效</div><div class="tab tE">E 落地</div><div class="tab tF on">F 危險</div>
+  </div>
+
+  <div class="head hF"><span class="letter">F</span><span class="name">危險題 · 答錯會扣分</span><span class="cont">2 / 2</span></div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F5</span>這些程式是你自己寫的嗎？用了多少 AI？<span style="color:var(--cF);font-size:9pt">　★ 誠實回答</span></div>
+    <div class="first">我用 AI 輔助開發，但<b>架構決策、演算法選擇、bug 的根因分析</b>都是我做的。</div>
+    <ul class="more">
+      <li>最好的例子：<b>OCR 靜默失敗那個 bug</b> —— 我自己發現、自己定位、自己設計解法</li>
+      <li>0.68 那個門檻是我用標註樣本<b>實測校準</b>出來的，不是問來的</li>
+      <li>誠實講比含糊帶過好 —— 而且我講得出每個決定背後的理由</li>
+    </ul>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F6</span>105 / 110，那 5 條測試沒過是什麼？</div>
+    <div class="first">是 ingest 改成<b>非同步之後，舊的整合測試沒更新</b>，不是產品缺陷。</div>
+    <ul class="more">
+      <li>我<b>知道是哪 5 條、為什麼失敗</b> —— 這一點本身就是答案</li>
+      <li>我沒有把它藏起來，簡報附錄 A7 直接寫「5 條為待更新的舊整合測試」</li>
+    </ul>
+    <span class="goto">▸ 翻附錄 A7</span>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F7</span>如果評審問了我完全不會的問題？</div>
+    <div class="first">「這個我目前<b>沒有答案</b>，但我可以說我會怎麼找。」</div>
+    <ul class="more">
+      <li><b>不要編。</b>編了會被追問，然後全場崩</li>
+      <li>可以接：「這是我下一步要驗證的事情之一。」</li>
+      <li>評審評的是你對自己作品的<b>誠實度和理解深度</b>，不是你什麼都知道</li>
+    </ul>
+  </div>
+
+  <div class="qa f">
+    <div class="q"><span class="id">F8</span>可以現場 demo 一下嗎？</div>
+    <div class="warn">⚠ 不要按「產生測驗」。</div>
+    <div class="first">可以，題目<b>已經事先產好</b>了 —— 我直接翻給您看。</div>
+    <ul class="more">
+      <li>現場產生題目要等 API，而且失敗會降級成英文模板題</li>
+      <li>安全的操作：點技能樹概念 → 看概念詳解 → 看複習佇列</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>F · 危險題</span><span>P9 / 10</span></div>
+</section>
+
+<!-- ==========================================================
+     P10 ｜ 數字小抄 + 附錄對照
+     ========================================================== -->
+<section class="page">
+  <div class="head hA"><span class="letter">#</span><span class="name">數字小抄 · 附錄對照</span><span class="cont">背下來這一頁</span></div>
+
+  <div class="numgrid">
+    <div class="numcard"><div class="v">63</div><div class="k">概念節點 · 跨 4 門課</div></div>
+    <div class="numcard"><div class="v">44</div><div class="k">跨課程連結（這門課相關 37 條）</div></div>
+    <div class="numcard"><div class="v">67%　·　3 次作答</div><div class="k">「正交基底」掌握度 —— 唯一有作答紀錄的概念</div></div>
+    <div class="numcard"><div class="v">0.68</div><div class="k">相似度門檻（0.84 等價／0.76 高度相似／0.71 相似）</div></div>
+    <div class="numcard"><div class="v">14 頁 · 約 5 分鐘</div><div class="k">手寫講義本機 OCR（筆電實測值，非保證）</div></div>
+    <div class="numcard"><div class="v">105 / 110</div><div class="k">自動化測試通過（5 條為待更新的舊整合測試）</div></div>
+    <div class="numcard"><div class="v">22 / 51　→　10 / 51</div><div class="k">班級排名（不可歸因於單一工具）</div></div>
+    <div class="numcard"><div class="v">綠 75%　黃 50%</div><div class="k">掌握度分級門檻（低於 50% 為紅）</div></div>
+  </div>
+
+  <div class="sec-title">四門課（被問「只有線性代數嗎」就念這個）</div>
+  <ul class="more" style="margin-left:5mm;font-size:10.5pt">
+    <li>機率的貝氏定理　·　線性代數的正交性　·　機器學習的主成分分析　·　線性代數 8-1~8-3（手寫）</li>
+  </ul>
+
+  <div class="sec-title">簡報附錄對照 —— 被問到就說「請看附錄 A□」</div>
+  <table class="appx">
+    <tr><th>附錄</th><th>準備回答的問題</th></tr>
+    <tr><td>A1</td><td>跟 ChatGPT ／ NotebookLM 差在哪</td></tr>
+    <tr><td>A2</td><td>點下概念之後看到什麼（定義／重點／範例／常見誤區）</td></tr>
+    <tr><td>A3</td><td>AI 批改到底多細（有實際批改範例）</td></tr>
+    <tr><td>A4</td><td>教與學競賽，老師端在哪　<b>＋ 只有我一個使用者的誠實聲明</b></td></tr>
+    <tr><td>A5</td><td>三次作答就下結論？0.68 門檻怎麼定的</td></tr>
+    <tr><td>A6</td><td>真的是手寫嗎？辨識要多久</td></tr>
+    <tr><td>A7</td><td>技術架構、四層 OCR 備援鏈、測試通過數</td></tr>
+    <tr><td>A8</td><td>參考文獻（Roediger &amp; Karpicke／Bjork／National Academies／FSRS）</td></tr>
+  </table>
+
+  <div class="lifeline" style="margin-top:6mm">
+    <h3>上台前最後檢查</h3>
+    <p><span class="num">1</span>後端有開嗎？　<span class="num">2</span>課程切到「線性代數的正交性」了嗎？　<span class="num">3</span><b>不要按「產生測驗」</b></p>
+  </div>
+
+  <div class="foot"><span>數字小抄 · 附錄對照</span><span>P10 / 10</span></div>
+</section>
+
+</body>
+</html>

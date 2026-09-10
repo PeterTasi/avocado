@@ -171,13 +171,13 @@ table.appx td:first-child{font-family:var(--f-mono);color:var(--ink);font-weight
   <div class="cover-title">評審問答小抄</div>
   <div class="cover-sub">
     AdaptLearn ｜ 中原大學 2026 AI 教與學標竿課程實踐暨成果展演競賽　學生組<br>
-    組名 avocado ｜ 蔡旻烜　—　<b>右邊有六個顏色標籤，用拇指直接翻到那一類。</b>
+    組名 avocado ｜ 蔡旻烜　—　<b>右邊有六個顏色標籤，用拇指直接翻到那一類。</b><br><span style="color:#c0392b">★ 決賽實問</span>　=　2026 決賽評審實際問過的題目
   </div>
 
   <div class="idx">
     <div class="idxrow">
       <div class="idxkey kA"><span class="L">A</span><span class="N">技術<br>可信度</span></div>
-      <div class="idxbody">掌握度 67% 怎麼算 ／ 0.68 門檻 ／ 卡關歸因會不會亂猜 ／ <b>LLM 幻覺</b> ／ FSRS-5 ／ 手寫辨識 ／ 技術架構 ／ <b>先修關係準不準</b> ／ <b>批改會不會誤判</b></div>
+      <div class="idxbody">掌握度 67% 怎麼算 ／ 0.68 門檻 ／ 卡關歸因會不會亂猜 ／ <b>LLM 幻覺</b> ／ FSRS-5 ／ 手寫辨識 ／ 技術架構 ／ <b>★ 概念與先修怎麼建的</b> ／ 批改會不會誤判 ／ <b>★ 多門課技能樹會不會亂</b></div>
       <div class="idxpage">P2–4</div>
     </div>
     <div class="idxrow">
@@ -343,14 +343,16 @@ table.appx td:first-child{font-family:var(--f-mono);color:var(--ink);font-weight
   <div class="head hA"><span class="letter">A</span><span class="name">技術可信度</span><span class="cont">3 / 3</span></div>
 
   <div class="qa a">
-    <div class="q"><span class="id">A9</span>技能樹的先修關係，準確度怎麼保證？<span style="color:var(--cF);font-size:9pt">　★ 高機率被問</span></div>
-    <div class="first">先修關係是 LLM 從教材抽的，我用<b>三道限制</b>讓它不能亂連 —— 但我<b>沒有做過人工標註的準確率評估</b>，這點我要誠實說。</div>
+    <div class="q"><span class="id">A9</span>概念怎麼抽出來的？先修關係怎麼建立？<span style="color:var(--cF);font-size:9pt">　★ 決賽實問</span></div>
+    <div class="first">LLM 讀教材吐出概念，<b>每個概念自己帶一份先修清單</b>，我再把清單轉成邊 —— 不是事後用相似度猜出來的。</div>
     <ul class="more">
-      <li>限制一：先修邊<b>只能連到同一份教材抽出的概念</b>，不能指到不存在的東西</li>
-      <li>限制二：<b>概念 ID 決定論生成</b> —— 「正交基底」不會分裂成兩個節點</li>
-      <li>限制三：過濾行政雜訊（課程大綱、評分方式那些不是概念）</li>
-      <li>我的驗證方式是拿<b>課本章節順序</b>對照：內積在正交向量之前，這條鏈是對的</li>
-      <li><b>最強的一道防線是「看得見」</b> —— 技能樹整張攤在使用者面前，連錯了看得出來，不是黑盒</li>
+      <li><b>① 抽概念</b>：LLM 讀教材，每筆吐出「名稱／章節／說明／<b>先修清單</b>」</li>
+      <li><b>② 兩段式過濾</b>：先收集所有要保留的概念名，<b>第二段才處理先修</b><br>
+          <span style="color:var(--cF)">— 原本單段過濾會把「先修指向<b>後面才出現</b>的概念」那些邊<b>靜默丟掉</b>，這是我自己發現並修掉的 bug</span></li>
+      <li><b>③ 轉成邊</b>：先修清單 → <b>relation = "prerequisite"</b>，方向永遠是基礎 → 進階</li>
+      <li><b>④ 保底</b>：LLM 完全沒給先修時，才退回用<b>章節順序</b>保守推斷</li>
+      <li><b>誠實補：</b>我沒有做過人工標註的準確率評估。我的驗證方式是拿<b>課本章節順序</b>對照 —— 內積在正交向量之前，這條鏈是對的</li>
+      <li><b>最強的防線是「看得見」</b> —— 技能樹整張攤在使用者面前，連錯了看得出來，不是黑盒</li>
     </ul>
     <span class="goto">▸ 翻附錄 A7</span>
   </div>
@@ -365,6 +367,17 @@ table.appx td:first-child{font-family:var(--f-mono);color:var(--ink);font-weight
       <li>這跟我第 11 頁講的<b>誠實原則是同一件事</b> —— AI 可以錯，但要讓人看得出來它錯了</li>
     </ul>
     <span class="goto">▸ 翻附錄 A3</span>
+  </div>
+
+  <div class="qa a">
+    <div class="q"><span class="id">A11</span>上傳好幾門課，技能樹會不會變得很雜亂？<span style="color:var(--cF);font-size:9pt">　★ 決賽實問（評審誤會這裡）</span></div>
+    <div class="first"><b>不會。技能樹一次只顯示一門課。</b>我目前有 4 門課，但畫面上永遠只畫你切到的那一門。</div>
+    <ul class="more">
+      <li>概念和先修邊<b>都用「目前選中的課程」過濾過</b>，不同課的概念不會混在同一棵樹上</li>
+      <li><b>跨課程連結是技能樹下方的獨立一區</b>，不是畫在樹上 —— 這兩件事分開呈現</li>
+      <li>切課程用課程列表點一下就換，樹整個重畫</li>
+      <li>要舉例就講：<b>4 門課 63 個概念，但技能樹上只會看到那一門的 13 個</b></li>
+    </ul>
   </div>
 
   <div class="foot"><span>A · 技術可信度</span><span>P4 / 11</span></div>

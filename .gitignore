@@ -39,3 +39,13 @@ LibreUIUX-Claude-Code/
 # 本地暫存產物（非專案來源）
 architecture-explain.html
 bug-report.html
+
+# 比賽與內部工作文件 —— 本地保留，不推上 GitHub
+# （簡報、講稿、評審問答、海報、報告書、內部規劃與審查報告）
+/docs/
+/CLAUDE.md
+/DEMO.md
+/plan.md
+/*.pdf
+/*.pptx
+/*.pages

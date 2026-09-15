@@ -1,5 +1,7 @@
 # AdaptLearn AI Diagnostic System
 
+**2026/09/10** · Runner-up, 2026 CYCU AI Teaching & Learning Competition (Student Division)
+
 This repository bootstraps the first runnable version of the project described in your proposal:
 
 - Cross-context concept graph from uploaded course materials.

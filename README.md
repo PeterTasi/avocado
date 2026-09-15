@@ -2,7 +2,28 @@
 
 **2026/09/10** · Runner-up, 2026 CYCU AI Teaching & Learning Competition (Student Division)
 
-This repository bootstraps the first runnable version of the project described in your proposal:
+**從教材建立知識圖譜，追溯可能的先修弱點，再透過診斷測驗與複習排程，知道下一步該讀什麼。**
+
+## 52 秒專案展示
+
+**[▶ 觀看有聲操作影片（MP4）](media/adaptlearn-demo-neural.mp4)** · 52 秒 · 中文旁白＋背景音樂 · 繁體中文字幕
+
+「我到底為什麼不會，是從哪裡開始不會的？」影片以實際介面與示範資料，展示技能樹、先修弱點追溯、診斷測驗、複習安排與跨課程連結。
+
+| 時間 | 展示內容 |
+|---|---|
+| 00:00 | 專案解決的問題 |
+| 00:07 | 從教材整理出的概念 |
+| 00:13 | 有先修關係的技能樹 |
+| 00:18 | 點選概念，追溯可能的先修缺口 |
+| 00:24 | 作答與批改回饋 |
+| 00:34 | 個人化複習安排 |
+| 00:41 | 跨課程知識連結 |
+| 00:46 | 找出缺口，知道下一步該補什麼 |
+
+## Core Features
+
+AdaptLearn connects course materials, diagnostic questions, and learning history:
 
 - Cross-context concept graph from uploaded course materials.
 - Adaptive diagnostic quiz generation.
